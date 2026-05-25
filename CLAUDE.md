@@ -1,4 +1,25 @@
 <laravel-boost-guidelines>
+=== .ai/laravel-docker-template rules ===
+
+# Laravel Docker Template
+
+The `laravel-docker-template` directory is the reusable source template for this project's Docker setup.
+
+When changing Docker, runtime, or local development configuration in the project root, make the equivalent generic change in `laravel-docker-template` during the same task.
+
+This applies to:
+
+- `.dockerignore`
+- `.env.docker.example`
+- `Dockerfile`
+- `Makefile`
+- `docker-compose.yml`
+- `docker-compose.override.yml`
+- `docker/app/*`
+- Docker-related README instructions
+
+Keep the template reusable. Do not copy project-specific secrets, local machine paths, app names, generated files, or one-off values into `laravel-docker-template` unless the change is intentionally part of the reusable template.
+
 === .ai/project-testing rules ===
 
 # Project Testing
@@ -11,18 +32,19 @@ Always run tests using:
 
 ```bash
 make test
+```
 
-=== .ai/storefront-design-preview rules ===
+=== .ai/ui-design-preview rules ===
 
-# Storefront Design Preview
+# UI Design Preview
 
-Any change to storefront UI or storefront-facing visual design MUST be reflected in:
+When changing any user-facing UI or visual design, keep the relevant preview surface in sync during the same task.
 
-resources/views/storefront-design-preview.blade.php
+The preview must account for every affected design area in the project, including pages, layouts, navigation, forms, tables, cards, modals, filters, empty states, loading states, error states, responsive states, and dark mode when the project supports it.
 
-Do this even when the actual implementation also changes another Blade view, Livewire component, Vue/React component, or CSS/Tailwind classes.
+Use the preview surface that exists for the current project: a Blade preview page, Storybook story, component playground, screenshot fixture, or the affected view itself. Do not introduce domain-specific examples unless the project actually has that domain.
 
-This applies to product pages, category pages, product cards, storefront homepage sections, mobile layouts, responsive states, and visual mockups.
+Every project should expose the design preview through a stable route or page, such as `/design-preview`, in local/development or behind appropriate access control. If no dedicated preview exists yet, create one or update the affected route directly before treating the UI change as complete.
 
 === foundation rules ===
 

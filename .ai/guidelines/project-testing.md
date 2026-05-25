@@ -8,3 +8,4 @@ Always run tests using:
 
 ```bash
 make test
+```

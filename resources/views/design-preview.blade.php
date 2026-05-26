@@ -28,6 +28,69 @@
                 </div>
             </header>
 
+            <section class="grid grid-cols-1 gap-6 lg:grid-cols-[20rem_1fr]">
+                <aside class="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+                    <div class="flex items-center justify-between gap-3">
+                        <div>
+                            <p class="text-sm text-zinc-500 dark:text-zinc-400">Tenant</p>
+                            <h2 class="text-base font-semibold">Организация</h2>
+                        </div>
+                        <span class="rounded-full bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200">Active</span>
+                    </div>
+
+                    <div class="mt-4 flex flex-col gap-2">
+                        <button class="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-left text-sm font-medium text-amber-950 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-100">
+                            ТОО Водоканал Алматы
+                        </button>
+                        <button class="rounded-md border border-zinc-200 px-3 py-2 text-left text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-950">
+                            ИП Абонент-Сервис
+                        </button>
+                        <button class="mt-2 rounded-md bg-zinc-950 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-white">
+                            Создать организацию
+                        </button>
+                    </div>
+                </aside>
+
+                <div class="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+                    <div class="flex flex-col gap-3 border-b border-zinc-200 pb-4 dark:border-zinc-800 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                            <p class="text-sm text-zinc-500 dark:text-zinc-400">Filament tenancy</p>
+                            <h2 class="text-base font-semibold">Профиль организации</h2>
+                        </div>
+                        <button class="rounded-md bg-amber-600 px-3 py-2 text-sm font-medium text-white hover:bg-amber-700 dark:bg-amber-400 dark:text-zinc-950 dark:hover:bg-amber-300">
+                            Сохранить
+                        </button>
+                    </div>
+
+                    <form class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <label class="flex flex-col gap-2 text-sm font-medium">
+                            Название организации
+                            <input class="h-10 rounded-md border border-zinc-300 bg-white px-3 text-sm font-normal text-zinc-950 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-50" value="ТОО Водоканал Алматы">
+                        </label>
+
+                        <label class="flex flex-col gap-2 text-sm font-medium">
+                            БИН / ИИН
+                            <input class="h-10 rounded-md border border-zinc-300 bg-white px-3 text-sm font-normal text-zinc-950 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-50" value="123456789012">
+                        </label>
+
+                        <label class="flex flex-col gap-2 text-sm font-medium">
+                            Телефон
+                            <input class="h-10 rounded-md border border-zinc-300 bg-white px-3 text-sm font-normal text-zinc-950 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-50" value="+7 777 000 00 00">
+                        </label>
+
+                        <label class="flex flex-col gap-2 text-sm font-medium">
+                            IBAN
+                            <input class="h-10 rounded-md border border-zinc-300 bg-white px-3 text-sm font-normal text-zinc-950 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-50" value="KZ86125KZT5004100100">
+                        </label>
+
+                        <label class="flex flex-col gap-2 text-sm font-medium md:col-span-2">
+                            Адрес
+                            <input class="h-10 rounded-md border border-zinc-300 bg-white px-3 text-sm font-normal text-zinc-950 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-50" value="Алматы, Абая 10">
+                        </label>
+                    </form>
+                </div>
+            </section>
+
             <section class="grid grid-cols-1 gap-4 md:grid-cols-3">
                 <div class="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
                     <p class="text-sm text-zinc-500 dark:text-zinc-400">Total</p>

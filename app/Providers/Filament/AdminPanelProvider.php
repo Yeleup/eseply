@@ -2,6 +2,9 @@
 
 namespace App\Providers\Filament;
 
+use App\Filament\Pages\Tenancy\EditOrganizationProfile;
+use App\Filament\Pages\Tenancy\RegisterOrganization;
+use App\Models\Organization;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
@@ -31,6 +34,10 @@ class AdminPanelProvider extends PanelProvider
             ->colors([
                 'primary' => Color::Amber,
             ])
+            ->tenant(Organization::class)
+            ->tenantRegistration(RegisterOrganization::class)
+            ->tenantProfile(EditOrganizationProfile::class)
+            ->searchableTenantMenu()
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\Filament\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\Filament\Pages')
             ->pages([

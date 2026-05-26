@@ -20,6 +20,35 @@ This applies to:
 
 Keep the template reusable. Do not copy project-specific secrets, local machine paths, app names, generated files, or one-off values into `laravel-docker-template` unless the change is intentionally part of the reusable template.
 
+=== .ai/project-documentation rules ===
+
+# Project Documentation Guideline
+
+This project uses documentation as the source of truth for business logic.
+
+Before implementing a feature, check:
+
+- `docs/technical-specification.md`
+- `docs/business-rules.md`
+- relevant files in `docs/modules/*.md`
+
+When changing business logic, update the relevant documentation in the same task.
+
+If a module documentation file does not exist yet, create it before implementing the feature.
+
+Business logic changes include:
+
+- changed calculations;
+- changed validation rules;
+- changed statuses;
+- changed entity relationships;
+- changed user roles or permissions;
+- changed receipt, payment, accrual, tariff, normative, meter, or service logic.
+
+Update `docs/changelog.md` when business rules or module behavior change.
+
+A task is not complete until related docs are updated.
+
 === .ai/project-testing rules ===
 
 # Project Testing
@@ -57,9 +86,11 @@ The Laravel Boost guidelines are specifically curated by Laravel maintainers for
 This application is a Laravel application and its main Laravel ecosystems package & versions are below. You are an expert with them all. Ensure you abide by these specific packages & versions.
 
 - php - 8.4
+- filament/filament (FILAMENT) - v5
 - laravel/framework (LARAVEL) - v13
 - laravel/octane (OCTANE) - v2
 - laravel/prompts (PROMPTS) - v0
+- livewire/livewire (LIVEWIRE) - v4
 - laravel/boost (BOOST) - v2
 - laravel/mcp (MCP) - v0
 - laravel/pail (PAIL) - v1

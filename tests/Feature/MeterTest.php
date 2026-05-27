@@ -1,0 +1,239 @@
+<?php
+
+use App\Filament\Resources\MeterReadings\Pages\CreateMeterReading;
+use App\Filament\Resources\MeterReadings\Pages\ListMeterReadings;
+use App\Filament\Resources\Meters\Pages\CreateMeter;
+use App\Filament\Resources\Meters\Pages\ListMeters;
+use App\Models\Client;
+use App\Models\Meter;
+use App\Models\MeterReading;
+use App\Models\Organization;
+use App\Models\User;
+use App\Models\UtilityService;
+use Filament\Facades\Filament;
+use Illuminate\Database\QueryException;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Livewire\Livewire;
+
+uses(RefreshDatabase::class);
+
+function actingAsMeterTenant(Organization $organization): User
+{
+    $user = User::factory()->create();
+    $user->organizations()->attach($organization);
+
+    Livewire::actingAs($user);
+
+    Filament::setCurrentPanel('admin');
+    Filament::setTenant($organization);
+    Filament::bootCurrentPanel();
+
+    return $user;
+}
+
+test('meters belong to an organization client and utility service', function () {
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create();
+    $client = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'billing_type' => 'meter',
+        ]);
+
+    $meter = Meter::factory()
+        ->for($organization)
+        ->for($client)
+        ->for($utilityService)
+        ->create([
+            'number' => 'MTR-10001',
+            'initial_reading' => 15.25,
+        ]);
+
+    expect($meter->organization->is($organization))->toBeTrue()
+        ->and($meter->client->is($client))->toBeTrue()
+        ->and($meter->utilityService->is($utilityService))->toBeTrue()
+        ->and($meter->initial_reading)->toBe('15.2500')
+        ->and($organization->meters()->whereKey($meter)->exists())->toBeTrue();
+});
+
+test('meter number is unique inside an organization', function () {
+    $organization = Organization::factory()->create();
+
+    Meter::factory()->for($organization)->create([
+        'number' => 'MTR-10001',
+    ]);
+
+    expect(fn () => Meter::factory()->for($organization)->create([
+        'number' => 'MTR-10001',
+    ]))->toThrow(QueryException::class);
+});
+
+test('a client can have only one active meter', function () {
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create();
+    $client = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'billing_type' => 'meter',
+        ]);
+
+    Meter::factory()
+        ->for($organization)
+        ->for($client)
+        ->for($utilityService)
+        ->create([
+            'status' => 'active',
+        ]);
+
+    expect(fn () => Meter::factory()
+        ->for($organization)
+        ->for($client)
+        ->for($utilityService)
+        ->create([
+            'status' => 'active',
+        ]))->toThrow(QueryException::class);
+
+    $removedMeter = Meter::factory()
+        ->for($organization)
+        ->for($client)
+        ->for($utilityService)
+        ->create([
+            'status' => 'removed',
+        ]);
+
+    expect($removedMeter)->toBeInstanceOf(Meter::class);
+});
+
+test('meter readings calculate consumption from current and previous readings', function () {
+    $organization = Organization::factory()->create();
+    $meter = Meter::factory()->for($organization)->create();
+
+    $reading = MeterReading::factory()
+        ->for($meter)
+        ->create([
+            'period' => '202605',
+            'previous_reading' => 120.5,
+            'current_reading' => 155.75,
+        ]);
+
+    expect($reading->organization->is($meter->organization))->toBeTrue()
+        ->and($reading->client->is($meter->client))->toBeTrue()
+        ->and($reading->utilityService->is($meter->utilityService))->toBeTrue()
+        ->and($reading->previous_reading)->toBe('120.5000')
+        ->and($reading->current_reading)->toBe('155.7500')
+        ->and($reading->consumption)->toBe('35.2500');
+});
+
+test('one meter reading is allowed per meter and period', function () {
+    $meter = Meter::factory()->create();
+
+    MeterReading::factory()->for($meter)->create([
+        'period' => '202605',
+    ]);
+
+    expect(fn () => MeterReading::factory()->for($meter)->create([
+        'period' => '202605',
+    ]))->toThrow(QueryException::class);
+});
+
+test('the same period can be used for different meters', function () {
+    $organization = Organization::factory()->create();
+
+    $firstReading = MeterReading::factory()
+        ->for(Meter::factory()->for($organization))
+        ->create([
+            'period' => '202605',
+        ]);
+
+    $secondReading = MeterReading::factory()
+        ->for(Meter::factory()->for($organization))
+        ->create([
+            'period' => '202605',
+        ]);
+
+    expect($firstReading)->toBeInstanceOf(MeterReading::class)
+        ->and($secondReading)->toBeInstanceOf(MeterReading::class);
+});
+
+test('admin users can create and list meters for the current tenant', function () {
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create([
+        'name' => 'Электроэнергия',
+    ]);
+    $client = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'account_number' => '60001',
+            'billing_type' => 'meter',
+        ]);
+
+    $otherTenantMeter = Meter::factory()->for(Organization::factory())->create();
+
+    actingAsMeterTenant($organization);
+
+    Livewire::test(CreateMeter::class)
+        ->fillForm([
+            'client_id' => $client->id,
+            'utility_service_id' => $utilityService->id,
+            'number' => 'MTR-60001',
+            'installed_on' => '2026-05-01',
+            'initial_reading' => 10,
+            'status' => 'active',
+        ])
+        ->call('create')
+        ->assertHasNoFormErrors()
+        ->assertNotified()
+        ->assertRedirect();
+
+    $meter = Meter::query()
+        ->whereBelongsTo($organization)
+        ->where('number', 'MTR-60001')
+        ->sole();
+
+    Livewire::test(ListMeters::class)
+        ->assertOk()
+        ->assertCanSeeTableRecords([$meter])
+        ->assertCanNotSeeTableRecords([$otherTenantMeter]);
+});
+
+test('admin users can create and list meter readings for the current tenant', function () {
+    $organization = Organization::factory()->create();
+    $meter = Meter::factory()->for($organization)->create([
+        'number' => 'MTR-70001',
+    ]);
+
+    $otherTenantReading = MeterReading::factory()->for(Meter::factory()->for(Organization::factory()))->create([
+        'period' => '202605',
+    ]);
+
+    actingAsMeterTenant($organization);
+
+    Livewire::test(CreateMeterReading::class)
+        ->fillForm([
+            'meter_id' => $meter->id,
+            'period' => '202605',
+            'previous_reading' => 100,
+            'current_reading' => 137.125,
+            'read_at' => '2026-05-26',
+        ])
+        ->call('create')
+        ->assertHasNoFormErrors()
+        ->assertNotified()
+        ->assertRedirect();
+
+    $reading = MeterReading::query()
+        ->whereBelongsTo($organization)
+        ->whereBelongsTo($meter)
+        ->where('period', '202605')
+        ->sole();
+
+    expect($reading->consumption)->toBe('37.1250');
+
+    Livewire::test(ListMeterReadings::class)
+        ->assertOk()
+        ->assertCanSeeTableRecords([$reading])
+        ->assertCanNotSeeTableRecords([$otherTenantReading]);
+});

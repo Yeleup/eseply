@@ -14,3 +14,17 @@
 - Уточнена терминология: tenant-организация — `Organization`, абонент коммунальных услуг — `Client`, лицевой счёт — поле клиента `account_number`, услуга клиента — выбранная основная услуга.
 - Добавлена документация модуля клиентов `docs/modules/clients.md`.
 - Переименована документация услуги клиента в `docs/modules/client-services.md`, чтобы соответствовать термину `Client`.
+- Добавлен минимальный модуль клиентов: модель `Client`, таблица `clients`, привязка к `organization_id`, поля карточки клиента и уникальность `account_number` внутри организации.
+- Добавлен Filament resource `ClientResource` для управления клиентами в админке выбранной организации.
+- Добавлен справочник коммунальных услуг: модель `UtilityService`, таблица `utility_services`, привязка к `organization_id`, поля `name`, `unit_of_measurement`, `status`, `note`.
+- Добавлен справочник категорий тарифов: модель `TariffCategory`, таблица `tariff_categories`, привязка к `organization_id`, выбор категории тарифа у клиента через `tariff_category_id`.
+- В клиента добавлены настройки начисления первого этапа: `utility_service_id`, `billing_type`, `residents_count`, `area`, `fixed_amount`; существующее поле `tariff_category_id` используется для категории тарифа клиента.
+- Добавлены тарифы и нормативы: модели `Tariff` и `Normative`, таблицы `tariffs` и `normatives`, связи с организацией, коммунальной услугой и категорией тарифа.
+- Добавлены Filament CRUD-разделы в группе «Учёт» в порядке: «Абоненты» (`ClientResource`), «Услуги» (`UtilityServiceResource`), «Категории тарифов» (`TariffCategoryResource`), «Тарифы» (`TariffResource`), «Нормативы» (`NormativeResource`).
+- Добавлен первый вертикальный сценарий начислений: модель `Accrual`, таблица `accruals`, закрытие месяца только для активных абонентов с `billing_type = fixed`, просмотр начислений через `AccrualResource`.
+- В закрытие месяца добавлен расчёт по нормативу для `billing_type = normative`: `residents_count * normative * tariff`, `area * normative * tariff`, `normative * tariff`.
+- Добавлены счётчики и показания: модели `Meter` и `MeterReading`, таблицы `meters` и `meter_readings`, уникальность показания по `meter_id + period`, расчёт расхода `current_reading - previous_reading`, Filament resources `MeterResource` и `MeterReadingResource`.
+- Добавлены оплаты: модель `Payment`, таблица `payments`, несколько оплат за период, Filament resource `PaymentResource`; закрытие месяца суммирует оплаты периода и считает конечное сальдо как `opening_balance + amount - paid_amount`.
+- Закрытие месяца вынесено в отдельную страницу процесса: выбор периода `YYYYMM`, расчёт всех активных абонентов, сохранение `Accrual`, расчёт по счётчику через `consumption * tariff` и вывод ошибок данных по абонентам.
+- Добавлены квитанции: модель `Receipt`, таблица `receipts`, автоматическое создание после закрытия месяца из сохранённого `Accrual` без повторного расчёта и Filament resource `ReceiptResource`.
+- Зафиксирована граница этапов: перерасчёты и отчёты относятся ко второму этапу после стабилизации базового сценария учёта.

@@ -38,11 +38,6 @@ class UtilityService extends Model
         return $this->hasMany(Tariff::class);
     }
 
-    public function normatives(): HasMany
-    {
-        return $this->hasMany(Normative::class);
-    }
-
     public function accruals(): HasMany
     {
         return $this->hasMany(Accrual::class);

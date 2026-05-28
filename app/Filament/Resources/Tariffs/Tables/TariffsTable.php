@@ -2,10 +2,10 @@
 
 namespace App\Filament\Resources\Tariffs\Tables;
 
+use App\ClientType;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
-use Filament\Facades\Filament;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
@@ -17,7 +17,6 @@ class TariffsTable
     {
         return $table
             ->modifyQueryUsing(fn (Builder $query): Builder => $query->with([
-                'tariffCategory',
                 'utilityService',
             ]))
             ->columns([
@@ -25,12 +24,17 @@ class TariffsTable
                     ->label('Услуга')
                     ->searchable()
                     ->sortable(),
-                TextColumn::make('tariffCategory.name')
-                    ->label('Категория')
-                    ->searchable()
+                TextColumn::make('client_type')
+                    ->label('Тип клиента')
+                    ->badge()
+                    ->formatStateUsing(fn (ClientType|string $state): string => ClientType::labelFor($state) ?? (string) $state)
                     ->sortable(),
-                TextColumn::make('price')
-                    ->label('Цена')
+                TextColumn::make('unit_price')
+                    ->label('Цена за единицу')
+                    ->money('KZT')
+                    ->sortable(),
+                TextColumn::make('per_person_price')
+                    ->label('Цена на человека')
                     ->money('KZT')
                     ->sortable(),
                 TextColumn::make('starts_on')
@@ -58,13 +62,9 @@ class TariffsTable
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
-                SelectFilter::make('tariff_category_id')
-                    ->label('Категория тарифа')
-                    ->options(fn (): array => Filament::getTenant()
-                        ?->tariffCategories()
-                        ->orderBy('name')
-                        ->pluck('name', 'id')
-                        ->all() ?? []),
+                SelectFilter::make('client_type')
+                    ->label('Тип клиента')
+                    ->options(ClientType::class),
                 SelectFilter::make('status')
                     ->label('Статус')
                     ->options([

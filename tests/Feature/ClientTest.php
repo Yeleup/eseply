@@ -1,10 +1,10 @@
 <?php
 
+use App\ClientType;
 use App\Filament\Resources\Clients\Pages\CreateClient;
 use App\Filament\Resources\Clients\Pages\ListClients;
 use App\Models\Client;
 use App\Models\Organization;
-use App\Models\TariffCategory;
 use App\Models\User;
 use App\Models\UtilityService;
 use Filament\Facades\Filament;
@@ -78,9 +78,6 @@ test('admin users can create a client for the current tenant', function () {
     $utilityService = UtilityService::factory()->for($organization)->create([
         'name' => 'Водоснабжение',
     ]);
-    $tariffCategory = TariffCategory::factory()->for($organization)->create([
-        'name' => 'Население',
-    ]);
 
     actingAsTenant($organization);
 
@@ -88,9 +85,8 @@ test('admin users can create a client for the current tenant', function () {
         ->fillForm([
             'account_number' => '20001',
             'name' => 'Иванов Иван',
-            'client_type' => 'individual',
-            'tariff_category_id' => $tariffCategory->id,
-            'billing_type' => 'normative',
+            'client_type' => ClientType::Individual->value,
+            'billing_type' => 'per_person',
             'residents_count' => 3,
             'area' => 45.5,
             'fixed_amount' => 0,
@@ -109,9 +105,9 @@ test('admin users can create a client for the current tenant', function () {
         ->whereBelongsTo($organization)
         ->where('account_number', '20001')
         ->where('name', 'Иванов Иван')
-        ->whereBelongsTo($tariffCategory)
         ->whereBelongsTo($utilityService)
-        ->where('billing_type', 'normative')
+        ->where('client_type', ClientType::Individual->value)
+        ->where('billing_type', 'per_person')
         ->where('residents_count', 3)
         ->exists())->toBeTrue();
 });
@@ -119,12 +115,11 @@ test('admin users can create a client for the current tenant', function () {
 test('clients store billing settings', function () {
     $organization = Organization::factory()->create();
     $utilityService = UtilityService::factory()->for($organization)->create();
-    $tariffCategory = TariffCategory::factory()->for($organization)->create();
 
     $client = Client::factory()
         ->for($organization)
-        ->for($tariffCategory)
         ->create([
+            'client_type' => ClientType::Budget->value,
             'billing_type' => 'fixed',
             'residents_count' => 2,
             'area' => 64.25,
@@ -132,7 +127,7 @@ test('clients store billing settings', function () {
         ]);
 
     expect($client->refresh()->utilityService->is($utilityService))->toBeTrue()
-        ->and($client->tariffCategory->is($tariffCategory))->toBeTrue()
+        ->and($client->client_type)->toBe(ClientType::Budget)
         ->and($client->billing_type)->toBe('fixed')
         ->and($client->residents_count)->toBe(2)
         ->and($client->area)->toBe('64.25')
@@ -152,7 +147,7 @@ test('admin client form validates account number uniqueness inside current tenan
         ->fillForm([
             'account_number' => '20001',
             'name' => 'Петров Пётр',
-            'client_type' => 'individual',
+            'client_type' => ClientType::Individual->value,
             'status' => 'active',
             'starting_balance' => 0,
         ])

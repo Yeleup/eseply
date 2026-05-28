@@ -74,7 +74,7 @@ test('tenant profile updates organization utility service', function () {
         ->fillForm([
             'name' => 'ТОО Тазалык',
             'bin_iin' => $organization->bin_iin,
-            'phone' => $organization->phone,
+            'phone' => '+7 777 000 11 22',
             'address' => $organization->address,
             'bank' => $organization->bank,
             'iban' => $organization->iban,

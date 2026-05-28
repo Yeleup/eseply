@@ -2,7 +2,7 @@
 
 namespace App\Filament\Resources\Tariffs\Schemas;
 
-use Filament\Facades\Filament;
+use App\ClientType;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
@@ -18,23 +18,22 @@ class TariffForm
                 Section::make('Тариф')
                     ->columns(2)
                     ->schema([
-                        Select::make('tariff_category_id')
-                            ->label('Категория тарифа')
-                            ->options(fn (): array => Filament::getTenant()
-                                ?->tariffCategories()
-                                ->orderBy('name')
-                                ->pluck('name', 'id')
-                                ->all() ?? [])
-                            ->searchable()
-                            ->preload()
+                        Select::make('client_type')
+                            ->label('Тип клиента')
+                            ->options(ClientType::class)
+                            ->default(ClientType::Individual->value)
                             ->required()
                             ->native(false),
-                        TextInput::make('price')
-                            ->label('Цена')
+                        TextInput::make('unit_price')
+                            ->label('Цена за единицу')
                             ->numeric()
                             ->step('0.01')
-                            ->minValue(0)
-                            ->required(),
+                            ->minValue(0),
+                        TextInput::make('per_person_price')
+                            ->label('Цена на одного человека')
+                            ->numeric()
+                            ->step('0.01')
+                            ->minValue(0),
                         DatePicker::make('starts_on')
                             ->label('Дата начала')
                             ->required()

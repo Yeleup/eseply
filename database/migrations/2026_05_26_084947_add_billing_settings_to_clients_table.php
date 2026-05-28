@@ -17,7 +17,7 @@ return new class extends Migration
                 ->after('organization_id')
                 ->constrained()
                 ->nullOnDelete();
-            $table->string('billing_type')->default('normative')->after('tariff_category_id');
+            $table->string('billing_type')->default('per_person')->after('client_type');
             $table->unsignedInteger('residents_count')->default(0)->after('billing_type');
             $table->decimal('area', 10, 2)->default(0)->after('residents_count');
             $table->decimal('fixed_amount', 14, 2)->default(0)->after('area');

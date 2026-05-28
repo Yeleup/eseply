@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\ClientType;
 use Database\Factories\TariffFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -11,8 +12,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 #[Fillable([
     'organization_id',
     'utility_service_id',
-    'tariff_category_id',
-    'price',
+    'client_type',
+    'unit_price',
+    'per_person_price',
     'starts_on',
     'status',
 ])]
@@ -25,6 +27,7 @@ class Tariff extends Model
      * @var array<string, mixed>
      */
     protected $attributes = [
+        'client_type' => 'individual',
         'status' => 'active',
     ];
 
@@ -36,11 +39,6 @@ class Tariff extends Model
     public function utilityService(): BelongsTo
     {
         return $this->belongsTo(UtilityService::class);
-    }
-
-    public function tariffCategory(): BelongsTo
-    {
-        return $this->belongsTo(TariffCategory::class);
     }
 
     protected static function booted(): void
@@ -64,7 +62,9 @@ class Tariff extends Model
     protected function casts(): array
     {
         return [
-            'price' => 'decimal:2',
+            'client_type' => ClientType::class,
+            'unit_price' => 'decimal:2',
+            'per_person_price' => 'decimal:2',
             'starts_on' => 'date',
         ];
     }

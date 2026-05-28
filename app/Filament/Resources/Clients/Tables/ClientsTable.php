@@ -2,10 +2,10 @@
 
 namespace App\Filament\Resources\Clients\Tables;
 
+use App\ClientType;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
-use Filament\Facades\Filament;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
@@ -17,7 +17,6 @@ class ClientsTable
     {
         return $table
             ->modifyQueryUsing(fn (Builder $query): Builder => $query->with([
-                'tariffCategory',
                 'utilityService',
             ]))
             ->columns([
@@ -32,19 +31,9 @@ class ClientsTable
                 TextColumn::make('client_type')
                     ->label('Тип')
                     ->badge()
-                    ->formatStateUsing(fn (string $state): string => match ($state) {
-                        'individual' => 'Физическое лицо',
-                        'legal' => 'Юридическое лицо',
-                        default => $state,
-                    }),
+                    ->formatStateUsing(fn (ClientType|string $state): string => ClientType::labelFor($state) ?? (string) $state),
                 TextColumn::make('utilityService.name')
                     ->label('Услуга')
-                    ->searchable()
-                    ->sortable()
-                    ->placeholder('Не выбрана')
-                    ->toggleable(),
-                TextColumn::make('tariffCategory.name')
-                    ->label('Категория тарифа')
                     ->searchable()
                     ->sortable()
                     ->placeholder('Не выбрана')
@@ -54,7 +43,7 @@ class ClientsTable
                     ->badge()
                     ->formatStateUsing(fn (string $state): string => match ($state) {
                         'meter' => 'По счётчику',
-                        'normative' => 'По нормативу',
+                        'per_person' => 'На одного человека',
                         'fixed' => 'Фиксированная сумма',
                         default => $state,
                     }),
@@ -94,22 +83,12 @@ class ClientsTable
             ->filters([
                 SelectFilter::make('client_type')
                     ->label('Тип клиента')
-                    ->options([
-                        'individual' => 'Физическое лицо',
-                        'legal' => 'Юридическое лицо',
-                    ]),
-                SelectFilter::make('tariff_category_id')
-                    ->label('Категория тарифа')
-                    ->options(fn (): array => Filament::getTenant()
-                        ?->tariffCategories()
-                        ->orderBy('name')
-                        ->pluck('name', 'id')
-                        ->all() ?? []),
+                    ->options(ClientType::class),
                 SelectFilter::make('billing_type')
                     ->label('Тип начисления')
                     ->options([
                         'meter' => 'По счётчику',
-                        'normative' => 'По нормативу',
+                        'per_person' => 'На одного человека',
                         'fixed' => 'Фиксированная сумма',
                     ]),
                 SelectFilter::make('status')

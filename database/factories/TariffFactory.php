@@ -2,9 +2,9 @@
 
 namespace Database\Factories;
 
+use App\ClientType;
 use App\Models\Organization;
 use App\Models\Tariff;
-use App\Models\TariffCategory;
 use App\Models\UtilityService;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
@@ -27,10 +27,9 @@ class TariffFactory extends Factory
                 ->value('id') ?? UtilityService::factory()
                 ->create(['organization_id' => $attributes['organization_id']])
                 ->id,
-            'tariff_category_id' => fn (array $attributes): int => TariffCategory::factory()
-                ->create(['organization_id' => $attributes['organization_id']])
-                ->id,
-            'price' => fake()->randomFloat(2, 50, 5000),
+            'client_type' => ClientType::Individual->value,
+            'unit_price' => fake()->randomFloat(2, 50, 5000),
+            'per_person_price' => fake()->randomFloat(2, 50, 5000),
             'starts_on' => fake()->dateTimeBetween('-1 year', '+1 month')->format('Y-m-d'),
             'status' => 'active',
         ];

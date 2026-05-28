@@ -42,7 +42,7 @@ class AccrualsTable
                     ->formatStateUsing(fn (string $state): string => match ($state) {
                         'fixed' => 'Фиксированная сумма',
                         'meter' => 'По счётчику',
-                        'normative' => 'По нормативу',
+                        'per_person' => 'На одного человека',
                         default => $state,
                     }),
                 TextColumn::make('volume')
@@ -92,7 +92,8 @@ class AccrualsTable
                     ->label('Тип начисления')
                     ->options([
                         'fixed' => 'Фиксированная сумма',
-                        'normative' => 'По нормативу',
+                        'per_person' => 'На одного человека',
+                        'meter' => 'По счётчику',
                     ]),
             ]);
     }

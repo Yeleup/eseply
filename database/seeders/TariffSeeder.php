@@ -2,9 +2,9 @@
 
 namespace Database\Seeders;
 
+use App\ClientType;
 use App\Models\Organization;
 use App\Models\Tariff;
-use App\Models\TariffCategory;
 use App\Models\UtilityService;
 use Illuminate\Database\Seeder;
 
@@ -18,15 +18,14 @@ class TariffSeeder extends Seeder
         $organization = Organization::query()->first() ?? Organization::factory()->create();
         $utilityService = $organization->utilityService
             ?? UtilityService::factory()->for($organization)->create(['name' => 'Водоснабжение']);
-        $tariffCategory = TariffCategory::query()->whereBelongsTo($organization)->first()
-            ?? TariffCategory::factory()->for($organization)->create(['name' => 'Население']);
 
         Tariff::factory()
             ->for($organization)
             ->for($utilityService)
-            ->for($tariffCategory)
             ->create([
-                'price' => 120,
+                'client_type' => ClientType::Individual->value,
+                'unit_price' => 120,
+                'per_person_price' => 600,
                 'starts_on' => now()->startOfMonth()->toDateString(),
             ]);
     }

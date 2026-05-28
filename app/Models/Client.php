@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\ClientType;
 use Database\Factories\ClientFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -12,7 +13,6 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 #[Fillable([
     'organization_id',
     'utility_service_id',
-    'tariff_category_id',
     'account_number',
     'name',
     'client_type',
@@ -38,7 +38,7 @@ class Client extends Model
         'client_type' => 'individual',
         'status' => 'active',
         'starting_balance' => 0,
-        'billing_type' => 'normative',
+        'billing_type' => 'per_person',
         'residents_count' => 0,
         'area' => 0,
         'fixed_amount' => 0,
@@ -47,11 +47,6 @@ class Client extends Model
     public function organization(): BelongsTo
     {
         return $this->belongsTo(Organization::class);
-    }
-
-    public function tariffCategory(): BelongsTo
-    {
-        return $this->belongsTo(TariffCategory::class);
     }
 
     public function utilityService(): BelongsTo
@@ -105,6 +100,7 @@ class Client extends Model
     protected function casts(): array
     {
         return [
+            'client_type' => ClientType::class,
             'starting_balance' => 'decimal:2',
             'residents_count' => 'integer',
             'area' => 'decimal:2',

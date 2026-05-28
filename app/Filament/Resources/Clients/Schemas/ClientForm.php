@@ -2,7 +2,7 @@
 
 namespace App\Filament\Resources\Clients\Schemas;
 
-use Filament\Facades\Filament;
+use App\ClientType;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
@@ -29,22 +29,9 @@ class ClientForm
                             ->maxLength(255),
                         Select::make('client_type')
                             ->label('Тип клиента')
-                            ->options([
-                                'individual' => 'Физическое лицо',
-                                'legal' => 'Юридическое лицо',
-                            ])
-                            ->default('individual')
+                            ->options(ClientType::class)
+                            ->default(ClientType::Individual->value)
                             ->required()
-                            ->native(false),
-                        Select::make('tariff_category_id')
-                            ->label('Категория тарифа')
-                            ->options(fn (): array => Filament::getTenant()
-                                ?->tariffCategories()
-                                ->orderBy('name')
-                                ->pluck('name', 'id')
-                                ->all() ?? [])
-                            ->searchable()
-                            ->preload()
                             ->native(false),
                         Select::make('status')
                             ->label('Статус')
@@ -79,10 +66,10 @@ class ClientForm
                             ->label('Тип начисления')
                             ->options([
                                 'meter' => 'По счётчику',
-                                'normative' => 'По нормативу',
+                                'per_person' => 'На одного человека',
                                 'fixed' => 'Фиксированная сумма',
                             ])
-                            ->default('normative')
+                            ->default('per_person')
                             ->required()
                             ->native(false),
                         TextInput::make('residents_count')

@@ -2,9 +2,9 @@
 
 namespace App\Actions;
 
+use App\ClientType;
 use App\Models\Accrual;
 use App\Models\Client;
-use App\Models\Normative;
 use App\Models\Organization;
 use App\Models\Receipt;
 use App\Models\Tariff;
@@ -34,9 +34,6 @@ class CloseBillingMonth
             ];
 
             $clients = $organization->clients()
-                ->with([
-                    'tariffCategory',
-                ])
                 ->where('status', 'active')
                 ->orderBy('id')
                 ->get();
@@ -105,7 +102,7 @@ class CloseBillingMonth
         return match ($client->billing_type) {
             'fixed' => $this->fixedCalculation($client),
             'meter' => $this->meterCalculation($client, $utilityService, $period, $periodStart),
-            'normative' => $this->normativeCalculation($client, $utilityService, $periodStart),
+            'per_person' => $this->perPersonCalculation($client, $utilityService, $periodStart),
             default => 'Не выбран поддерживаемый тип начисления.',
         };
     }
@@ -138,39 +135,24 @@ class CloseBillingMonth
     /**
      * @return array{volume:float, tariff_price:float, amount:float}|string
      */
-    private function normativeCalculation(Client $client, UtilityService $utilityService, CarbonImmutable $periodStart): array|string
+    private function perPersonCalculation(Client $client, UtilityService $utilityService, CarbonImmutable $periodStart): array|string
     {
-        if (! $client->tariff_category_id) {
-            return 'Не выбрана категория тарифа.';
+        if ((int) $client->residents_count <= 0) {
+            return 'Не указано количество проживающих.';
         }
 
-        $normative = $this->activeNormative($client, $utilityService, $periodStart);
         $tariff = $this->activeTariff($client, $utilityService, $periodStart);
 
         if (! $tariff) {
             return 'Не найден активный тариф на начало периода.';
         }
 
-        if (! $normative) {
-            return 'Не найден активный норматив на начало периода.';
+        if ((float) $tariff->per_person_price <= 0) {
+            return 'Не указана цена тарифа на одного человека.';
         }
 
-        $volume = match ($normative->calculation_type) {
-            'per_person' => $this->perPersonVolume($client, (float) $normative->value),
-            'per_area' => $this->perAreaVolume($client, (float) $normative->value),
-            'per_object' => (float) $normative->value,
-            default => null,
-        };
-
-        if ($volume === null) {
-            return 'Неверный тип расчёта норматива.';
-        }
-
-        if (is_string($volume)) {
-            return $volume;
-        }
-
-        $tariffPrice = (float) $tariff->price;
+        $volume = (float) $client->residents_count;
+        $tariffPrice = (float) $tariff->per_person_price;
 
         return [
             'volume' => $volume,
@@ -184,10 +166,6 @@ class CloseBillingMonth
      */
     private function meterCalculation(Client $client, UtilityService $utilityService, string $period, CarbonImmutable $periodStart): array|string
     {
-        if (! $client->tariff_category_id) {
-            return 'Не выбрана категория тарифа.';
-        }
-
         $meter = $client->meters()
             ->where('status', 'active')
             ->where('utility_service_id', $utilityService->id)
@@ -215,8 +193,12 @@ class CloseBillingMonth
             return 'Не найден активный тариф на начало периода.';
         }
 
+        if ((float) $tariff->unit_price <= 0) {
+            return 'Не указана цена за единицу услуги.';
+        }
+
         $volume = (float) $reading->consumption;
-        $tariffPrice = (float) $tariff->price;
+        $tariffPrice = (float) $tariff->unit_price;
 
         return [
             'volume' => $volume,
@@ -225,48 +207,26 @@ class CloseBillingMonth
         ];
     }
 
-    private function perPersonVolume(Client $client, float $normative): float|string
-    {
-        if ((int) $client->residents_count <= 0) {
-            return 'Не указано количество проживающих.';
-        }
-
-        return (int) $client->residents_count * $normative;
-    }
-
-    private function perAreaVolume(Client $client, float $normative): float|string
-    {
-        if ((float) $client->area <= 0) {
-            return 'Не указана площадь.';
-        }
-
-        return (float) $client->area * $normative;
-    }
-
-    private function activeNormative(Client $client, UtilityService $utilityService, CarbonImmutable $periodStart): ?Normative
-    {
-        return Normative::query()
-            ->where('organization_id', $client->organization_id)
-            ->where('utility_service_id', $utilityService->id)
-            ->where('tariff_category_id', $client->tariff_category_id)
-            ->where('status', 'active')
-            ->whereDate('starts_on', '<=', $periodStart->toDateString())
-            ->orderByDesc('starts_on')
-            ->orderByDesc('id')
-            ->first();
-    }
-
     private function activeTariff(Client $client, UtilityService $utilityService, CarbonImmutable $periodStart): ?Tariff
     {
         return Tariff::query()
             ->where('organization_id', $client->organization_id)
             ->where('utility_service_id', $utilityService->id)
-            ->where('tariff_category_id', $client->tariff_category_id)
+            ->where('client_type', $this->clientTypeValue($client))
             ->where('status', 'active')
             ->whereDate('starts_on', '<=', $periodStart->toDateString())
             ->orderByDesc('starts_on')
             ->orderByDesc('id')
             ->first();
+    }
+
+    private function clientTypeValue(Client $client): string
+    {
+        if ($client->client_type instanceof ClientType) {
+            return $client->client_type->value;
+        }
+
+        return (string) $client->client_type;
     }
 
     private function openingBalance(Client $client, string $period): float

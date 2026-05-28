@@ -33,19 +33,9 @@ class Organization extends Model implements HasCurrentTenantLabel, HasName
         return $this->hasOne(UtilityService::class);
     }
 
-    public function tariffCategories(): HasMany
-    {
-        return $this->hasMany(TariffCategory::class);
-    }
-
     public function tariffs(): HasMany
     {
         return $this->hasMany(Tariff::class);
-    }
-
-    public function normatives(): HasMany
-    {
-        return $this->hasMany(Normative::class);
     }
 
     public function accruals(): HasMany

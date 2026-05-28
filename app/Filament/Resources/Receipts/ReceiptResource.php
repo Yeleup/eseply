@@ -65,7 +65,7 @@ class ReceiptResource extends Resource
                             ->formatStateUsing(fn (string $state): string => match ($state) {
                                 'fixed' => 'Фиксированная сумма',
                                 'meter' => 'По счётчику',
-                                'normative' => 'По нормативу',
+                                'per_person' => 'На одного человека',
                                 default => $state,
                             }),
                         TextEntry::make('volume')

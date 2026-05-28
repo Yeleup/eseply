@@ -1,16 +1,15 @@
 <?php
 
 use App\Actions\CloseBillingMonth;
+use App\ClientType;
 use App\Filament\Resources\Accruals\Pages\CloseBillingMonth as CloseBillingMonthPage;
 use App\Filament\Resources\Accruals\Pages\ListAccruals;
 use App\Models\Accrual;
 use App\Models\Client;
 use App\Models\Meter;
 use App\Models\MeterReading;
-use App\Models\Normative;
 use App\Models\Organization;
 use App\Models\Tariff;
-use App\Models\TariffCategory;
 use App\Models\User;
 use App\Models\UtilityService;
 use Filament\Facades\Filament;
@@ -33,7 +32,7 @@ function actingAsBillingTenant(Organization $organization): User
     return $user;
 }
 
-test('fixed billing month closure creates accruals for fixed clients with organization service', function () {
+test('billing month closure creates fixed and per person accruals with organization service', function () {
     $organization = Organization::factory()->create();
     $utilityService = UtilityService::factory()->for($organization)->create([
         'name' => 'Вывоз мусора',
@@ -45,26 +44,23 @@ test('fixed billing month closure creates accruals for fixed clients with organi
         ->create([
             'account_number' => '30001',
             'name' => 'ТОО Асыл',
+            'client_type' => ClientType::Llp->value,
             'billing_type' => 'fixed',
             'fixed_amount' => 12500,
             'starting_balance' => 1500,
             'status' => 'active',
         ]);
 
-    Client::factory()
+    $perPersonClient = Client::factory()
         ->for($organization)
         ->for($utilityService)
         ->create([
-            'billing_type' => 'normative',
-            'fixed_amount' => 9000,
-            'status' => 'active',
-        ]);
-
-    Client::factory()
-        ->for($organization)
-        ->create([
-            'billing_type' => 'fixed',
-            'fixed_amount' => 7000,
+            'account_number' => '30002',
+            'name' => 'Иванов Иван',
+            'client_type' => ClientType::Individual->value,
+            'billing_type' => 'per_person',
+            'residents_count' => 2,
+            'starting_balance' => 0,
             'status' => 'active',
         ]);
 
@@ -77,39 +73,54 @@ test('fixed billing month closure creates accruals for fixed clients with organi
             'status' => 'inactive',
         ]);
 
+    Tariff::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'client_type' => ClientType::Individual->value,
+            'per_person_price' => 600,
+            'starts_on' => '2026-01-01',
+            'status' => 'active',
+        ]);
+
     $summary = app(CloseBillingMonth::class)->handle($organization, '202605');
 
-    expect($summary)->toMatchArray([
-        'active' => 3,
+    expect($summary)->toBe([
+        'active' => 2,
         'created' => 2,
         'skipped' => 0,
-        'failed' => 1,
+        'failed' => 0,
+        'errors' => [],
     ]);
 
-    expect(array_column($summary['errors'], 'message'))->toBe([
-        'Не выбрана категория тарифа.',
-    ]);
-
-    $accrual = Accrual::query()
+    $fixedAccrual = Accrual::query()
         ->whereBelongsTo($fixedClient)
         ->sole();
 
-    expect($accrual->organization->is($organization))->toBeTrue()
-        ->and($accrual->client->is($fixedClient))->toBeTrue()
-        ->and($accrual->utilityService->is($utilityService))->toBeTrue()
-        ->and($accrual->period)->toBe('202605')
-        ->and($accrual->account_number)->toBe('30001')
-        ->and($accrual->client_name)->toBe('ТОО Асыл')
-        ->and($accrual->utility_service_name)->toBe('Вывоз мусора')
-        ->and($accrual->billing_type)->toBe('fixed')
-        ->and($accrual->amount)->toBe('12500.00')
-        ->and($accrual->paid_amount)->toBe('0.00')
-        ->and($accrual->opening_balance)->toBe('1500.00')
-        ->and($accrual->closing_balance)->toBe('14000.00')
+    $perPersonAccrual = Accrual::query()
+        ->whereBelongsTo($perPersonClient)
+        ->sole();
+
+    expect($fixedAccrual->organization->is($organization))->toBeTrue()
+        ->and($fixedAccrual->client->is($fixedClient))->toBeTrue()
+        ->and($fixedAccrual->utilityService->is($utilityService))->toBeTrue()
+        ->and($fixedAccrual->period)->toBe('202605')
+        ->and($fixedAccrual->account_number)->toBe('30001')
+        ->and($fixedAccrual->client_name)->toBe('ТОО Асыл')
+        ->and($fixedAccrual->utility_service_name)->toBe('Вывоз мусора')
+        ->and($fixedAccrual->billing_type)->toBe('fixed')
+        ->and($fixedAccrual->amount)->toBe('12500.00')
+        ->and($fixedAccrual->paid_amount)->toBe('0.00')
+        ->and($fixedAccrual->opening_balance)->toBe('1500.00')
+        ->and($fixedAccrual->closing_balance)->toBe('14000.00')
+        ->and($perPersonAccrual->billing_type)->toBe('per_person')
+        ->and($perPersonAccrual->volume)->toBe('2.0000')
+        ->and($perPersonAccrual->tariff_price)->toBe('600.00')
+        ->and($perPersonAccrual->amount)->toBe('1200.00')
         ->and(Accrual::query()->count())->toBe(2);
 });
 
-test('fixed billing month closure uses previous closing balance and does not duplicate accruals', function () {
+test('billing month closure uses previous closing balance and does not duplicate accruals', function () {
     $organization = Organization::factory()->create();
     $utilityService = UtilityService::factory()->for($organization)->create();
     $client = Client::factory()
@@ -212,79 +223,47 @@ test('admin users can close a fixed billing month and see the accrual', function
         ->assertCanNotSeeTableRecords([$otherTenantAccrual]);
 });
 
-test('billing month closure calculates normative accruals by calculation type', function () {
+test('billing month closure calculates per person accruals by client type tariff', function () {
     $organization = Organization::factory()->create();
     $utilityService = UtilityService::factory()->for($organization)->create([
-        'name' => 'Водоснабжение',
+        'name' => 'Вывоз мусора',
     ]);
 
     $cases = [
         [
             'account_number' => '50001',
-            'category_name' => 'На человека',
-            'calculation_type' => 'per_person',
-            'normative' => 2.5,
+            'client_type' => ClientType::Individual,
             'residents_count' => 3,
-            'area' => 0,
-            'expected_volume' => '7.5000',
-            'expected_amount' => '750.00',
+            'per_person_price' => 500,
+            'expected_amount' => '1500.00',
         ],
         [
             'account_number' => '50002',
-            'category_name' => 'По площади',
-            'calculation_type' => 'per_area',
-            'normative' => 0.2,
-            'residents_count' => 0,
-            'area' => 42.25,
-            'expected_volume' => '8.4500',
-            'expected_amount' => '845.00',
-        ],
-        [
-            'account_number' => '50003',
-            'category_name' => 'На объект',
-            'calculation_type' => 'per_object',
-            'normative' => 1.75,
-            'residents_count' => 0,
-            'area' => 0,
-            'expected_volume' => '1.7500',
-            'expected_amount' => '175.00',
+            'client_type' => ClientType::Budget,
+            'residents_count' => 2,
+            'per_person_price' => 1200,
+            'expected_amount' => '2400.00',
         ],
     ];
 
     foreach ($cases as $case) {
-        $tariffCategory = TariffCategory::factory()->for($organization)->create([
-            'name' => $case['category_name'],
-        ]);
-
         Client::factory()
             ->for($organization)
             ->for($utilityService)
-            ->for($tariffCategory)
             ->create([
                 'account_number' => $case['account_number'],
-                'billing_type' => 'normative',
+                'client_type' => $case['client_type']->value,
+                'billing_type' => 'per_person',
                 'residents_count' => $case['residents_count'],
-                'area' => $case['area'],
                 'starting_balance' => 100,
             ]);
 
         Tariff::factory()
             ->for($organization)
             ->for($utilityService)
-            ->for($tariffCategory)
             ->create([
-                'price' => 100,
-                'starts_on' => '2026-01-01',
-                'status' => 'active',
-            ]);
-
-        Normative::factory()
-            ->for($organization)
-            ->for($utilityService)
-            ->for($tariffCategory)
-            ->create([
-                'value' => $case['normative'],
-                'calculation_type' => $case['calculation_type'],
+                'client_type' => $case['client_type']->value,
+                'per_person_price' => $case['per_person_price'],
                 'starts_on' => '2026-01-01',
                 'status' => 'active',
             ]);
@@ -293,8 +272,8 @@ test('billing month closure calculates normative accruals by calculation type', 
     $summary = app(CloseBillingMonth::class)->handle($organization, '202605');
 
     expect($summary)->toBe([
-        'active' => 3,
-        'created' => 3,
+        'active' => 2,
+        'created' => 2,
         'skipped' => 0,
         'failed' => 0,
         'errors' => [],
@@ -307,46 +286,18 @@ test('billing month closure calculates normative accruals by calculation type', 
             ->where('period', '202605')
             ->sole();
 
-        expect($accrual->billing_type)->toBe('normative')
-            ->and($accrual->volume)->toBe($case['expected_volume'])
-            ->and($accrual->tariff_price)->toBe('100.00')
+        expect($accrual->billing_type)->toBe('per_person')
+            ->and($accrual->volume)->toBe(number_format($case['residents_count'], 4, '.', ''))
+            ->and($accrual->tariff_price)->toBe(number_format($case['per_person_price'], 2, '.', ''))
             ->and($accrual->amount)->toBe($case['expected_amount'])
             ->and($accrual->opening_balance)->toBe('100.00')
             ->and($accrual->closing_balance)->toBe((string) number_format(100 + (float) $case['expected_amount'], 2, '.', ''));
     }
 });
 
-test('normative clients without active tariff or normative are reported as failed', function () {
-    $organization = Organization::factory()->create();
-    $utilityService = UtilityService::factory()->for($organization)->create();
-    $tariffCategory = TariffCategory::factory()->for($organization)->create();
-
-    $client = Client::factory()
-        ->for($organization)
-        ->for($utilityService)
-        ->for($tariffCategory)
-        ->create([
-            'billing_type' => 'normative',
-        ]);
-
-    $summary = app(CloseBillingMonth::class)->handle($organization, '202605');
-
-    expect($summary)->toMatchArray([
-        'active' => 1,
-        'created' => 0,
-        'skipped' => 0,
-        'failed' => 1,
-    ])
-        ->and($summary['errors'])->toHaveCount(1)
-        ->and($summary['errors'][0]['account_number'])->toBe($client->account_number)
-        ->and($summary['errors'][0]['message'])->toBe('Не найден активный тариф на начало периода.')
-        ->and(Accrual::query()->count())->toBe(0);
-});
-
 test('billing month closure reports active clients without required billing data', function () {
     $organization = Organization::factory()->create();
     $utilityService = UtilityService::factory()->for($organization)->create();
-    $tariffCategory = TariffCategory::factory()->for($organization)->create();
 
     $withoutFixedAmount = Client::factory()
         ->for($organization)
@@ -358,32 +309,55 @@ test('billing month closure reports active clients without required billing data
             'fixed_amount' => 0,
         ]);
 
-    $withoutCategory = Client::factory()
+    $withoutResidents = Client::factory()
         ->for($organization)
         ->for($utilityService)
         ->create([
             'account_number' => '80003',
-            'name' => 'Нет категории',
-            'billing_type' => 'normative',
+            'name' => 'Нет проживающих',
+            'client_type' => ClientType::Individual->value,
+            'billing_type' => 'per_person',
+            'residents_count' => 0,
+        ]);
+
+    $withoutTariff = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'account_number' => '80004',
+            'name' => 'Нет тарифа',
+            'client_type' => ClientType::Budget->value,
+            'billing_type' => 'per_person',
+            'residents_count' => 2,
         ]);
 
     $withoutMeter = Client::factory()
         ->for($organization)
         ->for($utilityService)
-        ->for($tariffCategory)
         ->create([
-            'account_number' => '80004',
+            'account_number' => '80005',
             'name' => 'Нет счётчика',
+            'client_type' => ClientType::Individual->value,
             'billing_type' => 'meter',
+        ]);
+
+    Tariff::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'client_type' => ClientType::Individual->value,
+            'unit_price' => 25,
+            'per_person_price' => 500,
+            'starts_on' => '2026-01-01',
         ]);
 
     $summary = app(CloseBillingMonth::class)->handle($organization, '202605');
 
     expect($summary)->toMatchArray([
-        'active' => 3,
+        'active' => 4,
         'created' => 0,
         'skipped' => 0,
-        'failed' => 3,
+        'failed' => 4,
     ])
         ->and($summary['errors'])->toBe([
             [
@@ -393,14 +367,20 @@ test('billing month closure reports active clients without required billing data
                 'message' => 'Не указана фиксированная сумма.',
             ],
             [
-                'client_id' => $withoutCategory->id,
+                'client_id' => $withoutResidents->id,
                 'account_number' => '80003',
-                'client_name' => 'Нет категории',
-                'message' => 'Не выбрана категория тарифа.',
+                'client_name' => 'Нет проживающих',
+                'message' => 'Не указано количество проживающих.',
+            ],
+            [
+                'client_id' => $withoutTariff->id,
+                'account_number' => '80004',
+                'client_name' => 'Нет тарифа',
+                'message' => 'Не найден активный тариф на начало периода.',
             ],
             [
                 'client_id' => $withoutMeter->id,
-                'account_number' => '80004',
+                'account_number' => '80005',
                 'client_name' => 'Нет счётчика',
                 'message' => 'Не найден активный счётчик по услуге организации.',
             ],
@@ -443,13 +423,12 @@ test('billing month closure calculates meter accruals from period readings', fun
     $utilityService = UtilityService::factory()->for($organization)->create([
         'name' => 'Электроэнергия',
     ]);
-    $tariffCategory = TariffCategory::factory()->for($organization)->create();
     $client = Client::factory()
         ->for($organization)
         ->for($utilityService)
-        ->for($tariffCategory)
         ->create([
             'account_number' => '90001',
+            'client_type' => ClientType::Commercial->value,
             'billing_type' => 'meter',
             'starting_balance' => 100,
         ]);
@@ -457,9 +436,9 @@ test('billing month closure calculates meter accruals from period readings', fun
     Tariff::factory()
         ->for($organization)
         ->for($utilityService)
-        ->for($tariffCategory)
         ->create([
-            'price' => 25,
+            'client_type' => ClientType::Commercial->value,
+            'unit_price' => 25,
             'starts_on' => '2026-01-01',
             'status' => 'active',
         ]);

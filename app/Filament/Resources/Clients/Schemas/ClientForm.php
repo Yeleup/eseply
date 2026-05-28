@@ -36,16 +36,6 @@ class ClientForm
                             ->default('individual')
                             ->required()
                             ->native(false),
-                        Select::make('utility_service_id')
-                            ->label('Услуга')
-                            ->options(fn (): array => Filament::getTenant()
-                                ?->utilityServices()
-                                ->orderBy('name')
-                                ->pluck('name', 'id')
-                                ->all() ?? [])
-                            ->searchable()
-                            ->preload()
-                            ->native(false),
                         Select::make('tariff_category_id')
                             ->label('Категория тарифа')
                             ->options(fn (): array => Filament::getTenant()

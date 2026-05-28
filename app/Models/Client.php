@@ -84,6 +84,19 @@ class Client extends Model
         return $this->hasMany(Receipt::class);
     }
 
+    protected static function booted(): void
+    {
+        static::saving(function (Client $client): void {
+            if (! $client->organization_id) {
+                return;
+            }
+
+            $client->utility_service_id = UtilityService::query()
+                ->where('organization_id', $client->organization_id)
+                ->value('id');
+        });
+    }
+
     /**
      * Get the attributes that should be cast.
      *

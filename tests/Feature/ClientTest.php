@@ -89,7 +89,6 @@ test('admin users can create a client for the current tenant', function () {
             'account_number' => '20001',
             'name' => 'Иванов Иван',
             'client_type' => 'individual',
-            'utility_service_id' => $utilityService->id,
             'tariff_category_id' => $tariffCategory->id,
             'billing_type' => 'normative',
             'residents_count' => 3,
@@ -124,7 +123,6 @@ test('clients store billing settings', function () {
 
     $client = Client::factory()
         ->for($organization)
-        ->for($utilityService)
         ->for($tariffCategory)
         ->create([
             'billing_type' => 'fixed',
@@ -133,7 +131,7 @@ test('clients store billing settings', function () {
             'fixed_amount' => 12500,
         ]);
 
-    expect($client->utilityService->is($utilityService))->toBeTrue()
+    expect($client->refresh()->utilityService->is($utilityService))->toBeTrue()
         ->and($client->tariffCategory->is($tariffCategory))->toBeTrue()
         ->and($client->billing_type)->toBe('fixed')
         ->and($client->residents_count)->toBe(2)

@@ -8,6 +8,7 @@ use App\Models\Normative;
 use App\Models\Organization;
 use App\Models\Receipt;
 use App\Models\Tariff;
+use App\Models\UtilityService;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
@@ -22,6 +23,8 @@ class CloseBillingMonth
         $periodStart = $this->periodStart($period);
 
         return DB::transaction(function () use ($organization, $period, $periodStart): array {
+            $organization->loadMissing('utilityService');
+
             $summary = [
                 'active' => 0,
                 'created' => 0,
@@ -33,7 +36,6 @@ class CloseBillingMonth
             $clients = $organization->clients()
                 ->with([
                     'tariffCategory',
-                    'utilityService',
                 ])
                 ->where('status', 'active')
                 ->orderBy('id')
@@ -52,7 +54,7 @@ class CloseBillingMonth
                     continue;
                 }
 
-                $calculation = $this->calculation($client, $period, $periodStart);
+                $calculation = $this->calculation($client, $organization->utilityService, $period, $periodStart);
 
                 if (is_string($calculation)) {
                     $this->recordError($summary, $client, $calculation);
@@ -67,11 +69,11 @@ class CloseBillingMonth
                 $accrual = Accrual::create([
                     'organization_id' => $organization->id,
                     'client_id' => $client->id,
-                    'utility_service_id' => $client->utility_service_id,
+                    'utility_service_id' => $organization->utilityService?->id,
                     'period' => $period,
                     'account_number' => $client->account_number,
                     'client_name' => $client->name,
-                    'utility_service_name' => $client->utilityService?->name,
+                    'utility_service_name' => $organization->utilityService?->name,
                     'billing_type' => $client->billing_type,
                     'volume' => $calculation['volume'],
                     'tariff_price' => $calculation['tariff_price'],
@@ -94,16 +96,16 @@ class CloseBillingMonth
     /**
      * @return array{volume:float|null, tariff_price:float|null, amount:float}|string
      */
-    private function calculation(Client $client, string $period, CarbonImmutable $periodStart): array|string
+    private function calculation(Client $client, ?UtilityService $utilityService, string $period, CarbonImmutable $periodStart): array|string
     {
-        if (! $client->utility_service_id) {
-            return 'Не выбрана услуга клиента.';
+        if (! $utilityService) {
+            return 'Не задана услуга организации.';
         }
 
         return match ($client->billing_type) {
             'fixed' => $this->fixedCalculation($client),
-            'meter' => $this->meterCalculation($client, $period, $periodStart),
-            'normative' => $this->normativeCalculation($client, $periodStart),
+            'meter' => $this->meterCalculation($client, $utilityService, $period, $periodStart),
+            'normative' => $this->normativeCalculation($client, $utilityService, $periodStart),
             default => 'Не выбран поддерживаемый тип начисления.',
         };
     }
@@ -136,14 +138,14 @@ class CloseBillingMonth
     /**
      * @return array{volume:float, tariff_price:float, amount:float}|string
      */
-    private function normativeCalculation(Client $client, CarbonImmutable $periodStart): array|string
+    private function normativeCalculation(Client $client, UtilityService $utilityService, CarbonImmutable $periodStart): array|string
     {
         if (! $client->tariff_category_id) {
             return 'Не выбрана категория тарифа.';
         }
 
-        $normative = $this->activeNormative($client, $periodStart);
-        $tariff = $this->activeTariff($client, $periodStart);
+        $normative = $this->activeNormative($client, $utilityService, $periodStart);
+        $tariff = $this->activeTariff($client, $utilityService, $periodStart);
 
         if (! $tariff) {
             return 'Не найден активный тариф на начало периода.';
@@ -180,7 +182,7 @@ class CloseBillingMonth
     /**
      * @return array{volume:float, tariff_price:float, amount:float}|string
      */
-    private function meterCalculation(Client $client, string $period, CarbonImmutable $periodStart): array|string
+    private function meterCalculation(Client $client, UtilityService $utilityService, string $period, CarbonImmutable $periodStart): array|string
     {
         if (! $client->tariff_category_id) {
             return 'Не выбрана категория тарифа.';
@@ -188,11 +190,11 @@ class CloseBillingMonth
 
         $meter = $client->meters()
             ->where('status', 'active')
-            ->where('utility_service_id', $client->utility_service_id)
+            ->where('utility_service_id', $utilityService->id)
             ->first();
 
         if (! $meter) {
-            return 'Не найден активный счётчик по услуге клиента.';
+            return 'Не найден активный счётчик по услуге организации.';
         }
 
         $reading = $meter->readings()
@@ -207,7 +209,7 @@ class CloseBillingMonth
             return 'Расход по счётчику не может быть отрицательным.';
         }
 
-        $tariff = $this->activeTariff($client, $periodStart);
+        $tariff = $this->activeTariff($client, $utilityService, $periodStart);
 
         if (! $tariff) {
             return 'Не найден активный тариф на начало периода.';
@@ -241,11 +243,11 @@ class CloseBillingMonth
         return (float) $client->area * $normative;
     }
 
-    private function activeNormative(Client $client, CarbonImmutable $periodStart): ?Normative
+    private function activeNormative(Client $client, UtilityService $utilityService, CarbonImmutable $periodStart): ?Normative
     {
         return Normative::query()
             ->where('organization_id', $client->organization_id)
-            ->where('utility_service_id', $client->utility_service_id)
+            ->where('utility_service_id', $utilityService->id)
             ->where('tariff_category_id', $client->tariff_category_id)
             ->where('status', 'active')
             ->whereDate('starts_on', '<=', $periodStart->toDateString())
@@ -254,11 +256,11 @@ class CloseBillingMonth
             ->first();
     }
 
-    private function activeTariff(Client $client, CarbonImmutable $periodStart): ?Tariff
+    private function activeTariff(Client $client, UtilityService $utilityService, CarbonImmutable $periodStart): ?Tariff
     {
         return Tariff::query()
             ->where('organization_id', $client->organization_id)
-            ->where('utility_service_id', $client->utility_service_id)
+            ->where('utility_service_id', $utilityService->id)
             ->where('tariff_category_id', $client->tariff_category_id)
             ->where('status', 'active')
             ->whereDate('starts_on', '<=', $periodStart->toDateString())

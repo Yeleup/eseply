@@ -16,7 +16,7 @@ class NormativeSeeder extends Seeder
     public function run(): void
     {
         $organization = Organization::query()->first() ?? Organization::factory()->create();
-        $utilityService = UtilityService::query()->whereBelongsTo($organization)->first()
+        $utilityService = $organization->utilityService
             ?? UtilityService::factory()->for($organization)->create(['name' => 'Водоснабжение']);
         $tariffCategory = TariffCategory::query()->whereBelongsTo($organization)->first()
             ?? TariffCategory::factory()->for($organization)->create(['name' => 'Население']);

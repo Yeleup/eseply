@@ -20,6 +20,7 @@ return new class extends Migration
             $table->text('note')->nullable();
             $table->timestamps();
 
+            $table->unique('organization_id');
             $table->index(['organization_id', 'status']);
         });
     }

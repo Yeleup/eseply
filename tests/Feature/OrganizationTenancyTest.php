@@ -1,8 +1,10 @@
 <?php
 
+use App\Filament\Pages\Tenancy\EditOrganizationProfile;
 use App\Filament\Pages\Tenancy\RegisterOrganization;
 use App\Models\Organization;
 use App\Models\User;
+use App\Models\UtilityService;
 use Filament\Facades\Filament;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
@@ -37,6 +39,8 @@ test('tenant registration creates an organization and attaches the current user'
             'bank' => 'Kaspi Bank',
             'iban' => 'KZ86125KZT5004100100',
             'note' => 'Основная организация',
+            'utility_service_name' => 'Водоснабжение',
+            'utility_service_unit_of_measurement' => 'м3',
         ])
         ->call('register')
         ->assertHasNoErrors()
@@ -46,5 +50,47 @@ test('tenant registration creates an organization and attaches the current user'
 
     expect($organization->name)
         ->toBe('ТОО Коммунальные услуги')
-        ->and($user->organizations()->whereKey($organization)->exists())->toBeTrue();
+        ->and($user->organizations()->whereKey($organization)->exists())->toBeTrue()
+        ->and($organization->utilityService->name)->toBe('Водоснабжение')
+        ->and($organization->utilityService->unit_of_measurement)->toBe('м3');
+});
+
+test('tenant profile updates organization utility service', function () {
+    $user = User::factory()->create();
+    $organization = Organization::factory()->create();
+    UtilityService::factory()->for($organization)->create([
+        'name' => 'Водоснабжение',
+        'unit_of_measurement' => 'м3',
+    ]);
+
+    $user->organizations()->attach($organization);
+
+    Livewire::actingAs($user);
+    Filament::setCurrentPanel('admin');
+    Filament::setTenant($organization);
+    Filament::bootCurrentPanel();
+
+    Livewire::test(EditOrganizationProfile::class)
+        ->fillForm([
+            'name' => 'ТОО Тазалык',
+            'bin_iin' => $organization->bin_iin,
+            'phone' => $organization->phone,
+            'address' => $organization->address,
+            'bank' => $organization->bank,
+            'iban' => $organization->iban,
+            'note' => $organization->note,
+            'utility_service_name' => 'Вывоз мусора',
+            'utility_service_unit_of_measurement' => 'месяц',
+        ])
+        ->call('save')
+        ->assertHasNoFormErrors()
+        ->assertNotified();
+
+    $organization->refresh();
+
+    expect($organization->name)
+        ->toBe('ТОО Тазалык')
+        ->and($organization->utilityService->name)->toBe('Вывоз мусора')
+        ->and($organization->utilityService->unit_of_measurement)->toBe('месяц')
+        ->and($organization->utilityService()->count())->toBe(1);
 });

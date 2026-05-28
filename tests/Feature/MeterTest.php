@@ -177,7 +177,6 @@ test('admin users can create and list meters for the current tenant', function (
     Livewire::test(CreateMeter::class)
         ->fillForm([
             'client_id' => $client->id,
-            'utility_service_id' => $utilityService->id,
             'number' => 'MTR-60001',
             'installed_on' => '2026-05-01',
             'initial_reading' => 10,

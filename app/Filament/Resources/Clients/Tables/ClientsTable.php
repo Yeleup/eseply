@@ -98,13 +98,6 @@ class ClientsTable
                         'individual' => 'Физическое лицо',
                         'legal' => 'Юридическое лицо',
                     ]),
-                SelectFilter::make('utility_service_id')
-                    ->label('Услуга')
-                    ->options(fn (): array => Filament::getTenant()
-                        ?->utilityServices()
-                        ->orderBy('name')
-                        ->pluck('name', 'id')
-                        ->all() ?? []),
                 SelectFilter::make('tariff_category_id')
                     ->label('Категория тарифа')
                     ->options(fn (): array => Filament::getTenant()

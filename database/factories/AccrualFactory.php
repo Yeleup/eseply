@@ -32,7 +32,9 @@ class AccrualFactory extends Factory
                     'fixed_amount' => $amount,
                 ])
                 ->id,
-            'utility_service_id' => fn (array $attributes): int => UtilityService::factory()
+            'utility_service_id' => fn (array $attributes): int => UtilityService::query()
+                ->where('organization_id', $attributes['organization_id'])
+                ->value('id') ?? UtilityService::factory()
                 ->create(['organization_id' => $attributes['organization_id']])
                 ->id,
             'period' => fake()->dateTimeBetween('-1 year', 'now')->format('Ym'),

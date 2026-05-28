@@ -3,7 +3,6 @@
 namespace App\Filament\Resources\Meters\Schemas;
 
 use App\Models\Client;
-use App\Models\UtilityService;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
@@ -35,18 +34,6 @@ class MeterForm
                             ->preload()
                             ->required()
                             ->scopedExists(Client::class, 'id')
-                            ->native(false),
-                        Select::make('utility_service_id')
-                            ->label('Услуга')
-                            ->options(fn (): array => Filament::getTenant()
-                                ?->utilityServices()
-                                ->orderBy('name')
-                                ->pluck('name', 'id')
-                                ->all() ?? [])
-                            ->searchable()
-                            ->preload()
-                            ->required()
-                            ->scopedExists(UtilityService::class, 'id')
                             ->native(false),
                         TextInput::make('number')
                             ->label('Номер счётчика')

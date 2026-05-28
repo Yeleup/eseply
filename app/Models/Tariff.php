@@ -43,6 +43,19 @@ class Tariff extends Model
         return $this->belongsTo(TariffCategory::class);
     }
 
+    protected static function booted(): void
+    {
+        static::saving(function (Tariff $tariff): void {
+            if (! $tariff->organization_id) {
+                return;
+            }
+
+            $tariff->utility_service_id = UtilityService::query()
+                ->where('organization_id', $tariff->organization_id)
+                ->value('id');
+        });
+    }
+
     /**
      * Get the attributes that should be cast.
      *

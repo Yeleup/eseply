@@ -44,6 +44,19 @@ class Normative extends Model
         return $this->belongsTo(TariffCategory::class);
     }
 
+    protected static function booted(): void
+    {
+        static::saving(function (Normative $normative): void {
+            if (! $normative->organization_id) {
+                return;
+            }
+
+            $normative->utility_service_id = UtilityService::query()
+                ->where('organization_id', $normative->organization_id)
+                ->value('id');
+        });
+    }
+
     /**
      * Get the attributes that should be cast.
      *

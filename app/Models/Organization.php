@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 #[Fillable(['name', 'bin_iin', 'phone', 'address', 'bank', 'iban', 'note'])]
 class Organization extends Model implements HasCurrentTenantLabel, HasName
@@ -27,9 +28,9 @@ class Organization extends Model implements HasCurrentTenantLabel, HasName
         return $this->hasMany(Client::class);
     }
 
-    public function utilityServices(): HasMany
+    public function utilityService(): HasOne
     {
-        return $this->hasMany(UtilityService::class);
+        return $this->hasOne(UtilityService::class);
     }
 
     public function tariffCategories(): HasMany

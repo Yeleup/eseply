@@ -57,6 +57,12 @@ class Meter extends Model
     protected static function booted(): void
     {
         static::saving(function (Meter $meter): void {
+            if ($meter->organization_id) {
+                $meter->utility_service_id = UtilityService::query()
+                    ->where('organization_id', $meter->organization_id)
+                    ->value('id');
+            }
+
             $meter->active_client_id = $meter->status === 'active'
                 ? $meter->client_id
                 : null;

@@ -76,13 +76,6 @@ class MetersTable
                         ->orderBy('account_number')
                         ->pluck('account_number', 'id')
                         ->all() ?? []),
-                SelectFilter::make('utility_service_id')
-                    ->label('Услуга')
-                    ->options(fn (): array => Filament::getTenant()
-                        ?->utilityServices()
-                        ->orderBy('name')
-                        ->pluck('name', 'id')
-                        ->all() ?? []),
                 SelectFilter::make('status')
                     ->label('Статус')
                     ->options([

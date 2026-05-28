@@ -33,7 +33,7 @@ function actingAsBillingTenant(Organization $organization): User
     return $user;
 }
 
-test('fixed billing month closure creates accruals only for active fixed clients with service', function () {
+test('fixed billing month closure creates accruals for fixed clients with organization service', function () {
     $organization = Organization::factory()->create();
     $utilityService = UtilityService::factory()->for($organization)->create([
         'name' => 'Вывоз мусора',
@@ -81,17 +81,18 @@ test('fixed billing month closure creates accruals only for active fixed clients
 
     expect($summary)->toMatchArray([
         'active' => 3,
-        'created' => 1,
+        'created' => 2,
         'skipped' => 0,
-        'failed' => 2,
+        'failed' => 1,
     ]);
 
     expect(array_column($summary['errors'], 'message'))->toBe([
         'Не выбрана категория тарифа.',
-        'Не выбрана услуга клиента.',
     ]);
 
-    $accrual = Accrual::query()->sole();
+    $accrual = Accrual::query()
+        ->whereBelongsTo($fixedClient)
+        ->sole();
 
     expect($accrual->organization->is($organization))->toBeTrue()
         ->and($accrual->client->is($fixedClient))->toBeTrue()
@@ -104,7 +105,8 @@ test('fixed billing month closure creates accruals only for active fixed clients
         ->and($accrual->amount)->toBe('12500.00')
         ->and($accrual->paid_amount)->toBe('0.00')
         ->and($accrual->opening_balance)->toBe('1500.00')
-        ->and($accrual->closing_balance)->toBe('14000.00');
+        ->and($accrual->closing_balance)->toBe('14000.00')
+        ->and(Accrual::query()->count())->toBe(2);
 });
 
 test('fixed billing month closure uses previous closing balance and does not duplicate accruals', function () {
@@ -346,15 +348,6 @@ test('billing month closure reports active clients without required billing data
     $utilityService = UtilityService::factory()->for($organization)->create();
     $tariffCategory = TariffCategory::factory()->for($organization)->create();
 
-    $withoutService = Client::factory()
-        ->for($organization)
-        ->create([
-            'account_number' => '80001',
-            'name' => 'Нет услуги',
-            'billing_type' => 'fixed',
-            'fixed_amount' => 5000,
-        ]);
-
     $withoutFixedAmount = Client::factory()
         ->for($organization)
         ->for($utilityService)
@@ -387,18 +380,12 @@ test('billing month closure reports active clients without required billing data
     $summary = app(CloseBillingMonth::class)->handle($organization, '202605');
 
     expect($summary)->toMatchArray([
-        'active' => 4,
+        'active' => 3,
         'created' => 0,
         'skipped' => 0,
-        'failed' => 4,
+        'failed' => 3,
     ])
         ->and($summary['errors'])->toBe([
-            [
-                'client_id' => $withoutService->id,
-                'account_number' => '80001',
-                'client_name' => 'Нет услуги',
-                'message' => 'Не выбрана услуга клиента.',
-            ],
             [
                 'client_id' => $withoutFixedAmount->id,
                 'account_number' => '80002',
@@ -415,7 +402,37 @@ test('billing month closure reports active clients without required billing data
                 'client_id' => $withoutMeter->id,
                 'account_number' => '80004',
                 'client_name' => 'Нет счётчика',
-                'message' => 'Не найден активный счётчик по услуге клиента.',
+                'message' => 'Не найден активный счётчик по услуге организации.',
+            ],
+        ])
+        ->and(Accrual::query()->count())->toBe(0);
+});
+
+test('billing month closure reports active clients when organization service is missing', function () {
+    $organization = Organization::factory()->create();
+    $client = Client::factory()
+        ->for($organization)
+        ->create([
+            'account_number' => '81001',
+            'name' => 'Нет услуги организации',
+            'billing_type' => 'fixed',
+            'fixed_amount' => 5000,
+        ]);
+
+    $summary = app(CloseBillingMonth::class)->handle($organization, '202605');
+
+    expect($summary)->toMatchArray([
+        'active' => 1,
+        'created' => 0,
+        'skipped' => 0,
+        'failed' => 1,
+    ])
+        ->and($summary['errors'])->toBe([
+            [
+                'client_id' => $client->id,
+                'account_number' => '81001',
+                'client_name' => 'Нет услуги организации',
+                'message' => 'Не задана услуга организации.',
             ],
         ])
         ->and(Accrual::query()->count())->toBe(0);

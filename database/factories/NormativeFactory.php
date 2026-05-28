@@ -22,7 +22,9 @@ class NormativeFactory extends Factory
     {
         return [
             'organization_id' => Organization::factory(),
-            'utility_service_id' => fn (array $attributes): int => UtilityService::factory()
+            'utility_service_id' => fn (array $attributes): int => UtilityService::query()
+                ->where('organization_id', $attributes['organization_id'])
+                ->value('id') ?? UtilityService::factory()
                 ->create(['organization_id' => $attributes['organization_id']])
                 ->id,
             'tariff_category_id' => fn (array $attributes): int => TariffCategory::factory()

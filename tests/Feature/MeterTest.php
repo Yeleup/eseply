@@ -69,7 +69,7 @@ test('meter number is unique inside an organization', function () {
     ]))->toThrow(QueryException::class);
 });
 
-test('a client can have only one active meter', function () {
+test('a client can have multiple active meters', function () {
     $organization = Organization::factory()->create();
     $utilityService = UtilityService::factory()->for($organization)->create();
     $client = Client::factory()
@@ -79,7 +79,7 @@ test('a client can have only one active meter', function () {
             'billing_type' => 'meter',
         ]);
 
-    Meter::factory()
+    $firstMeter = Meter::factory()
         ->for($organization)
         ->for($client)
         ->for($utilityService)
@@ -87,13 +87,13 @@ test('a client can have only one active meter', function () {
             'status' => 'active',
         ]);
 
-    expect(fn () => Meter::factory()
+    $secondMeter = Meter::factory()
         ->for($organization)
         ->for($client)
         ->for($utilityService)
         ->create([
             'status' => 'active',
-        ]))->toThrow(QueryException::class);
+        ]);
 
     $removedMeter = Meter::factory()
         ->for($organization)
@@ -103,7 +103,10 @@ test('a client can have only one active meter', function () {
             'status' => 'removed',
         ]);
 
-    expect($removedMeter)->toBeInstanceOf(Meter::class);
+    expect($firstMeter)->toBeInstanceOf(Meter::class)
+        ->and($secondMeter)->toBeInstanceOf(Meter::class)
+        ->and($removedMeter)->toBeInstanceOf(Meter::class)
+        ->and($client->meters()->where('status', 'active')->count())->toBe(2);
 });
 
 test('meter readings calculate consumption from current and previous readings', function () {

@@ -382,7 +382,7 @@ test('billing month closure reports active clients without required billing data
                 'client_id' => $withoutMeter->id,
                 'account_number' => '80005',
                 'client_name' => 'Нет счётчика',
-                'message' => 'Не найден активный счётчик по услуге организации.',
+                'message' => 'Не найдены активные счётчики по услуге организации.',
             ],
         ])
         ->and(Accrual::query()->count())->toBe(0);
@@ -418,7 +418,7 @@ test('billing month closure reports active clients when organization service is 
         ->and(Accrual::query()->count())->toBe(0);
 });
 
-test('billing month closure calculates meter accruals from period readings', function () {
+test('billing month closure calculates meter accruals from all active meter readings', function () {
     $organization = Organization::factory()->create();
     $utilityService = UtilityService::factory()->for($organization)->create([
         'name' => 'Электроэнергия',
@@ -443,7 +443,15 @@ test('billing month closure calculates meter accruals from period readings', fun
             'status' => 'active',
         ]);
 
-    $meter = Meter::factory()
+    $firstMeter = Meter::factory()
+        ->for($organization)
+        ->for($client)
+        ->for($utilityService)
+        ->create([
+            'status' => 'active',
+        ]);
+
+    $secondMeter = Meter::factory()
         ->for($organization)
         ->for($client)
         ->for($utilityService)
@@ -452,11 +460,19 @@ test('billing month closure calculates meter accruals from period readings', fun
         ]);
 
     MeterReading::factory()
-        ->for($meter)
+        ->for($firstMeter)
         ->create([
             'period' => '202605',
             'previous_reading' => 100,
             'current_reading' => 110.5,
+        ]);
+
+    MeterReading::factory()
+        ->for($secondMeter)
+        ->create([
+            'period' => '202605',
+            'previous_reading' => 50,
+            'current_reading' => 52.25,
         ]);
 
     $summary = app(CloseBillingMonth::class)->handle($organization, '202605');
@@ -476,9 +492,78 @@ test('billing month closure calculates meter accruals from period readings', fun
         ->sole();
 
     expect($accrual->billing_type)->toBe('meter')
-        ->and($accrual->volume)->toBe('10.5000')
+        ->and($accrual->volume)->toBe('12.7500')
         ->and($accrual->tariff_price)->toBe('25.00')
-        ->and($accrual->amount)->toBe('262.50')
+        ->and($accrual->amount)->toBe('318.75')
         ->and($accrual->opening_balance)->toBe('100.00')
-        ->and($accrual->closing_balance)->toBe('362.50');
+        ->and($accrual->closing_balance)->toBe('418.75');
+});
+
+test('billing month closure reports meter clients when any active meter has no reading', function () {
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create([
+        'name' => 'Электроэнергия',
+    ]);
+    $client = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'account_number' => '90002',
+            'client_type' => ClientType::Commercial->value,
+            'billing_type' => 'meter',
+        ]);
+
+    Tariff::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'client_type' => ClientType::Commercial->value,
+            'unit_price' => 25,
+            'starts_on' => '2026-01-01',
+            'status' => 'active',
+        ]);
+
+    $firstMeter = Meter::factory()
+        ->for($organization)
+        ->for($client)
+        ->for($utilityService)
+        ->create([
+            'number' => 'MTR-90002-1',
+            'status' => 'active',
+        ]);
+
+    Meter::factory()
+        ->for($organization)
+        ->for($client)
+        ->for($utilityService)
+        ->create([
+            'number' => 'MTR-90002-2',
+            'status' => 'active',
+        ]);
+
+    MeterReading::factory()
+        ->for($firstMeter)
+        ->create([
+            'period' => '202605',
+            'previous_reading' => 100,
+            'current_reading' => 110.5,
+        ]);
+
+    $summary = app(CloseBillingMonth::class)->handle($organization, '202605');
+
+    expect($summary)->toMatchArray([
+        'active' => 1,
+        'created' => 0,
+        'skipped' => 0,
+        'failed' => 1,
+    ])
+        ->and($summary['errors'])->toBe([
+            [
+                'client_id' => $client->id,
+                'account_number' => '90002',
+                'client_name' => $client->name,
+                'message' => 'Нет показания счётчика MTR-90002-2 за период.',
+            ],
+        ])
+        ->and(Accrual::query()->count())->toBe(0);
 });

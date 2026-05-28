@@ -166,25 +166,33 @@ class CloseBillingMonth
      */
     private function meterCalculation(Client $client, UtilityService $utilityService, string $period, CarbonImmutable $periodStart): array|string
     {
-        $meter = $client->meters()
+        $meters = $client->meters()
+            ->with([
+                'readings' => fn ($query) => $query->where('period', $period),
+            ])
             ->where('status', 'active')
             ->where('utility_service_id', $utilityService->id)
-            ->first();
+            ->orderBy('id')
+            ->get();
 
-        if (! $meter) {
-            return 'Не найден активный счётчик по услуге организации.';
+        if ($meters->isEmpty()) {
+            return 'Не найдены активные счётчики по услуге организации.';
         }
 
-        $reading = $meter->readings()
-            ->where('period', $period)
-            ->first();
+        $volume = 0.0;
 
-        if (! $reading) {
-            return 'Нет показания счётчика за период.';
-        }
+        foreach ($meters as $meter) {
+            $reading = $meter->readings->first();
 
-        if ((float) $reading->consumption < 0) {
-            return 'Расход по счётчику не может быть отрицательным.';
+            if (! $reading) {
+                return "Нет показания счётчика {$meter->number} за период.";
+            }
+
+            if ((float) $reading->consumption < 0) {
+                return "Расход по счётчику {$meter->number} не может быть отрицательным.";
+            }
+
+            $volume += (float) $reading->consumption;
         }
 
         $tariff = $this->activeTariff($client, $utilityService, $periodStart);
@@ -197,7 +205,6 @@ class CloseBillingMonth
             return 'Не указана цена за единицу услуги.';
         }
 
-        $volume = (float) $reading->consumption;
         $tariffPrice = (float) $tariff->unit_price;
 
         return [

@@ -13,7 +13,6 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'organization_id',
     'client_id',
     'utility_service_id',
-    'active_client_id',
     'number',
     'installed_on',
     'initial_reading',
@@ -62,10 +61,6 @@ class Meter extends Model
                     ->where('organization_id', $meter->organization_id)
                     ->value('id');
             }
-
-            $meter->active_client_id = $meter->status === 'active'
-                ? $meter->client_id
-                : null;
         });
     }
 

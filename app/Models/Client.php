@@ -22,7 +22,6 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'starting_balance',
     'billing_type',
     'residents_count',
-    'area',
     'fixed_amount',
     'note',
 ])]
@@ -40,7 +39,6 @@ class Client extends Model
         'starting_balance' => 0,
         'billing_type' => 'per_person',
         'residents_count' => 0,
-        'area' => 0,
         'fixed_amount' => 0,
     ];
 
@@ -103,7 +101,6 @@ class Client extends Model
             'client_type' => ClientType::class,
             'starting_balance' => 'decimal:2',
             'residents_count' => 'integer',
-            'area' => 'decimal:2',
             'fixed_amount' => 'decimal:2',
         ];
     }

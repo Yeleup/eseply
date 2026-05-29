@@ -7,6 +7,7 @@ use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Components\Section;
+use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
 
 class ClientForm
@@ -71,6 +72,7 @@ class ClientForm
                             ])
                             ->default('per_person')
                             ->required()
+                            ->live()
                             ->native(false),
                         TextInput::make('residents_count')
                             ->label('Количество проживающих')
@@ -78,21 +80,16 @@ class ClientForm
                             ->integer()
                             ->minValue(0)
                             ->default(0)
-                            ->required(),
-                        TextInput::make('area')
-                            ->label('Площадь')
-                            ->numeric()
-                            ->step('0.01')
-                            ->minValue(0)
-                            ->default(0)
-                            ->required(),
+                            ->required(fn (Get $get): bool => $get('billing_type') === 'per_person')
+                            ->visible(fn (Get $get): bool => $get('billing_type') === 'per_person'),
                         TextInput::make('fixed_amount')
                             ->label('Фиксированная сумма')
                             ->numeric()
                             ->step('0.01')
                             ->minValue(0)
                             ->default(0)
-                            ->required(),
+                            ->required(fn (Get $get): bool => $get('billing_type') === 'fixed')
+                            ->visible(fn (Get $get): bool => $get('billing_type') === 'fixed'),
                     ]),
             ]);
     }

@@ -30,7 +30,6 @@ class ClientFactory extends Factory
             'starting_balance' => fake()->randomFloat(2, 0, 50000),
             'billing_type' => 'per_person',
             'residents_count' => fake()->numberBetween(0, 6),
-            'area' => fake()->randomFloat(2, 0, 250),
             'fixed_amount' => 0,
             'note' => fake()->optional()->sentence(),
         ];

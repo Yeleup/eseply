@@ -101,7 +101,6 @@ test('admin users can create a client for the current tenant', function () {
             'client_type' => ClientType::Individual->value,
             'billing_type' => 'per_person',
             'residents_count' => 3,
-            'area' => 45.5,
             'fixed_amount' => 0,
             'phone' => '+7 777 111 22 33',
             'address' => 'Алматы, Абая 10',
@@ -135,7 +134,6 @@ test('clients store billing settings', function () {
             'client_type' => ClientType::Budget->value,
             'billing_type' => 'fixed',
             'residents_count' => 2,
-            'area' => 64.25,
             'fixed_amount' => 12500,
         ]);
 
@@ -143,8 +141,31 @@ test('clients store billing settings', function () {
         ->and($client->client_type)->toBe(ClientType::Budget)
         ->and($client->billing_type)->toBe('fixed')
         ->and($client->residents_count)->toBe(2)
-        ->and($client->area)->toBe('64.25')
         ->and($client->fixed_amount)->toBe('12500.00');
+});
+
+test('client billing settings fields depend on billing type', function () {
+    $organization = Organization::factory()->create();
+
+    actingAsTenant($organization);
+
+    Livewire::test(CreateClient::class)
+        ->fillForm([
+            'billing_type' => 'per_person',
+        ])
+        ->assertFormFieldVisible('residents_count')
+        ->assertFormFieldHidden('fixed_amount')
+        ->assertFormFieldDoesNotExist('area')
+        ->fillForm([
+            'billing_type' => 'fixed',
+        ])
+        ->assertFormFieldHidden('residents_count')
+        ->assertFormFieldVisible('fixed_amount')
+        ->fillForm([
+            'billing_type' => 'meter',
+        ])
+        ->assertFormFieldHidden('residents_count')
+        ->assertFormFieldHidden('fixed_amount');
 });
 
 test('admin client form validates account number uniqueness inside current tenant', function () {

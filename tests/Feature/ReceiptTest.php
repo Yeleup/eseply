@@ -1,8 +1,10 @@
 <?php
 
 use App\Actions\CloseBillingMonth;
+use App\BalanceAdjustmentType;
 use App\Filament\Resources\Receipts\Pages\ListReceipts;
 use App\Models\Accrual;
+use App\Models\BalanceAdjustment;
 use App\Models\Client;
 use App\Models\Organization;
 use App\Models\Receipt;
@@ -53,8 +55,9 @@ test('receipts are snapshots built from saved accruals', function () {
             'billing_type' => 'fixed',
             'amount' => 5000,
             'paid_amount' => 1200,
+            'adjustment_amount' => 300,
             'opening_balance' => 300,
-            'closing_balance' => 4100,
+            'closing_balance' => 4400,
         ]);
 
     $client->update([
@@ -74,8 +77,9 @@ test('receipts are snapshots built from saved accruals', function () {
         ->and($receipt->utility_service_name)->toBe('Сохранённая услуга')
         ->and($receipt->amount)->toBe('5000.00')
         ->and($receipt->paid_amount)->toBe('1200.00')
+        ->and($receipt->adjustment_amount)->toBe('300.00')
         ->and($receipt->opening_balance)->toBe('300.00')
-        ->and($receipt->closing_balance)->toBe('4100.00');
+        ->and($receipt->closing_balance)->toBe('4400.00');
 });
 
 test('billing month closure creates receipts from created accruals without duplicates', function () {
@@ -91,7 +95,15 @@ test('billing month closure creates receipts from created accruals without dupli
             'name' => 'ТОО Дала',
             'billing_type' => 'fixed',
             'fixed_amount' => 7500,
-            'starting_balance' => 500,
+        ]);
+
+    BalanceAdjustment::factory()
+        ->for($organization)
+        ->for($client)
+        ->create([
+            'period' => '202605',
+            'type' => BalanceAdjustmentType::OpeningBalance->value,
+            'amount' => 500,
         ]);
 
     $firstSummary = app(CloseBillingMonth::class)->handle($organization, '202605');
@@ -124,6 +136,7 @@ test('billing month closure creates receipts from created accruals without dupli
         ->and($receipt->client_name)->toBe('ТОО Дала')
         ->and($receipt->utility_service_name)->toBe('Вывоз мусора')
         ->and($receipt->amount)->toBe($accrual->amount)
+        ->and($receipt->adjustment_amount)->toBe($accrual->adjustment_amount)
         ->and($receipt->closing_balance)->toBe($accrual->closing_balance)
         ->and(Receipt::query()->whereBelongsTo($client)->where('period', '202605')->count())->toBe(1);
 });

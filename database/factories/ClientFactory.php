@@ -30,7 +30,6 @@ class ClientFactory extends Factory
             'house' => null,
             'apartment' => null,
             'status' => 'active',
-            'starting_balance' => fake()->randomFloat(2, 0, 50000),
             'billing_type' => 'per_person',
             'residents_count' => fake()->numberBetween(0, 6),
             'fixed_amount' => 0,

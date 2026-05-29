@@ -6,6 +6,7 @@ use App\Filament\Resources\Clients\Pages\CreateClient;
 use App\Filament\Resources\Clients\Pages\EditClient;
 use App\Filament\Resources\Clients\Pages\ListClients;
 use App\Filament\Resources\Clients\RelationManagers\AccrualsRelationManager;
+use App\Filament\Resources\Clients\RelationManagers\BalanceAdjustmentsRelationManager;
 use App\Filament\Resources\Clients\RelationManagers\MetersRelationManager;
 use App\Filament\Resources\Clients\RelationManagers\PaymentsRelationManager;
 use App\Filament\Resources\Clients\RelationManagers\ReceiptsRelationManager;
@@ -52,6 +53,7 @@ class ClientResource extends Resource
         return [
             MetersRelationManager::class,
             PaymentsRelationManager::class,
+            BalanceAdjustmentsRelationManager::class,
             AccrualsRelationManager::class,
             ReceiptsRelationManager::class,
         ];

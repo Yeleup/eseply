@@ -1,10 +1,12 @@
 <?php
 
 use App\Actions\CloseBillingMonth;
+use App\BalanceAdjustmentType;
 use App\ClientType;
 use App\Filament\Resources\Accruals\Pages\CloseBillingMonth as CloseBillingMonthPage;
 use App\Filament\Resources\Accruals\Pages\ListAccruals;
 use App\Models\Accrual;
+use App\Models\BalanceAdjustment;
 use App\Models\Client;
 use App\Models\Meter;
 use App\Models\MeterReading;
@@ -47,7 +49,6 @@ test('billing month closure creates fixed and per person accruals with organizat
             'client_type' => ClientType::Llp->value,
             'billing_type' => 'fixed',
             'fixed_amount' => 12500,
-            'starting_balance' => 1500,
             'status' => 'active',
         ]);
 
@@ -60,8 +61,16 @@ test('billing month closure creates fixed and per person accruals with organizat
             'client_type' => ClientType::Individual->value,
             'billing_type' => 'per_person',
             'residents_count' => 2,
-            'starting_balance' => 0,
             'status' => 'active',
+        ]);
+
+    BalanceAdjustment::factory()
+        ->for($organization)
+        ->for($fixedClient)
+        ->create([
+            'period' => '202605',
+            'type' => BalanceAdjustmentType::OpeningBalance->value,
+            'amount' => 1500,
         ]);
 
     Client::factory()
@@ -111,7 +120,8 @@ test('billing month closure creates fixed and per person accruals with organizat
         ->and($fixedAccrual->billing_type)->toBe('fixed')
         ->and($fixedAccrual->amount)->toBe('12500.00')
         ->and($fixedAccrual->paid_amount)->toBe('0.00')
-        ->and($fixedAccrual->opening_balance)->toBe('1500.00')
+        ->and($fixedAccrual->adjustment_amount)->toBe('1500.00')
+        ->and($fixedAccrual->opening_balance)->toBe('0.00')
         ->and($fixedAccrual->closing_balance)->toBe('14000.00')
         ->and($perPersonAccrual->billing_type)->toBe('per_person')
         ->and($perPersonAccrual->volume)->toBe('2.0000')
@@ -129,7 +139,6 @@ test('billing month closure uses previous closing balance and does not duplicate
         ->create([
             'billing_type' => 'fixed',
             'fixed_amount' => 2500,
-            'starting_balance' => 100,
         ]);
 
     Accrual::factory()
@@ -188,7 +197,15 @@ test('admin users can close a fixed billing month and see the accrual', function
             'name' => 'Иванов Иван',
             'billing_type' => 'fixed',
             'fixed_amount' => 8000,
-            'starting_balance' => 2000,
+        ]);
+
+    BalanceAdjustment::factory()
+        ->for($organization)
+        ->for($organization->clients()->where('account_number', '40001')->sole())
+        ->create([
+            'period' => '202605',
+            'type' => BalanceAdjustmentType::OpeningBalance->value,
+            'amount' => 2000,
         ]);
 
     $otherTenantAccrual = Accrual::factory()->for(Organization::factory())->create([
@@ -255,7 +272,6 @@ test('billing month closure calculates per person accruals by client type tariff
                 'client_type' => $case['client_type']->value,
                 'billing_type' => 'per_person',
                 'residents_count' => $case['residents_count'],
-                'starting_balance' => 100,
             ]);
 
         Tariff::factory()
@@ -290,8 +306,9 @@ test('billing month closure calculates per person accruals by client type tariff
             ->and($accrual->volume)->toBe(number_format($case['residents_count'], 4, '.', ''))
             ->and($accrual->tariff_price)->toBe(number_format($case['per_person_price'], 2, '.', ''))
             ->and($accrual->amount)->toBe($case['expected_amount'])
-            ->and($accrual->opening_balance)->toBe('100.00')
-            ->and($accrual->closing_balance)->toBe((string) number_format(100 + (float) $case['expected_amount'], 2, '.', ''));
+            ->and($accrual->opening_balance)->toBe('0.00')
+            ->and($accrual->adjustment_amount)->toBe('0.00')
+            ->and($accrual->closing_balance)->toBe((string) number_format((float) $case['expected_amount'], 2, '.', ''));
     }
 });
 
@@ -430,7 +447,6 @@ test('billing month closure calculates meter accruals from all active meter read
             'account_number' => '90001',
             'client_type' => ClientType::Commercial->value,
             'billing_type' => 'meter',
-            'starting_balance' => 100,
         ]);
 
     Tariff::factory()
@@ -495,8 +511,9 @@ test('billing month closure calculates meter accruals from all active meter read
         ->and($accrual->volume)->toBe('12.7500')
         ->and($accrual->tariff_price)->toBe('25.00')
         ->and($accrual->amount)->toBe('318.75')
-        ->and($accrual->opening_balance)->toBe('100.00')
-        ->and($accrual->closing_balance)->toBe('418.75');
+        ->and($accrual->opening_balance)->toBe('0.00')
+        ->and($accrual->adjustment_amount)->toBe('0.00')
+        ->and($accrual->closing_balance)->toBe('318.75');
 });
 
 test('billing month closure reports meter clients when any active meter has no reading', function () {

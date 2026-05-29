@@ -1,9 +1,11 @@
 <?php
 
 use App\Actions\CloseBillingMonth;
+use App\BalanceAdjustmentType;
 use App\Filament\Resources\Payments\Pages\CreatePayment;
 use App\Filament\Resources\Payments\Pages\ListPayments;
 use App\Models\Accrual;
+use App\Models\BalanceAdjustment;
 use App\Models\Client;
 use App\Models\Organization;
 use App\Models\Payment;
@@ -79,7 +81,15 @@ test('billing month closure subtracts all payments from closing balance', functi
         ->create([
             'billing_type' => 'fixed',
             'fixed_amount' => 5000,
-            'starting_balance' => 1000,
+        ]);
+
+    BalanceAdjustment::factory()
+        ->for($organization)
+        ->for($client)
+        ->create([
+            'period' => '202605',
+            'type' => BalanceAdjustmentType::OpeningBalance->value,
+            'amount' => 1000,
         ]);
 
     Payment::factory()
@@ -108,9 +118,10 @@ test('billing month closure subtracts all payments from closing balance', functi
         ->where('period', '202605')
         ->sole();
 
-    expect($accrual->opening_balance)->toBe('1000.00')
+    expect($accrual->opening_balance)->toBe('0.00')
         ->and($accrual->amount)->toBe('5000.00')
         ->and($accrual->paid_amount)->toBe('2000.00')
+        ->and($accrual->adjustment_amount)->toBe('1000.00')
         ->and($accrual->closing_balance)->toBe('4000.00');
 });
 

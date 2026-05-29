@@ -90,12 +90,6 @@ class ClientForm
                         TextInput::make('apartment')
                             ->label('Квартира / помещение')
                             ->maxLength(255),
-                        TextInput::make('starting_balance')
-                            ->label('Стартовое сальдо')
-                            ->numeric()
-                            ->step('0.01')
-                            ->default(0)
-                            ->required(),
                         Textarea::make('note')
                             ->label('Примечание')
                             ->columnSpanFull(),

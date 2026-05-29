@@ -22,7 +22,6 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'house',
     'apartment',
     'status',
-    'starting_balance',
     'billing_type',
     'residents_count',
     'fixed_amount',
@@ -39,7 +38,6 @@ class Client extends Model
     protected $attributes = [
         'client_type' => 'individual',
         'status' => 'active',
-        'starting_balance' => 0,
         'billing_type' => 'per_person',
         'residents_count' => 0,
         'fixed_amount' => 0,
@@ -85,6 +83,11 @@ class Client extends Model
         return $this->hasMany(Payment::class);
     }
 
+    public function balanceAdjustments(): HasMany
+    {
+        return $this->hasMany(BalanceAdjustment::class);
+    }
+
     public function receipts(): HasMany
     {
         return $this->hasMany(Receipt::class);
@@ -112,7 +115,6 @@ class Client extends Model
     {
         return [
             'client_type' => ClientType::class,
-            'starting_balance' => 'decimal:2',
             'residents_count' => 'integer',
             'fixed_amount' => 'decimal:2',
         ];

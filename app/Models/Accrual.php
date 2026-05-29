@@ -22,6 +22,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
     'tariff_price',
     'amount',
     'paid_amount',
+    'adjustment_amount',
     'opening_balance',
     'closing_balance',
     'closed_at',
@@ -36,6 +37,7 @@ class Accrual extends Model
      */
     protected $attributes = [
         'paid_amount' => 0,
+        'adjustment_amount' => 0,
         'opening_balance' => 0,
         'closing_balance' => 0,
     ];
@@ -72,6 +74,7 @@ class Accrual extends Model
             'tariff_price' => 'decimal:2',
             'amount' => 'decimal:2',
             'paid_amount' => 'decimal:2',
+            'adjustment_amount' => 'decimal:2',
             'opening_balance' => 'decimal:2',
             'closing_balance' => 'decimal:2',
             'closed_at' => 'datetime',

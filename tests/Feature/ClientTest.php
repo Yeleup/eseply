@@ -1,11 +1,13 @@
 <?php
 
 use App\ClientType;
+use App\Filament\Resources\BalanceAdjustments\BalanceAdjustmentResource;
 use App\Filament\Resources\Clients\ClientResource;
 use App\Filament\Resources\Clients\Pages\CreateClient;
 use App\Filament\Resources\Clients\Pages\EditClient;
 use App\Filament\Resources\Clients\Pages\ListClients;
 use App\Filament\Resources\Clients\RelationManagers\AccrualsRelationManager;
+use App\Filament\Resources\Clients\RelationManagers\BalanceAdjustmentsRelationManager;
 use App\Filament\Resources\Clients\RelationManagers\MetersRelationManager;
 use App\Filament\Resources\Clients\RelationManagers\PaymentsRelationManager;
 use App\Filament\Resources\Clients\RelationManagers\ReceiptsRelationManager;
@@ -13,6 +15,7 @@ use App\Filament\Resources\Meters\MeterResource;
 use App\Filament\Resources\Payments\PaymentResource;
 use App\Filament\Resources\Receipts\ReceiptResource;
 use App\Models\Accrual;
+use App\Models\BalanceAdjustment;
 use App\Models\Client;
 use App\Models\Meter;
 use App\Models\Organization;
@@ -116,7 +119,6 @@ test('admin users can create a client for the current tenant', function () {
             'house' => '10',
             'apartment' => '15',
             'status' => 'active',
-            'starting_balance' => 1500,
             'note' => 'Тестовый клиент',
         ])
         ->call('create')
@@ -165,7 +167,6 @@ test('client street must belong to the selected region', function () {
             'region_id' => $selectedRegion->getKey(),
             'street_id' => $streetFromOtherRegion->getKey(),
             'status' => 'active',
-            'starting_balance' => 0,
         ])
         ->call('create')
         ->assertHasFormErrors(['street_id']);
@@ -208,6 +209,7 @@ test('client billing settings fields depend on billing type', function () {
         ->assertFormFieldVisible('residents_count')
         ->assertFormFieldHidden('fixed_amount')
         ->assertFormFieldDoesNotExist('area')
+        ->assertFormFieldDoesNotExist('starting_balance')
         ->fillForm([
             'billing_type' => 'fixed',
         ])
@@ -235,7 +237,6 @@ test('admin client form validates account number uniqueness inside current tenan
             'name' => 'Петров Пётр',
             'client_type' => ClientType::Individual->value,
             'status' => 'active',
-            'starting_balance' => 0,
         ])
         ->call('create')
         ->assertHasFormErrors(['account_number']);
@@ -250,11 +251,13 @@ test('client resource shows accounting records as related tables', function () {
     expect(ClientResource::getRelations())->toBe([
         MetersRelationManager::class,
         PaymentsRelationManager::class,
+        BalanceAdjustmentsRelationManager::class,
         AccrualsRelationManager::class,
         ReceiptsRelationManager::class,
     ])
         ->and(MeterResource::shouldRegisterNavigation())->toBeFalse()
         ->and(PaymentResource::shouldRegisterNavigation())->toBeFalse()
+        ->and(BalanceAdjustmentResource::shouldRegisterNavigation())->toBeFalse()
         ->and(ReceiptResource::shouldRegisterNavigation())->toBeFalse();
 });
 
@@ -296,6 +299,15 @@ test('client related tables list only the selected client records', function () 
         ->for($client)
         ->create(['period' => '202605']);
     $otherPayment = Payment::factory()
+        ->for($organization)
+        ->for($otherClient)
+        ->create(['period' => '202605']);
+
+    $balanceAdjustment = BalanceAdjustment::factory()
+        ->for($organization)
+        ->for($client)
+        ->create(['period' => '202605']);
+    $otherBalanceAdjustment = BalanceAdjustment::factory()
         ->for($organization)
         ->for($otherClient)
         ->create(['period' => '202605']);
@@ -342,6 +354,14 @@ test('client related tables list only the selected client records', function () 
         ->assertCanSeeTableRecords([$payment])
         ->assertCanNotSeeTableRecords([$otherPayment]);
 
+    Livewire::test(BalanceAdjustmentsRelationManager::class, [
+        'ownerRecord' => $client,
+        'pageClass' => EditClient::class,
+    ])
+        ->assertOk()
+        ->assertCanSeeTableRecords([$balanceAdjustment])
+        ->assertCanNotSeeTableRecords([$otherBalanceAdjustment]);
+
     Livewire::test(AccrualsRelationManager::class, [
         'ownerRecord' => $client,
         'pageClass' => EditClient::class,
@@ -359,7 +379,7 @@ test('client related tables list only the selected client records', function () 
         ->assertCanNotSeeTableRecords([$otherReceipt]);
 });
 
-test('client related tables can create meters and payments for the selected client', function () {
+test('client related tables can create meters, payments and balance adjustments for the selected client', function () {
     $organization = Organization::factory()->create();
     $utilityService = UtilityService::factory()->for($organization)->create();
     $client = Client::factory()
@@ -394,6 +414,19 @@ test('client related tables can create meters and payments for the selected clie
         ])
         ->assertHasNoTableActionErrors();
 
+    Livewire::test(BalanceAdjustmentsRelationManager::class, [
+        'ownerRecord' => $client,
+        'pageClass' => EditClient::class,
+    ])
+        ->callTableAction('create', data: [
+            'period' => '202605',
+            'type' => 'opening_balance',
+            'amount' => 1500,
+            'adjusted_at' => '2026-05-29',
+            'note' => 'Входящий остаток из карточки абонента',
+        ])
+        ->assertHasNoTableActionErrors();
+
     expect(Meter::query()
         ->whereBelongsTo($organization)
         ->whereBelongsTo($utilityService)
@@ -405,5 +438,11 @@ test('client related tables can create meters and payments for the selected clie
             ->whereBelongsTo($client)
             ->where('period', '202605')
             ->where('amount', 3500)
+            ->exists())->toBeTrue()
+        ->and(BalanceAdjustment::query()
+            ->whereBelongsTo($organization)
+            ->whereBelongsTo($client)
+            ->where('period', '202605')
+            ->where('amount', 1500)
             ->exists())->toBeTrue();
 });

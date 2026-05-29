@@ -21,6 +21,7 @@ class ReceiptFactory extends Factory
     public function definition(): array
     {
         $amount = fake()->randomFloat(2, 1000, 25000);
+        $adjustmentAmount = fake()->randomFloat(2, -5000, 5000);
         $openingBalance = fake()->randomFloat(2, -5000, 5000);
         $period = fake()->dateTimeBetween('-1 year', 'now')->format('Ym');
         $accountNumber = fake()->unique()->numerify('######');
@@ -37,8 +38,9 @@ class ReceiptFactory extends Factory
                     'period' => $period,
                     'account_number' => $accountNumber,
                     'amount' => $amount,
+                    'adjustment_amount' => $adjustmentAmount,
                     'opening_balance' => $openingBalance,
-                    'closing_balance' => $openingBalance + $amount,
+                    'closing_balance' => $openingBalance + $amount + $adjustmentAmount,
                 ])
                 ->id,
             'receipt_number' => "{$period}-{$accountNumber}",
@@ -49,8 +51,9 @@ class ReceiptFactory extends Factory
             'billing_type' => 'fixed',
             'amount' => $amount,
             'paid_amount' => 0,
+            'adjustment_amount' => $adjustmentAmount,
             'opening_balance' => $openingBalance,
-            'closing_balance' => $openingBalance + $amount,
+            'closing_balance' => $openingBalance + $amount + $adjustmentAmount,
             'issued_at' => now(),
         ];
     }

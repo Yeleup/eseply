@@ -22,6 +22,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'tariff_price',
     'amount',
     'paid_amount',
+    'adjustment_amount',
     'opening_balance',
     'closing_balance',
     'issued_at',
@@ -36,6 +37,7 @@ class Receipt extends Model
      */
     protected $attributes = [
         'paid_amount' => 0,
+        'adjustment_amount' => 0,
         'opening_balance' => 0,
         'closing_balance' => 0,
     ];
@@ -59,6 +61,7 @@ class Receipt extends Model
                 'tariff_price' => $accrual->tariff_price,
                 'amount' => $accrual->amount,
                 'paid_amount' => $accrual->paid_amount,
+                'adjustment_amount' => $accrual->adjustment_amount,
                 'opening_balance' => $accrual->opening_balance,
                 'closing_balance' => $accrual->closing_balance,
                 'issued_at' => now(),
@@ -93,6 +96,7 @@ class Receipt extends Model
             'tariff_price' => 'decimal:2',
             'amount' => 'decimal:2',
             'paid_amount' => 'decimal:2',
+            'adjustment_amount' => 'decimal:2',
             'opening_balance' => 'decimal:2',
             'closing_balance' => 'decimal:2',
             'issued_at' => 'datetime',

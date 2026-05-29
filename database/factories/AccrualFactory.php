@@ -21,6 +21,7 @@ class AccrualFactory extends Factory
     public function definition(): array
     {
         $amount = fake()->randomFloat(2, 1000, 25000);
+        $adjustmentAmount = fake()->randomFloat(2, -5000, 5000);
         $openingBalance = fake()->randomFloat(2, -5000, 5000);
 
         return [
@@ -44,8 +45,9 @@ class AccrualFactory extends Factory
             'billing_type' => 'fixed',
             'amount' => $amount,
             'paid_amount' => 0,
+            'adjustment_amount' => $adjustmentAmount,
             'opening_balance' => $openingBalance,
-            'closing_balance' => $openingBalance + $amount,
+            'closing_balance' => $openingBalance + $amount + $adjustmentAmount,
             'closed_at' => now(),
         ];
     }

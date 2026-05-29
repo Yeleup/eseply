@@ -66,6 +66,11 @@ class AccrualsTable
                     ->money('KZT')
                     ->sortable()
                     ->toggleable(),
+                TextColumn::make('adjustment_amount')
+                    ->label('Корректировка')
+                    ->money('KZT')
+                    ->sortable()
+                    ->toggleable(),
                 TextColumn::make('opening_balance')
                     ->label('Начальное сальдо')
                     ->money('KZT')

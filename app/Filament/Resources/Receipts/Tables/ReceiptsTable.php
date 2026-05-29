@@ -50,6 +50,11 @@ class ReceiptsTable
                     ->money('KZT')
                     ->sortable()
                     ->toggleable(),
+                TextColumn::make('adjustment_amount')
+                    ->label('Корректировка')
+                    ->money('KZT')
+                    ->sortable()
+                    ->toggleable(),
                 TextColumn::make('closing_balance')
                     ->label('Конечное сальдо')
                     ->money('KZT')

@@ -80,7 +80,7 @@ class ReceiptResource extends Resource
                             ->placeholder('-'),
                     ]),
                 Section::make('Сальдо')
-                    ->columns(4)
+                    ->columns(5)
                     ->schema([
                         TextEntry::make('opening_balance')
                             ->label('Начальное сальдо')
@@ -90,6 +90,9 @@ class ReceiptResource extends Resource
                             ->money('KZT'),
                         TextEntry::make('paid_amount')
                             ->label('Оплачено')
+                            ->money('KZT'),
+                        TextEntry::make('adjustment_amount')
+                            ->label('Корректировка')
                             ->money('KZT'),
                         TextEntry::make('closing_balance')
                             ->label('Конечное сальдо')

@@ -85,10 +85,6 @@ class ClientsTable
                         default => $state,
                     })
                     ->sortable(),
-                TextColumn::make('starting_balance')
-                    ->label('Стартовое сальдо')
-                    ->money('KZT')
-                    ->sortable(),
                 TextColumn::make('created_at')
                     ->label('Создан')
                     ->dateTime('d.m.Y H:i')

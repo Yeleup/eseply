@@ -35,7 +35,7 @@
 
 Конечное сальдо считается так:
 
-`closing_balance = opening_balance + amount - paid_amount`
+`closing_balance = opening_balance + amount - paid_amount + adjustment_amount`
 
 ## Административная панель
 

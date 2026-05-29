@@ -61,7 +61,8 @@ class CloseBillingMonth
 
                 $openingBalance = $this->openingBalance($client, $period);
                 $paidAmount = $this->paidAmount($client, $period);
-                $closingBalance = $openingBalance + $calculation['amount'] - $paidAmount;
+                $adjustmentAmount = $this->adjustmentAmount($client, $period);
+                $closingBalance = $openingBalance + $calculation['amount'] - $paidAmount + $adjustmentAmount;
 
                 $accrual = Accrual::create([
                     'organization_id' => $organization->id,
@@ -76,6 +77,7 @@ class CloseBillingMonth
                     'tariff_price' => $calculation['tariff_price'],
                     'amount' => $calculation['amount'],
                     'paid_amount' => $paidAmount,
+                    'adjustment_amount' => $adjustmentAmount,
                     'opening_balance' => $openingBalance,
                     'closing_balance' => $closingBalance,
                     'closed_at' => now(),
@@ -247,12 +249,19 @@ class CloseBillingMonth
             return (float) $previousAccrual->closing_balance;
         }
 
-        return (float) $client->starting_balance;
+        return 0.0;
     }
 
     private function paidAmount(Client $client, string $period): float
     {
         return (float) $client->payments()
+            ->where('period', $period)
+            ->sum('amount');
+    }
+
+    private function adjustmentAmount(Client $client, string $period): float
+    {
+        return (float) $client->balanceAdjustments()
             ->where('period', $period)
             ->sum('amount');
     }

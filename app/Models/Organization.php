@@ -68,6 +68,11 @@ class Organization extends Model implements HasCurrentTenantLabel, HasName
         return $this->hasMany(Payment::class);
     }
 
+    public function balanceAdjustments(): HasMany
+    {
+        return $this->hasMany(BalanceAdjustment::class);
+    }
+
     public function receipts(): HasMany
     {
         return $this->hasMany(Receipt::class);

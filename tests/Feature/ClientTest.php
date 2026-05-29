@@ -379,7 +379,6 @@ test('client related tables can create meters and payments for the selected clie
             'number' => 'MTR-REL-1',
             'initial_reading' => 12.5,
             'installed_on' => '2026-05-01',
-            'status' => 'active',
         ])
         ->assertHasNoTableActionErrors();
 

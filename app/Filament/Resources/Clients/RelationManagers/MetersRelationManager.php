@@ -11,7 +11,6 @@ use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Forms\Components\DatePicker;
-use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Resources\RelationManagers\RelationManager;
@@ -54,18 +53,6 @@ class MetersRelationManager extends RelationManager
                         DatePicker::make('installed_on')
                             ->label('Дата установки')
                             ->native(false),
-                        DatePicker::make('removed_on')
-                            ->label('Дата снятия')
-                            ->native(false),
-                        Select::make('status')
-                            ->label('Статус')
-                            ->options([
-                                'active' => 'Активный',
-                                'removed' => 'Снят',
-                            ])
-                            ->default('active')
-                            ->required()
-                            ->native(false),
                         Textarea::make('note')
                             ->label('Примечание')
                             ->columnSpanFull(),
@@ -104,7 +91,7 @@ class MetersRelationManager extends RelationManager
                     })
                     ->formatStateUsing(fn (string $state): string => match ($state) {
                         'active' => 'Активный',
-                        'removed' => 'Снят',
+                        'removed' => 'В архиве',
                         default => $state,
                     })
                     ->sortable(),
@@ -125,7 +112,7 @@ class MetersRelationManager extends RelationManager
                     ->label('Статус')
                     ->options([
                         'active' => 'Активный',
-                        'removed' => 'Снят',
+                        'removed' => 'В архиве',
                     ]),
             ])
             ->headerActions([
@@ -141,6 +128,28 @@ class MetersRelationManager extends RelationManager
                 Action::make('open')
                     ->label('Открыть')
                     ->url(fn (Meter $record): string => MeterResource::getUrl('edit', ['record' => $record])),
+                Action::make('archive')
+                    ->label('Отправить в архив')
+                    ->color('gray')
+                    ->requiresConfirmation()
+                    ->modalHeading('Отправить счётчик в архив?')
+                    ->modalDescription('Дата снятия будет проставлена сегодняшней датой.')
+                    ->modalSubmitActionLabel('Отправить в архив')
+                    ->visible(fn (Meter $record): bool => ! $record->isArchived())
+                    ->action(function (Meter $record): void {
+                        $record->archive();
+                    }),
+                Action::make('restoreFromArchive')
+                    ->label('Вывести из архива')
+                    ->color('success')
+                    ->requiresConfirmation()
+                    ->modalHeading('Вывести счётчик из архива?')
+                    ->modalDescription('Дата снятия будет очищена, счётчик снова станет активным.')
+                    ->modalSubmitActionLabel('Вывести из архива')
+                    ->visible(fn (Meter $record): bool => $record->isArchived())
+                    ->action(function (Meter $record): void {
+                        $record->restoreFromArchive();
+                    }),
                 EditAction::make(),
                 DeleteAction::make(),
             ])

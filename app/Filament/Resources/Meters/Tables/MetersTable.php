@@ -2,6 +2,8 @@
 
 namespace App\Filament\Resources\Meters\Tables;
 
+use App\Models\Meter;
+use Filament\Actions\Action;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
@@ -52,7 +54,7 @@ class MetersTable
                     })
                     ->formatStateUsing(fn (string $state): string => match ($state) {
                         'active' => 'Активный',
-                        'removed' => 'Снят',
+                        'removed' => 'В архиве',
                         default => $state,
                     })
                     ->sortable(),
@@ -80,10 +82,32 @@ class MetersTable
                     ->label('Статус')
                     ->options([
                         'active' => 'Активный',
-                        'removed' => 'Снят',
+                        'removed' => 'В архиве',
                     ]),
             ])
             ->recordActions([
+                Action::make('archive')
+                    ->label('Отправить в архив')
+                    ->color('gray')
+                    ->requiresConfirmation()
+                    ->modalHeading('Отправить счётчик в архив?')
+                    ->modalDescription('Дата снятия будет проставлена сегодняшней датой.')
+                    ->modalSubmitActionLabel('Отправить в архив')
+                    ->visible(fn (Meter $record): bool => ! $record->isArchived())
+                    ->action(function (Meter $record): void {
+                        $record->archive();
+                    }),
+                Action::make('restoreFromArchive')
+                    ->label('Вывести из архива')
+                    ->color('success')
+                    ->requiresConfirmation()
+                    ->modalHeading('Вывести счётчик из архива?')
+                    ->modalDescription('Дата снятия будет очищена, счётчик снова станет активным.')
+                    ->modalSubmitActionLabel('Вывести из архива')
+                    ->visible(fn (Meter $record): bool => $record->isArchived())
+                    ->action(function (Meter $record): void {
+                        $record->restoreFromArchive();
+                    }),
                 EditAction::make(),
             ])
             ->toolbarActions([

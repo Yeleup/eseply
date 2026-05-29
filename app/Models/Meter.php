@@ -16,8 +16,6 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'number',
     'installed_on',
     'initial_reading',
-    'removed_on',
-    'status',
     'note',
 ])]
 class Meter extends Model
@@ -51,6 +49,27 @@ class Meter extends Model
     public function readings(): HasMany
     {
         return $this->hasMany(MeterReading::class);
+    }
+
+    public function archive(): void
+    {
+        $this->forceFill([
+            'removed_on' => today(),
+            'status' => 'removed',
+        ])->save();
+    }
+
+    public function restoreFromArchive(): void
+    {
+        $this->forceFill([
+            'removed_on' => null,
+            'status' => 'active',
+        ])->save();
+    }
+
+    public function isArchived(): bool
+    {
+        return $this->status === 'removed' || $this->removed_on !== null;
     }
 
     protected static function booted(): void

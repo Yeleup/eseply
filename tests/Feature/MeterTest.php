@@ -1,5 +1,7 @@
 <?php
 
+use App\Filament\Resources\Clients\Pages\EditClient;
+use App\Filament\Resources\Clients\RelationManagers\MetersRelationManager;
 use App\Filament\Resources\MeterReadings\Pages\CreateMeterReading;
 use App\Filament\Resources\MeterReadings\Pages\ListMeterReadings;
 use App\Filament\Resources\Meters\MeterResource;
@@ -208,7 +210,6 @@ test('admin users can create and list meters for the current tenant', function (
             'number' => 'MTR-60001',
             'installed_on' => '2026-05-01',
             'initial_reading' => 10,
-            'status' => 'active',
         ])
         ->call('create')
         ->assertHasNoFormErrors()
@@ -224,6 +225,50 @@ test('admin users can create and list meters for the current tenant', function (
         ->assertOk()
         ->assertCanSeeTableRecords([$meter])
         ->assertCanNotSeeTableRecords([$otherTenantMeter]);
+});
+
+test('meter removed date and status are managed by archive actions', function () {
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create();
+    $client = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'billing_type' => 'meter',
+        ]);
+    $meter = Meter::factory()
+        ->for($organization)
+        ->for($client)
+        ->for($utilityService)
+        ->create([
+            'status' => 'active',
+            'removed_on' => null,
+        ]);
+
+    actingAsMeterTenant($organization);
+
+    Livewire::test(CreateMeter::class)
+        ->assertFormFieldDoesNotExist('removed_on')
+        ->assertFormFieldDoesNotExist('status');
+
+    Livewire::test(ListMeters::class)
+        ->callTableAction('archive', $meter)
+        ->assertHasNoTableActionErrors();
+
+    expect($meter->refresh()->status)->toBe('removed')
+        ->and($meter->removed_on?->toDateString())->toBe(today()->toDateString())
+        ->and($meter->isArchived())->toBeTrue();
+
+    Livewire::test(MetersRelationManager::class, [
+        'ownerRecord' => $client,
+        'pageClass' => EditClient::class,
+    ])
+        ->callTableAction('restoreFromArchive', $meter)
+        ->assertHasNoTableActionErrors();
+
+    expect($meter->refresh()->status)->toBe('active')
+        ->and($meter->removed_on)->toBeNull()
+        ->and($meter->isArchived())->toBeFalse();
 });
 
 test('admin users can create and list meter readings for the current tenant', function () {

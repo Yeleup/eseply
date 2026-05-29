@@ -50,18 +50,6 @@ class MeterForm
                         DatePicker::make('installed_on')
                             ->label('Дата установки')
                             ->native(false),
-                        DatePicker::make('removed_on')
-                            ->label('Дата снятия')
-                            ->native(false),
-                        Select::make('status')
-                            ->label('Статус')
-                            ->options([
-                                'active' => 'Активный',
-                                'removed' => 'Снят',
-                            ])
-                            ->default('active')
-                            ->required()
-                            ->native(false),
                         Textarea::make('note')
                             ->label('Примечание')
                             ->columnSpanFull(),

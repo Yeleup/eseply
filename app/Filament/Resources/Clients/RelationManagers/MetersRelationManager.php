@@ -4,6 +4,7 @@ namespace App\Filament\Resources\Clients\RelationManagers;
 
 use App\Filament\Resources\Meters\MeterResource;
 use App\Models\Meter;
+use App\Models\MeterReading;
 use Filament\Actions\Action;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\CreateAction;
@@ -15,7 +16,10 @@ use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Components\Section;
+use Filament\Schemas\Components\Utilities\Get;
+use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
+use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
@@ -128,6 +132,23 @@ class MetersRelationManager extends RelationManager
                 Action::make('open')
                     ->label('Открыть')
                     ->url(fn (Meter $record): string => MeterResource::getUrl('edit', ['record' => $record])),
+                Action::make('addReading')
+                    ->label('Добавить показание')
+                    ->icon(Heroicon::PlusCircle)
+                    ->color('success')
+                    ->modalHeading(fn (Meter $record): string => "Добавить показание: {$record->number}")
+                    ->modalSubmitActionLabel('Добавить')
+                    ->successNotificationTitle('Показание добавлено')
+                    ->schema(fn (Meter $record): array => $this->readingFormComponents($record))
+                    ->action(function (Meter $record, array $data): void {
+                        $record->readings()->create([
+                            'period' => $data['period'],
+                            'previous_reading' => $this->previousReadingForMeterAndPeriod($record, $data['period'] ?? null),
+                            'current_reading' => $data['current_reading'],
+                            'read_at' => $data['read_at'] ?? null,
+                            'note' => $data['note'] ?? null,
+                        ]);
+                    }),
                 Action::make('archive')
                     ->label('Отправить в архив')
                     ->color('gray')
@@ -158,5 +179,55 @@ class MetersRelationManager extends RelationManager
                     DeleteBulkAction::make(),
                 ]),
             ]);
+    }
+
+    /**
+     * @return array<int, Section>
+     */
+    protected function readingFormComponents(Meter $meter): array
+    {
+        return [
+            Section::make('Показание')
+                ->columns(2)
+                ->schema([
+                    TextInput::make('period')
+                        ->label('Период')
+                        ->placeholder('202605')
+                        ->helperText('Формат: ГГГГММ')
+                        ->required()
+                        ->length(6)
+                        ->regex('/^\d{6}$/')
+                        ->rules(['date_format:Ym'])
+                        ->live(onBlur: true)
+                        ->afterStateUpdated(function (Set $set, mixed $state) use ($meter): void {
+                            $set('previous_reading', $this->previousReadingForMeterAndPeriod($meter, $state));
+                        }),
+                    TextInput::make('previous_reading')
+                        ->label('Предыдущее показание')
+                        ->numeric()
+                        ->step('0.0001')
+                        ->minValue(0)
+                        ->default(fn (Get $get): float => $this->previousReadingForMeterAndPeriod($meter, $get('period')))
+                        ->readOnly()
+                        ->required(),
+                    TextInput::make('current_reading')
+                        ->label('Текущее показание')
+                        ->numeric()
+                        ->step('0.0001')
+                        ->minValue(0)
+                        ->required(),
+                    DatePicker::make('read_at')
+                        ->label('Дата ввода')
+                        ->native(false),
+                    Textarea::make('note')
+                        ->label('Примечание')
+                        ->columnSpanFull(),
+                ]),
+        ];
+    }
+
+    protected function previousReadingForMeterAndPeriod(Meter $meter, mixed $period): float
+    {
+        return MeterReading::previousReadingFor($meter->getKey(), $period) ?? 0;
     }
 }

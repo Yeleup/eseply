@@ -311,6 +311,61 @@ test('admin users can create and list meter readings for the current tenant', fu
         ->assertCanNotSeeTableRecords([$otherTenantReading]);
 });
 
+test('client meter table can add a reading for the selected meter', function () {
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create();
+    $client = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'billing_type' => 'meter',
+        ]);
+    $meter = Meter::factory()
+        ->for($organization)
+        ->for($client)
+        ->for($utilityService)
+        ->create([
+            'number' => 'MTR-CLIENT-1',
+            'initial_reading' => 100,
+        ]);
+
+    MeterReading::factory()
+        ->for($meter)
+        ->create([
+            'period' => '202604',
+            'previous_reading' => 100,
+            'current_reading' => 125,
+        ]);
+
+    actingAsMeterTenant($organization);
+
+    Livewire::test(MetersRelationManager::class, [
+        'ownerRecord' => $client,
+        'pageClass' => EditClient::class,
+    ])
+        ->assertTableActionExists('addReading', null, $meter)
+        ->callTableAction('addReading', $meter, data: [
+            'period' => '202605',
+            'current_reading' => 140.75,
+            'read_at' => '2026-05-29',
+            'note' => 'Показание из карточки абонента',
+        ])
+        ->assertHasNoTableActionErrors()
+        ->assertNotified();
+
+    $reading = MeterReading::query()
+        ->whereBelongsTo($organization)
+        ->whereBelongsTo($client)
+        ->whereBelongsTo($meter)
+        ->where('period', '202605')
+        ->sole();
+
+    expect($reading->previous_reading)->toBe('125.0000')
+        ->and($reading->current_reading)->toBe('140.7500')
+        ->and($reading->consumption)->toBe('15.7500')
+        ->and($reading->read_at?->toDateString())->toBe('2026-05-29');
+});
+
 test('meter resource shows readings as a related table', function () {
     expect(MeterResource::getRelations())->toContain(ReadingsRelationManager::class);
 });

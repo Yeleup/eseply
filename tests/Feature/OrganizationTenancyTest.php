@@ -2,14 +2,35 @@
 
 use App\Filament\Pages\Tenancy\EditOrganizationProfile;
 use App\Filament\Pages\Tenancy\RegisterOrganization;
+use App\Filament\Pages\Tenancy\RelationManagers\RegionsRelationManager;
+use App\Filament\Resources\Regions\Pages\EditRegion;
+use App\Filament\Resources\Regions\RegionResource;
+use App\Filament\Resources\Regions\RelationManagers\StreetsRelationManager;
 use App\Models\Organization;
+use App\Models\Region;
+use App\Models\Street;
 use App\Models\User;
 use App\Models\UtilityService;
 use Filament\Facades\Filament;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 
 uses(RefreshDatabase::class);
+
+function actingAsOrganizationTenant(Organization $organization): User
+{
+    $user = User::factory()->create();
+    $user->organizations()->attach($organization);
+
+    Livewire::actingAs($user);
+
+    Filament::setCurrentPanel('admin');
+    Filament::setTenant($organization);
+    Filament::bootCurrentPanel();
+
+    return $user;
+}
 
 test('users can access only attached organization tenants', function () {
     $user = User::factory()->create();
@@ -93,4 +114,117 @@ test('tenant profile updates organization utility service', function () {
         ->and($organization->utilityService->name)->toBe('Вывоз мусора')
         ->and($organization->utilityService->unit_of_measurement)->toBe('месяц')
         ->and($organization->utilityService()->count())->toBe(1);
+});
+
+test('regions and streets belong to an organization', function () {
+    $organization = Organization::factory()->create();
+    $region = Region::factory()
+        ->for($organization)
+        ->create([
+            'name' => 'Алмалинский район',
+        ]);
+
+    $street = Street::factory()
+        ->for($region)
+        ->create([
+            'name' => 'Абая',
+        ]);
+
+    expect($region->organization->is($organization))->toBeTrue()
+        ->and($organization->regions()->whereKey($region)->exists())->toBeTrue()
+        ->and($street->region->is($region))->toBeTrue()
+        ->and($street->organization->is($organization))->toBeTrue()
+        ->and($organization->streets()->whereKey($street)->exists())->toBeTrue();
+});
+
+test('region and street names are unique inside their owner', function () {
+    $organization = Organization::factory()->create();
+    $otherOrganization = Organization::factory()->create();
+    $region = Region::factory()
+        ->for($organization)
+        ->create(['name' => 'Центр']);
+
+    expect(fn () => Region::factory()
+        ->for($organization)
+        ->create(['name' => 'Центр']))->toThrow(QueryException::class);
+
+    $sameNameInOtherOrganization = Region::factory()
+        ->for($otherOrganization)
+        ->create(['name' => 'Центр']);
+
+    Street::factory()
+        ->for($region)
+        ->create(['name' => 'Абая']);
+
+    expect(fn () => Street::factory()
+        ->for($region)
+        ->create(['name' => 'Абая']))->toThrow(QueryException::class);
+
+    $sameNameInOtherRegion = Street::factory()
+        ->for($sameNameInOtherOrganization)
+        ->create(['name' => 'Абая']);
+
+    expect($sameNameInOtherOrganization)->toBeInstanceOf(Region::class)
+        ->and($sameNameInOtherRegion)->toBeInstanceOf(Street::class);
+});
+
+test('tenant profile manages organization regions', function () {
+    $organization = Organization::factory()->create();
+    $otherOrganization = Organization::factory()->create();
+    $currentRegion = Region::factory()
+        ->for($organization)
+        ->create(['name' => 'Алмалинский']);
+    $otherRegion = Region::factory()
+        ->for($otherOrganization)
+        ->create(['name' => 'Медеуский']);
+
+    actingAsOrganizationTenant($organization);
+
+    Livewire::test(RegionsRelationManager::class, [
+        'ownerRecord' => $organization,
+        'pageClass' => EditOrganizationProfile::class,
+    ])
+        ->assertOk()
+        ->assertCanSeeTableRecords([$currentRegion])
+        ->assertCanNotSeeTableRecords([$otherRegion])
+        ->callTableAction('create', data: [
+            'name' => 'Бостандыкский',
+        ])
+        ->assertHasNoTableActionErrors();
+
+    expect($organization->regions()->where('name', 'Бостандыкский')->exists())->toBeTrue();
+});
+
+test('region resource manages streets as a related table', function () {
+    $organization = Organization::factory()->create();
+    $region = Region::factory()
+        ->for($organization)
+        ->create(['name' => 'Алмалинский']);
+    $street = Street::factory()
+        ->for($region)
+        ->create(['name' => 'Абая']);
+    $otherStreet = Street::factory()
+        ->for(Region::factory()->for($organization))
+        ->create(['name' => 'Сейфуллина']);
+
+    actingAsOrganizationTenant($organization);
+
+    expect(RegionResource::shouldRegisterNavigation())->toBeFalse()
+        ->and(RegionResource::getRelations())->toContain(StreetsRelationManager::class);
+
+    Livewire::test(StreetsRelationManager::class, [
+        'ownerRecord' => $region,
+        'pageClass' => EditRegion::class,
+    ])
+        ->assertOk()
+        ->assertCanSeeTableRecords([$street])
+        ->assertCanNotSeeTableRecords([$otherStreet])
+        ->callTableAction('create', data: [
+            'name' => 'Толе би',
+        ])
+        ->assertHasNoTableActionErrors();
+
+    $createdStreet = $region->streets()->where('name', 'Толе би')->sole();
+
+    expect($createdStreet->organization->is($organization))->toBeTrue();
 });

@@ -2,10 +2,12 @@
 
 namespace App\Filament\Pages\Tenancy;
 
+use App\Filament\Pages\Tenancy\RelationManagers\RegionsRelationManager;
 use App\Models\Organization;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Pages\Tenancy\EditTenantProfile;
+use Filament\Schemas\Components\Livewire;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Illuminate\Database\Eloquent\Model;
@@ -15,6 +17,20 @@ class EditOrganizationProfile extends EditTenantProfile
     public static function getLabel(): string
     {
         return 'Профиль организации';
+    }
+
+    public function content(Schema $schema): Schema
+    {
+        return $schema
+            ->components([
+                $this->getFormContentComponent(),
+                Livewire::make(RegionsRelationManager::class, fn (): array => [
+                    'ownerRecord' => $this->tenant,
+                    'pageClass' => static::class,
+                ])
+                    ->key('organization-regions')
+                    ->columnSpanFull(),
+            ]);
     }
 
     public function form(Schema $schema): Schema

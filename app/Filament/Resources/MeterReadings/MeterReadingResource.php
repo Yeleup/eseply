@@ -29,6 +29,8 @@ class MeterReadingResource extends Resource
 
     protected static string|UnitEnum|null $navigationGroup = 'Учёт';
 
+    protected static bool $shouldRegisterNavigation = false;
+
     protected static ?int $navigationSort = 80;
 
     protected static ?string $recordTitleAttribute = 'period';

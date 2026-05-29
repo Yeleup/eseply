@@ -5,6 +5,7 @@ namespace App\Filament\Resources\Meters;
 use App\Filament\Resources\Meters\Pages\CreateMeter;
 use App\Filament\Resources\Meters\Pages\EditMeter;
 use App\Filament\Resources\Meters\Pages\ListMeters;
+use App\Filament\Resources\Meters\RelationManagers\ReadingsRelationManager;
 use App\Filament\Resources\Meters\Schemas\MeterForm;
 use App\Filament\Resources\Meters\Tables\MetersTable;
 use App\Models\Meter;
@@ -46,7 +47,7 @@ class MeterResource extends Resource
     public static function getRelations(): array
     {
         return [
-            //
+            ReadingsRelationManager::class,
         ];
     }
 

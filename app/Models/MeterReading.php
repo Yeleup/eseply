@@ -29,7 +29,6 @@ class MeterReading extends Model
      * @var array<string, mixed>
      */
     protected $attributes = [
-        'previous_reading' => 0,
         'consumption' => 0,
     ];
 
@@ -51,6 +50,37 @@ class MeterReading extends Model
     public function utilityService(): BelongsTo
     {
         return $this->belongsTo(UtilityService::class);
+    }
+
+    public static function previousReadingFor(int|string|null $meterId, int|string|null $period = null): ?float
+    {
+        if ($meterId === null || $meterId === '') {
+            return null;
+        }
+
+        $meter = Meter::query()->find((int) $meterId);
+
+        if (! $meter) {
+            return null;
+        }
+
+        $previousReadingQuery = self::query()
+            ->where('meter_id', $meter->id);
+
+        $period = $period === null ? null : (string) $period;
+
+        if ($period !== null && preg_match('/^\d{6}$/', $period) === 1) {
+            $previousReadingQuery->where('period', '<', $period);
+        }
+
+        $previousReading = $previousReadingQuery
+            ->orderByDesc('period')
+            ->orderByDesc('id')
+            ->value('current_reading');
+
+        return $previousReading === null
+            ? (float) $meter->initial_reading
+            : (float) $previousReading;
     }
 
     /**
@@ -79,6 +109,13 @@ class MeterReading extends Model
                     $meterReading->client_id = $meter->client_id;
                     $meterReading->utility_service_id = $meter->utility_service_id;
                 }
+            }
+
+            if ($meterReading->meter_id && $meterReading->previous_reading === null) {
+                $meterReading->previous_reading = self::previousReadingFor(
+                    $meterReading->meter_id,
+                    $meterReading->period,
+                ) ?? 0;
             }
 
             $meterReading->consumption = (float) $meterReading->current_reading - (float) $meterReading->previous_reading;

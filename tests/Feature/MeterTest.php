@@ -2,8 +2,10 @@
 
 use App\Filament\Resources\MeterReadings\Pages\CreateMeterReading;
 use App\Filament\Resources\MeterReadings\Pages\ListMeterReadings;
+use App\Filament\Resources\Meters\MeterResource;
 use App\Filament\Resources\Meters\Pages\CreateMeter;
 use App\Filament\Resources\Meters\Pages\ListMeters;
+use App\Filament\Resources\Meters\RelationManagers\ReadingsRelationManager;
 use App\Models\Client;
 use App\Models\Meter;
 use App\Models\MeterReading;
@@ -129,6 +131,29 @@ test('meter readings calculate consumption from current and previous readings', 
         ->and($reading->consumption)->toBe('35.2500');
 });
 
+test('meter readings default previous reading from meter history', function () {
+    $meter = Meter::factory()->create([
+        'initial_reading' => 10,
+    ]);
+
+    MeterReading::factory()
+        ->for($meter)
+        ->create([
+            'period' => '202604',
+            'previous_reading' => 10,
+            'current_reading' => 17.5,
+        ]);
+
+    $reading = MeterReading::query()->create([
+        'meter_id' => $meter->id,
+        'period' => '202605',
+        'current_reading' => 21.25,
+    ]);
+
+    expect($reading->previous_reading)->toBe('17.5000')
+        ->and($reading->consumption)->toBe('3.7500');
+});
+
 test('one meter reading is allowed per meter and period', function () {
     $meter = Meter::factory()->create();
 
@@ -205,6 +230,7 @@ test('admin users can create and list meter readings for the current tenant', fu
     $organization = Organization::factory()->create();
     $meter = Meter::factory()->for($organization)->create([
         'number' => 'MTR-70001',
+        'initial_reading' => 100,
     ]);
 
     $otherTenantReading = MeterReading::factory()->for(Meter::factory()->for(Organization::factory()))->create([
@@ -217,7 +243,6 @@ test('admin users can create and list meter readings for the current tenant', fu
         ->fillForm([
             'meter_id' => $meter->id,
             'period' => '202605',
-            'previous_reading' => 100,
             'current_reading' => 137.125,
             'read_at' => '2026-05-26',
         ])
@@ -232,10 +257,15 @@ test('admin users can create and list meter readings for the current tenant', fu
         ->where('period', '202605')
         ->sole();
 
-    expect($reading->consumption)->toBe('37.1250');
+    expect($reading->previous_reading)->toBe('100.0000')
+        ->and($reading->consumption)->toBe('37.1250');
 
     Livewire::test(ListMeterReadings::class)
         ->assertOk()
         ->assertCanSeeTableRecords([$reading])
         ->assertCanNotSeeTableRecords([$otherTenantReading]);
+});
+
+test('meter resource shows readings as a related table', function () {
+    expect(MeterResource::getRelations())->toContain(ReadingsRelationManager::class);
 });

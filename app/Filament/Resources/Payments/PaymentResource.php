@@ -29,6 +29,8 @@ class PaymentResource extends Resource
 
     protected static string|UnitEnum|null $navigationGroup = 'Учёт';
 
+    protected static bool $shouldRegisterNavigation = false;
+
     protected static ?int $navigationSort = 90;
 
     protected static ?string $recordTitleAttribute = 'period';

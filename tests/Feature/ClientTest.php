@@ -1,10 +1,23 @@
 <?php
 
 use App\ClientType;
+use App\Filament\Resources\Clients\ClientResource;
 use App\Filament\Resources\Clients\Pages\CreateClient;
+use App\Filament\Resources\Clients\Pages\EditClient;
 use App\Filament\Resources\Clients\Pages\ListClients;
+use App\Filament\Resources\Clients\RelationManagers\AccrualsRelationManager;
+use App\Filament\Resources\Clients\RelationManagers\MetersRelationManager;
+use App\Filament\Resources\Clients\RelationManagers\PaymentsRelationManager;
+use App\Filament\Resources\Clients\RelationManagers\ReceiptsRelationManager;
+use App\Filament\Resources\Meters\MeterResource;
+use App\Filament\Resources\Payments\PaymentResource;
+use App\Filament\Resources\Receipts\ReceiptResource;
+use App\Models\Accrual;
 use App\Models\Client;
+use App\Models\Meter;
 use App\Models\Organization;
+use App\Models\Payment;
+use App\Models\Receipt;
 use App\Models\User;
 use App\Models\UtilityService;
 use Filament\Facades\Filament;
@@ -158,4 +171,167 @@ test('admin client form validates account number uniqueness inside current tenan
         ->whereBelongsTo($organization)
         ->where('account_number', '20001')
         ->count())->toBe(1);
+});
+
+test('client resource shows accounting records as related tables', function () {
+    expect(ClientResource::getRelations())->toBe([
+        MetersRelationManager::class,
+        PaymentsRelationManager::class,
+        AccrualsRelationManager::class,
+        ReceiptsRelationManager::class,
+    ])
+        ->and(MeterResource::shouldRegisterNavigation())->toBeFalse()
+        ->and(PaymentResource::shouldRegisterNavigation())->toBeFalse()
+        ->and(ReceiptResource::shouldRegisterNavigation())->toBeFalse();
+});
+
+test('client related tables list only the selected client records', function () {
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create([
+        'name' => 'Водоснабжение',
+    ]);
+
+    $client = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'account_number' => '30001',
+            'name' => 'Основной абонент',
+        ]);
+
+    $otherClient = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'account_number' => '30002',
+            'name' => 'Другой абонент',
+        ]);
+
+    $meter = Meter::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->for($client)
+        ->create(['number' => 'MTR-30001']);
+    $otherMeter = Meter::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->for($otherClient)
+        ->create(['number' => 'MTR-30002']);
+
+    $payment = Payment::factory()
+        ->for($organization)
+        ->for($client)
+        ->create(['period' => '202605']);
+    $otherPayment = Payment::factory()
+        ->for($organization)
+        ->for($otherClient)
+        ->create(['period' => '202605']);
+
+    $accrual = Accrual::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->for($client)
+        ->create([
+            'period' => '202605',
+            'account_number' => '30001',
+            'client_name' => 'Основной абонент',
+            'utility_service_name' => 'Водоснабжение',
+        ]);
+    $otherAccrual = Accrual::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->for($otherClient)
+        ->create([
+            'period' => '202605',
+            'account_number' => '30002',
+            'client_name' => 'Другой абонент',
+            'utility_service_name' => 'Водоснабжение',
+        ]);
+
+    $receipt = Receipt::fromAccrual($accrual);
+    $otherReceipt = Receipt::fromAccrual($otherAccrual);
+
+    actingAsTenant($organization);
+
+    Livewire::test(MetersRelationManager::class, [
+        'ownerRecord' => $client,
+        'pageClass' => EditClient::class,
+    ])
+        ->assertOk()
+        ->assertCanSeeTableRecords([$meter])
+        ->assertCanNotSeeTableRecords([$otherMeter]);
+
+    Livewire::test(PaymentsRelationManager::class, [
+        'ownerRecord' => $client,
+        'pageClass' => EditClient::class,
+    ])
+        ->assertOk()
+        ->assertCanSeeTableRecords([$payment])
+        ->assertCanNotSeeTableRecords([$otherPayment]);
+
+    Livewire::test(AccrualsRelationManager::class, [
+        'ownerRecord' => $client,
+        'pageClass' => EditClient::class,
+    ])
+        ->assertOk()
+        ->assertCanSeeTableRecords([$accrual])
+        ->assertCanNotSeeTableRecords([$otherAccrual]);
+
+    Livewire::test(ReceiptsRelationManager::class, [
+        'ownerRecord' => $client,
+        'pageClass' => EditClient::class,
+    ])
+        ->assertOk()
+        ->assertCanSeeTableRecords([$receipt])
+        ->assertCanNotSeeTableRecords([$otherReceipt]);
+});
+
+test('client related tables can create meters and payments for the selected client', function () {
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create();
+    $client = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'billing_type' => 'meter',
+        ]);
+
+    actingAsTenant($organization);
+
+    Livewire::test(MetersRelationManager::class, [
+        'ownerRecord' => $client,
+        'pageClass' => EditClient::class,
+    ])
+        ->callTableAction('create', data: [
+            'number' => 'MTR-REL-1',
+            'initial_reading' => 12.5,
+            'installed_on' => '2026-05-01',
+            'status' => 'active',
+        ])
+        ->assertHasNoTableActionErrors();
+
+    Livewire::test(PaymentsRelationManager::class, [
+        'ownerRecord' => $client,
+        'pageClass' => EditClient::class,
+    ])
+        ->callTableAction('create', data: [
+            'period' => '202605',
+            'amount' => 3500,
+            'paid_at' => '2026-05-29',
+            'note' => 'Оплата из карточки абонента',
+        ])
+        ->assertHasNoTableActionErrors();
+
+    expect(Meter::query()
+        ->whereBelongsTo($organization)
+        ->whereBelongsTo($utilityService)
+        ->whereBelongsTo($client)
+        ->where('number', 'MTR-REL-1')
+        ->exists())->toBeTrue()
+        ->and(Payment::query()
+            ->whereBelongsTo($organization)
+            ->whereBelongsTo($client)
+            ->where('period', '202605')
+            ->where('amount', 3500)
+            ->exists())->toBeTrue();
 });

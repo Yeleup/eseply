@@ -5,6 +5,10 @@ namespace App\Filament\Resources\Clients;
 use App\Filament\Resources\Clients\Pages\CreateClient;
 use App\Filament\Resources\Clients\Pages\EditClient;
 use App\Filament\Resources\Clients\Pages\ListClients;
+use App\Filament\Resources\Clients\RelationManagers\AccrualsRelationManager;
+use App\Filament\Resources\Clients\RelationManagers\MetersRelationManager;
+use App\Filament\Resources\Clients\RelationManagers\PaymentsRelationManager;
+use App\Filament\Resources\Clients\RelationManagers\ReceiptsRelationManager;
 use App\Filament\Resources\Clients\Schemas\ClientForm;
 use App\Filament\Resources\Clients\Tables\ClientsTable;
 use App\Models\Client;
@@ -46,7 +50,10 @@ class ClientResource extends Resource
     public static function getRelations(): array
     {
         return [
-            //
+            MetersRelationManager::class,
+            PaymentsRelationManager::class,
+            AccrualsRelationManager::class,
+            ReceiptsRelationManager::class,
         ];
     }
 

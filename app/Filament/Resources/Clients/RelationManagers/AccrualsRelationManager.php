@@ -1,0 +1,95 @@
+<?php
+
+namespace App\Filament\Resources\Clients\RelationManagers;
+
+use Filament\Resources\RelationManagers\RelationManager;
+use Filament\Schemas\Schema;
+use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\SelectFilter;
+use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
+
+class AccrualsRelationManager extends RelationManager
+{
+    protected static string $relationship = 'accruals';
+
+    protected static ?string $title = 'Начисления';
+
+    protected static ?string $modelLabel = 'начисление';
+
+    protected static ?string $pluralModelLabel = 'начисления';
+
+    public function form(Schema $schema): Schema
+    {
+        return $schema;
+    }
+
+    public function table(Table $table): Table
+    {
+        return $table
+            ->recordTitleAttribute('period')
+            ->modifyQueryUsing(fn (Builder $query): Builder => $query->latest('closed_at'))
+            ->columns([
+                TextColumn::make('period')
+                    ->label('Период')
+                    ->searchable()
+                    ->sortable(),
+                TextColumn::make('utility_service_name')
+                    ->label('Услуга')
+                    ->searchable()
+                    ->placeholder('-'),
+                TextColumn::make('billing_type')
+                    ->label('Тип начисления')
+                    ->badge()
+                    ->formatStateUsing(fn (string $state): string => match ($state) {
+                        'fixed' => 'Фиксированная сумма',
+                        'meter' => 'По счётчику',
+                        'per_person' => 'На одного человека',
+                        default => $state,
+                    }),
+                TextColumn::make('volume')
+                    ->label('Объём')
+                    ->numeric(4)
+                    ->placeholder('-')
+                    ->sortable()
+                    ->toggleable(),
+                TextColumn::make('tariff_price')
+                    ->label('Тариф')
+                    ->money('KZT')
+                    ->placeholder('-')
+                    ->sortable()
+                    ->toggleable(),
+                TextColumn::make('amount')
+                    ->label('Начислено')
+                    ->money('KZT')
+                    ->sortable(),
+                TextColumn::make('paid_amount')
+                    ->label('Оплачено')
+                    ->money('KZT')
+                    ->sortable()
+                    ->toggleable(),
+                TextColumn::make('opening_balance')
+                    ->label('Начальное сальдо')
+                    ->money('KZT')
+                    ->sortable()
+                    ->toggleable(),
+                TextColumn::make('closing_balance')
+                    ->label('Конечное сальдо')
+                    ->money('KZT')
+                    ->sortable(),
+                TextColumn::make('closed_at')
+                    ->label('Закрыт')
+                    ->dateTime('d.m.Y H:i')
+                    ->sortable(),
+            ])
+            ->filters([
+                SelectFilter::make('period')
+                    ->label('Период')
+                    ->options(fn (): array => $this->ownerRecord
+                        ->accruals()
+                        ->orderByDesc('period')
+                        ->pluck('period', 'period')
+                        ->all()),
+            ]);
+    }
+}

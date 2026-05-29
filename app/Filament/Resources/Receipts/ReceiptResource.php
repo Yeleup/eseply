@@ -29,6 +29,8 @@ class ReceiptResource extends Resource
 
     protected static string|UnitEnum|null $navigationGroup = 'Учёт';
 
+    protected static bool $shouldRegisterNavigation = false;
+
     protected static ?int $navigationSort = 100;
 
     protected static ?string $recordTitleAttribute = 'account_number';

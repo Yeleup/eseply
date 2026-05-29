@@ -3,12 +3,17 @@
 namespace App\Filament\Resources\Clients\Schemas;
 
 use App\ClientType;
+use App\Models\Region;
+use App\Models\Street;
+use Filament\Facades\Filament;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Get;
+use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
+use Illuminate\Validation\Rule;
 
 class ClientForm
 {
@@ -47,8 +52,43 @@ class ClientForm
                             ->label('Телефон')
                             ->tel()
                             ->maxLength(255),
-                        TextInput::make('address')
-                            ->label('Адрес')
+                        Select::make('region_id')
+                            ->label('Регион')
+                            ->options(fn (): array => Filament::getTenant()
+                                ?->regions()
+                                ->orderBy('name')
+                                ->pluck('name', 'id')
+                                ->all() ?? [])
+                            ->searchable()
+                            ->preload()
+                            ->required()
+                            ->scopedExists(Region::class, 'id')
+                            ->live()
+                            ->afterStateUpdated(fn (Set $set): mixed => $set('street_id', null))
+                            ->native(false),
+                        Select::make('street_id')
+                            ->label('Улица')
+                            ->options(fn (Get $get): array => Street::query()
+                                ->where('organization_id', Filament::getTenant()?->getKey())
+                                ->where('region_id', $get('region_id'))
+                                ->orderBy('name')
+                                ->pluck('name', 'id')
+                                ->all())
+                            ->searchable()
+                            ->preload()
+                            ->required()
+                            ->disabled(fn (Get $get): bool => blank($get('region_id')))
+                            ->rules(fn (Get $get): array => [
+                                Rule::exists('streets', 'id')
+                                    ->where('organization_id', Filament::getTenant()?->getKey())
+                                    ->where('region_id', $get('region_id')),
+                            ])
+                            ->native(false),
+                        TextInput::make('house')
+                            ->label('Дом')
+                            ->maxLength(255),
+                        TextInput::make('apartment')
+                            ->label('Квартира / помещение')
                             ->maxLength(255),
                         TextInput::make('starting_balance')
                             ->label('Стартовое сальдо')

@@ -17,7 +17,10 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'name',
     'client_type',
     'phone',
-    'address',
+    'region_id',
+    'street_id',
+    'house',
+    'apartment',
     'status',
     'starting_balance',
     'billing_type',
@@ -50,6 +53,16 @@ class Client extends Model
     public function utilityService(): BelongsTo
     {
         return $this->belongsTo(UtilityService::class);
+    }
+
+    public function region(): BelongsTo
+    {
+        return $this->belongsTo(Region::class);
+    }
+
+    public function street(): BelongsTo
+    {
+        return $this->belongsTo(Street::class);
     }
 
     public function accruals(): HasMany

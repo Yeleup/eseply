@@ -17,6 +17,8 @@ class ClientsTable
     {
         return $table
             ->modifyQueryUsing(fn (Builder $query): Builder => $query->with([
+                'region',
+                'street',
                 'utilityService',
             ]))
             ->columns([
@@ -51,10 +53,23 @@ class ClientsTable
                     ->label('Телефон')
                     ->searchable()
                     ->toggleable(),
-                TextColumn::make('address')
-                    ->label('Адрес')
+                TextColumn::make('region.name')
+                    ->label('Регион')
                     ->searchable()
-                    ->limit(40)
+                    ->sortable()
+                    ->toggleable(),
+                TextColumn::make('street.name')
+                    ->label('Улица')
+                    ->searchable()
+                    ->sortable()
+                    ->toggleable(),
+                TextColumn::make('house')
+                    ->label('Дом')
+                    ->searchable()
+                    ->toggleable(),
+                TextColumn::make('apartment')
+                    ->label('Квартира')
+                    ->searchable()
                     ->toggleable(),
                 TextColumn::make('status')
                     ->label('Статус')

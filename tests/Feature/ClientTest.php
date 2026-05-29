@@ -18,6 +18,8 @@ use App\Models\Meter;
 use App\Models\Organization;
 use App\Models\Payment;
 use App\Models\Receipt;
+use App\Models\Region;
+use App\Models\Street;
 use App\Models\User;
 use App\Models\UtilityService;
 use Filament\Facades\Filament;
@@ -91,6 +93,12 @@ test('admin users can create a client for the current tenant', function () {
     $utilityService = UtilityService::factory()->for($organization)->create([
         'name' => 'Водоснабжение',
     ]);
+    $region = Region::factory()->for($organization)->create([
+        'name' => 'Алмалинский район',
+    ]);
+    $street = Street::factory()->for($region)->create([
+        'name' => 'Абая',
+    ]);
 
     actingAsTenant($organization);
 
@@ -103,7 +111,10 @@ test('admin users can create a client for the current tenant', function () {
             'residents_count' => 3,
             'fixed_amount' => 0,
             'phone' => '+7 777 111 22 33',
-            'address' => 'Алматы, Абая 10',
+            'region_id' => $region->getKey(),
+            'street_id' => $street->getKey(),
+            'house' => '10',
+            'apartment' => '15',
             'status' => 'active',
             'starting_balance' => 1500,
             'note' => 'Тестовый клиент',
@@ -121,7 +132,48 @@ test('admin users can create a client for the current tenant', function () {
         ->where('client_type', ClientType::Individual->value)
         ->where('billing_type', 'per_person')
         ->where('residents_count', 3)
+        ->whereBelongsTo($region)
+        ->whereBelongsTo($street)
+        ->where('house', '10')
+        ->where('apartment', '15')
         ->exists())->toBeTrue();
+});
+
+test('client street must belong to the selected region', function () {
+    $organization = Organization::factory()->create();
+    UtilityService::factory()->for($organization)->create();
+    $selectedRegion = Region::factory()->for($organization)->create([
+        'name' => 'Алмалинский район',
+    ]);
+    $otherRegion = Region::factory()->for($organization)->create([
+        'name' => 'Бостандыкский район',
+    ]);
+    $streetFromOtherRegion = Street::factory()->for($otherRegion)->create([
+        'name' => 'Сатпаева',
+    ]);
+
+    actingAsTenant($organization);
+
+    Livewire::test(CreateClient::class)
+        ->fillForm([
+            'account_number' => '20002',
+            'name' => 'Сидоров Сидор',
+            'client_type' => ClientType::Individual->value,
+            'billing_type' => 'per_person',
+            'residents_count' => 1,
+            'phone' => '+7 777 222 33 44',
+            'region_id' => $selectedRegion->getKey(),
+            'street_id' => $streetFromOtherRegion->getKey(),
+            'status' => 'active',
+            'starting_balance' => 0,
+        ])
+        ->call('create')
+        ->assertHasFormErrors(['street_id']);
+
+    expect(Client::query()
+        ->whereBelongsTo($organization)
+        ->where('account_number', '20002')
+        ->exists())->toBeFalse();
 });
 
 test('clients store billing settings', function () {

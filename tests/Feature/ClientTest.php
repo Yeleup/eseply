@@ -312,6 +312,140 @@ test('admin users cannot edit a client account number', function () {
         ->and($client->technical_conditions)->toBe('ТУ-2026-20');
 });
 
+test('admin client edit page has a card action', function () {
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create([
+        'name' => 'Водоснабжение',
+    ]);
+    $client = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'account_number' => '100010',
+            'name' => 'Абонент с карточкой',
+        ]);
+
+    actingAsTenant($organization);
+
+    $url = route('filament.admin.clients.card', [
+        'tenant' => $organization,
+        'client' => $client,
+    ]);
+
+    Livewire::test(EditClient::class, [
+        'record' => $client->getRouteKey(),
+    ])
+        ->assertActionExists('card')
+        ->assertActionHasLabel('card', 'Карточка')
+        ->assertActionHasUrl('card', $url)
+        ->assertActionShouldOpenUrlInNewTab('card');
+});
+
+test('admin users can open a current tenant client card as a blade view', function () {
+    $organization = Organization::factory()->create([
+        'name' => 'ТОО Водоканал',
+    ]);
+    $utilityService = UtilityService::factory()->for($organization)->create([
+        'name' => 'Водоснабжение',
+        'unit_of_measurement' => 'м3',
+    ]);
+    $region = Region::factory()->for($organization)->create([
+        'name' => 'Алмалинский район',
+    ]);
+    $street = Street::factory()->for($region)->create([
+        'name' => 'Абая',
+    ]);
+    $client = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->for($region)
+        ->for($street)
+        ->create([
+            'account_number' => '100010',
+            'name' => 'Иванов Иван',
+            'iin' => '870101300123',
+            'phone' => '+7 777 111 22 33',
+            'contract' => 'Договор №15',
+            'technical_conditions' => 'ТУ-2026-15',
+            'billing_type' => 'meter',
+            'residents_count' => 3,
+            'house' => '10',
+            'apartment' => '15',
+        ]);
+
+    Meter::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->for($client)
+        ->create([
+            'number' => 'MTR-100010',
+            'initial_reading' => 15.25,
+        ]);
+
+    Payment::factory()
+        ->for($organization)
+        ->for($client)
+        ->create([
+            'period' => '202605',
+            'amount' => 2500,
+            'paid_at' => '2026-05-26',
+            'note' => 'Оплата через кассу',
+        ]);
+
+    $user = actingAsTenant($organization);
+    $this->actingAs($user);
+
+    $response = $this->get(route('filament.admin.clients.card', [
+        'tenant' => $organization,
+        'client' => $client,
+    ]));
+
+    $response
+        ->assertSuccessful()
+        ->assertHeader('Content-Type', 'text/html; charset=UTF-8')
+        ->assertHeader('X-Content-Type-Options', 'nosniff')
+        ->assertHeaderMissing('Content-Disposition')
+        ->assertViewIs('clients.card')
+        ->assertViewHasAll([
+            'client',
+            'generatedAt',
+            'clientDetails',
+            'addressDetails',
+            'billingDetails',
+            'meters',
+            'payments',
+        ])
+        ->assertSeeTextInOrder([
+            'Карточка абонента',
+            'Лицевой счёт',
+            '100010',
+            'Иванов Иван',
+            'Счётчики',
+            'MTR-100010',
+            'Оплаты',
+            '202605',
+            '2 500.00 KZT',
+        ]);
+
+    expect(str_starts_with($response->getContent(), '%PDF'))->toBeFalse();
+});
+
+test('admin users cannot open another tenant client card', function () {
+    $organization = Organization::factory()->create();
+    $otherOrganization = Organization::factory()->create();
+    $client = Client::factory()->for($otherOrganization)->create([
+        'account_number' => '200010',
+    ]);
+
+    $user = actingAsTenant($organization);
+    $this->actingAs($user);
+
+    $this->get(route('filament.admin.clients.card', [
+        'tenant' => $organization,
+        'client' => $client,
+    ]))->assertNotFound();
+});
+
 test('client street must belong to the selected region', function () {
     $organization = Organization::factory()->create();
     UtilityService::factory()->for($organization)->create();

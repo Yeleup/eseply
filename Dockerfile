@@ -2,7 +2,9 @@
 
 FROM dunglas/frankenphp:1-php8.4-alpine AS php-base
 
-RUN install-php-extensions \
+RUN apk add --no-cache \
+        font-dejavu \
+    && install-php-extensions \
         bcmath \
         exif \
         gd \

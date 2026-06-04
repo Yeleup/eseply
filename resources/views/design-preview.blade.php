@@ -239,6 +239,68 @@
                 </div>
             </section>
 
+            <section class="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+                <div class="bg-linear-to-br from-amber-100 via-white to-teal-100 p-6 dark:from-amber-950/50 dark:via-zinc-900 dark:to-teal-950/50">
+                    <div class="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                            <p class="text-sm font-semibold uppercase tracking-[0.22em] text-teal-800 dark:text-teal-300">Печатная карточка</p>
+                            <h2 class="mt-2 text-3xl font-semibold tracking-tight">Карточка абонента</h2>
+                            <p class="mt-3 max-w-2xl text-sm text-zinc-600 dark:text-zinc-300">
+                                Preview Blade-страницы, которая открывается из действия «Карточка».
+                            </p>
+                        </div>
+
+                        <div class="rounded-2xl border border-white/80 bg-white/80 px-4 py-3 text-sm shadow-sm dark:border-zinc-800 dark:bg-zinc-900/80">
+                            <p class="text-zinc-500 dark:text-zinc-400">Лицевой счёт</p>
+                            <p class="mt-1 text-xl font-semibold">100010</p>
+                            <p class="mt-3 text-xs text-zinc-500 dark:text-zinc-400">Сформирована: 04.06.2026 10:15</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 gap-6 p-6 lg:grid-cols-2">
+                    <div class="rounded-2xl border border-zinc-200 p-5 dark:border-zinc-800">
+                        <h3 class="text-lg font-semibold">Данные абонента</h3>
+                        <dl class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            <div class="rounded-xl bg-zinc-50 px-4 py-3 dark:bg-zinc-950">
+                                <dt class="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">ФИО / Наименование</dt>
+                                <dd class="mt-1 text-sm font-medium">Иванов Иван</dd>
+                            </div>
+                            <div class="rounded-xl bg-zinc-50 px-4 py-3 dark:bg-zinc-950">
+                                <dt class="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Тип начисления</dt>
+                                <dd class="mt-1 text-sm font-medium">По счётчику</dd>
+                            </div>
+                            <div class="rounded-xl bg-zinc-50 px-4 py-3 dark:bg-zinc-950">
+                                <dt class="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Адрес</dt>
+                                <dd class="mt-1 text-sm font-medium">Алмалинский район, Абая, д. 10, кв. 15</dd>
+                            </div>
+                            <div class="rounded-xl bg-zinc-50 px-4 py-3 dark:bg-zinc-950">
+                                <dt class="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Статус</dt>
+                                <dd class="mt-1 text-sm font-medium">Активный</dd>
+                            </div>
+                        </dl>
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-4">
+                        <div class="rounded-2xl border border-zinc-200 p-5 dark:border-zinc-800">
+                            <h3 class="text-lg font-semibold">Счётчики</h3>
+                            <div class="mt-4 rounded-2xl bg-zinc-50 p-4 dark:bg-zinc-950">
+                                <p class="text-sm font-semibold">Счётчик #1</p>
+                                <p class="mt-2 text-sm text-zinc-500 dark:text-zinc-400">MTR-100010 · начальное показание 15.2500</p>
+                            </div>
+                        </div>
+
+                        <div class="rounded-2xl border border-zinc-200 p-5 dark:border-zinc-800">
+                            <h3 class="text-lg font-semibold">Оплаты</h3>
+                            <div class="mt-4 rounded-2xl bg-zinc-50 p-4 dark:bg-zinc-950">
+                                <p class="text-sm font-semibold">Оплата #1</p>
+                                <p class="mt-2 text-sm text-zinc-500 dark:text-zinc-400">202605 · 2 500.00 KZT</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             <section class="grid grid-cols-1 gap-4 md:grid-cols-3">
                 <div class="rounded-lg border border-dashed border-zinc-300 bg-white p-6 text-center dark:border-zinc-700 dark:bg-zinc-900">
                     <h2 class="text-base font-semibold">Empty State</h2>

@@ -13,6 +13,8 @@ use App\Models\UtilityService;
 use Filament\Facades\Filament;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
+use OpenSpout\Common\Entity\Cell;
+use OpenSpout\Reader\XLSX\Reader;
 
 uses(RefreshDatabase::class);
 
@@ -28,6 +30,48 @@ function actingAsReportsTenant(Organization $organization): User
     Filament::bootCurrentPanel();
 
     return $user;
+}
+
+/**
+ * @return list<list<mixed>>
+ */
+function downloadedXlsxRows(array $downloadEffect): array
+{
+    $path = tempnam(sys_get_temp_dir(), 'meter-reading-sheet-');
+
+    if ($path === false) {
+        throw new RuntimeException('Unable to create a temporary XLSX file for assertions.');
+    }
+
+    $content = base64_decode((string) data_get($downloadEffect, 'content'), true);
+
+    if ($content === false || file_put_contents($path, $content) === false) {
+        throw new RuntimeException('Unable to write downloaded XLSX content for assertions.');
+    }
+
+    $reader = new Reader;
+
+    try {
+        $reader->open($path);
+
+        $rows = [];
+
+        foreach ($reader->getSheetIterator() as $sheet) {
+            foreach ($sheet->getRowIterator() as $row) {
+                $rows[] = array_map(
+                    fn (Cell $cell): mixed => $cell->getValue(),
+                    $row->getCells(),
+                );
+            }
+
+            break;
+        }
+
+        return $rows;
+    } finally {
+        $reader->close();
+        @unlink($path);
+    }
 }
 
 test('meter reading sheet report keeps client meters together and scopes records to tenant', function () {
@@ -75,6 +119,7 @@ test('meter reading sheet report keeps client meters together and scopes records
         ->for($utilityService)
         ->create([
             'number' => 'MTR-002',
+            'installed_on' => null,
             'initial_reading' => 20,
             'status' => 'active',
         ]);
@@ -126,4 +171,53 @@ test('meter reading sheet report keeps client meters together and scopes records
         ->assertTableColumnStateSet('number', 'MTR-001', $firstMeter)
         ->assertTableColumnStateSet('previous_reading_for_report', '21.7500', $firstMeter)
         ->assertTableColumnStateSet('previous_reading_for_report', '20.0000', $secondMeter);
+
+    $download = Livewire::test(ViewReport::class, ['report' => 'meter-reading-sheet'])
+        ->assertOk()
+        ->assertActionExists('downloadExcel')
+        ->assertActionHasLabel('downloadExcel', 'Скачать Excel')
+        ->callAction('downloadExcel')
+        ->assertFileDownloaded(
+            'meter-reading-sheet-'.$organization->getKey().'-'.today()->format('Y-m-d').'.xlsx',
+            contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        );
+
+    $rows = downloadedXlsxRows($download->effects['download']);
+
+    expect($rows[0])->toBe([
+        'Лицевой счёт',
+        'ФИО',
+        'Адрес',
+        'Кол. проживающих',
+        'Счётчик',
+        'Дата установки',
+        'Предыдущее показание',
+        'Показание',
+    ]);
+    expect(array_slice($rows[1], 0, 7))->toEqual([
+        '100001',
+        'Иванов Иван',
+        'Алмалинский, Абая, д. 10, кв. 5',
+        3,
+        'MTR-001',
+        '15.01.2024',
+        21.75,
+    ]);
+    expect(array_slice($rows[2], 0, 7))->toEqual([
+        '100001',
+        'Иванов Иван',
+        'Алмалинский, Абая, д. 10, кв. 5',
+        3,
+        'MTR-002',
+        '',
+        20,
+    ]);
+    expect(array_slice($rows[3], 0, 5))->toEqual([
+        '100002',
+        'Петров Петр',
+        '-',
+        $secondClient->residents_count,
+        'MTR-003',
+    ]);
+    expect(collect($rows)->flatten()->contains('MTR-OTHER'))->toBeFalse();
 });

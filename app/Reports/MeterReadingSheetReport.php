@@ -10,6 +10,16 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
+use OpenSpout\Common\Entity\Cell;
+use OpenSpout\Common\Entity\Cell\EmptyCell;
+use OpenSpout\Common\Entity\Cell\NumericCell;
+use OpenSpout\Common\Entity\Cell\StringCell;
+use OpenSpout\Common\Entity\Row;
+use OpenSpout\Common\Entity\Style\Color;
+use OpenSpout\Common\Entity\Style\Style;
+use OpenSpout\Writer\XLSX\Options;
+use OpenSpout\Writer\XLSX\Writer;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class MeterReadingSheetReport implements OrganizationReport
 {
@@ -72,6 +82,28 @@ class MeterReadingSheetReport implements OrganizationReport
             ->striped();
     }
 
+    public function downloadExcel(Organization $organization): StreamedResponse
+    {
+        return response()->streamDownload(
+            function () use ($organization): void {
+                $writer = new Writer($this->excelOptions());
+                $writer->openToFile('php://output');
+
+                $writer->addRow(new Row($this->excelHeadingCells()));
+
+                foreach ($this->query($organization)->lazy(500) as $meter) {
+                    $writer->addRow(new Row($this->excelCells($meter)));
+                }
+
+                $writer->close();
+            },
+            $this->excelFileName($organization),
+            [
+                'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            ],
+        );
+    }
+
     private function query(Organization $organization): Builder
     {
         return Meter::query()
@@ -113,5 +145,79 @@ class MeterReadingSheetReport implements OrganizationReport
         ])->filter(fn (?string $part): bool => filled($part));
 
         return $parts->isEmpty() ? '-' : $parts->implode(', ');
+    }
+
+    private function excelFileName(Organization $organization): string
+    {
+        return sprintf(
+            'meter-reading-sheet-%d-%s.xlsx',
+            $organization->getKey(),
+            today()->format('Y-m-d'),
+        );
+    }
+
+    private function excelOptions(): Options
+    {
+        $options = new Options;
+        $options->setColumnWidth(16, 1);
+        $options->setColumnWidth(28, 2);
+        $options->setColumnWidth(36, 3);
+        $options->setColumnWidth(18, 4);
+        $options->setColumnWidth(18, 5);
+        $options->setColumnWidth(18, 6);
+        $options->setColumnWidth(22, 7);
+        $options->setColumnWidth(18, 8);
+
+        return $options;
+    }
+
+    /**
+     * @return list<Cell>
+     */
+    private function excelHeadingCells(): array
+    {
+        $style = (new Style)
+            ->setFontBold()
+            ->setBackgroundColor(Color::rgb(229, 231, 235));
+
+        return array_map(
+            fn (string $heading): StringCell => new StringCell($heading, $style),
+            [
+                'Лицевой счёт',
+                'ФИО',
+                'Адрес',
+                'Кол. проживающих',
+                'Счётчик',
+                'Дата установки',
+                'Предыдущее показание',
+                'Показание',
+            ],
+        );
+    }
+
+    /**
+     * @return list<Cell>
+     */
+    private function excelCells(Meter $meter): array
+    {
+        $client = $meter->client;
+
+        return [
+            new StringCell((string) ($client?->account_number ?? ''), null),
+            new StringCell((string) ($client?->name ?? ''), null),
+            new StringCell($this->formatAddress($meter), (new Style)->setShouldWrapText()),
+            $client?->residents_count === null
+                ? new EmptyCell(null, null)
+                : new NumericCell($client->residents_count, null),
+            new StringCell((string) $meter->number, null),
+            new StringCell($meter->installed_on?->format('d.m.Y') ?? '', null),
+            new NumericCell($this->previousReading($meter), (new Style)->setFormat('0.0000')),
+            new StringCell('', null),
+        ];
+    }
+
+    private function previousReading(Meter $meter): float
+    {
+        return (float) ($meter->getAttribute('previous_reading_for_report') ?? $meter->initial_reading);
     }
 }

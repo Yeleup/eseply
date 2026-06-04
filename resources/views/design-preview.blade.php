@@ -172,6 +172,56 @@
                 </div>
             </section>
 
+            <section class="overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+                <div class="flex flex-col gap-4 border-b border-zinc-200 p-4 dark:border-zinc-800 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                        <p class="text-sm text-zinc-500 dark:text-zinc-400">Reports / XLSX export</p>
+                        <h2 class="text-base font-semibold">Ведомость снятия показаний</h2>
+                        <p class="mt-2 max-w-2xl text-sm text-zinc-500 dark:text-zinc-400">
+                            Header actions страницы отчёта: возврат к списку и скачивание Excel-файла.
+                        </p>
+                    </div>
+
+                    <div class="flex flex-wrap items-center gap-2">
+                        <button class="rounded-md border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-950">
+                            Все отчёты
+                        </button>
+                        <button class="rounded-md bg-emerald-700 px-3 py-2 text-sm font-medium text-white transition hover:bg-emerald-800 dark:bg-emerald-500 dark:text-zinc-950 dark:hover:bg-emerald-400">
+                            Скачать Excel
+                        </button>
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full min-w-240 text-left text-sm">
+                        <thead class="bg-zinc-100 text-xs font-semibold uppercase text-zinc-500 dark:bg-zinc-950 dark:text-zinc-400">
+                            <tr>
+                                <th class="px-4 py-3">Лицевой счёт</th>
+                                <th class="px-4 py-3">ФИО</th>
+                                <th class="px-4 py-3">Адрес</th>
+                                <th class="px-4 py-3">Прож.</th>
+                                <th class="px-4 py-3">Счётчик</th>
+                                <th class="px-4 py-3">Дата установки</th>
+                                <th class="px-4 py-3">Предыдущее</th>
+                                <th class="px-4 py-3">Показание</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-zinc-200 dark:divide-zinc-800">
+                            <tr>
+                                <td class="px-4 py-3 font-medium">100001</td>
+                                <td class="px-4 py-3">Иванов Иван</td>
+                                <td class="px-4 py-3 text-zinc-500 dark:text-zinc-400">Алмалинский, Абая, д. 10, кв. 5</td>
+                                <td class="px-4 py-3">3</td>
+                                <td class="px-4 py-3 font-medium">MTR-001</td>
+                                <td class="px-4 py-3 text-zinc-500 dark:text-zinc-400">15.01.2024</td>
+                                <td class="px-4 py-3 font-medium">21.7500</td>
+                                <td class="px-4 py-3 text-zinc-400 dark:text-zinc-600">пусто</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
             <section class="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_24rem]">
                 <div class="overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
                     <div class="flex flex-col gap-3 border-b border-zinc-200 p-4 dark:border-zinc-800 sm:flex-row sm:items-center sm:justify-between">

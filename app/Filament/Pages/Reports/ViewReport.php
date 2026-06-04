@@ -13,6 +13,7 @@ use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Table;
 use Illuminate\Contracts\Support\Htmlable;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ViewReport extends Page implements HasTable
 {
@@ -52,12 +53,26 @@ class ViewReport extends Page implements HasTable
         return $this->getReport()->table($table, $tenant);
     }
 
+    public function downloadExcel(): StreamedResponse
+    {
+        $tenant = Filament::getTenant();
+
+        abort_unless($tenant instanceof Organization, 404);
+
+        return $this->getReport()->downloadExcel($tenant);
+    }
+
     /**
      * @return array<int, Action>
      */
     protected function getHeaderActions(): array
     {
         return [
+            Action::make('downloadExcel')
+                ->label('Скачать Excel')
+                ->icon(Heroicon::OutlinedArrowDownTray)
+                ->color('success')
+                ->action(fn (): StreamedResponse => $this->downloadExcel()),
             Action::make('backToReports')
                 ->label('Все отчёты')
                 ->icon(Heroicon::OutlinedArrowLeft)

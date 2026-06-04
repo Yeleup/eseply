@@ -21,17 +21,20 @@ class ClientFactory extends Factory
     {
         return [
             'organization_id' => Organization::factory(),
-            'account_number' => fake()->unique()->numerify('######'),
+            'account_number' => null,
             'name' => fake()->name(),
+            'iin' => fake()->numerify('############'),
             'client_type' => ClientType::Individual->value,
             'phone' => fake()->phoneNumber(),
+            'contract' => 'Contract '.fake()->numerify('####'),
+            'technical_conditions' => null,
             'region_id' => null,
             'street_id' => null,
             'house' => null,
             'apartment' => null,
             'status' => 'active',
             'billing_type' => 'per_person',
-            'residents_count' => fake()->numberBetween(0, 6),
+            'residents_count' => fake()->numberBetween(1, 6),
             'fixed_amount' => 0,
             'note' => fake()->optional()->sentence(),
         ];

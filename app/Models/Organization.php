@@ -18,6 +18,13 @@ class Organization extends Model implements HasCurrentTenantLabel, HasName
     /** @use HasFactory<OrganizationFactory> */
     use HasFactory;
 
+    /**
+     * @var array<string, mixed>
+     */
+    protected $attributes = [
+        'next_client_account_number' => Client::FIRST_AUTOMATIC_ACCOUNT_NUMBER,
+    ];
+
     public function users(): BelongsToMany
     {
         return $this->belongsToMany(User::class)->withTimestamps();
@@ -86,5 +93,17 @@ class Organization extends Model implements HasCurrentTenantLabel, HasName
     public function getCurrentTenantLabel(): string
     {
         return 'Организация';
+    }
+
+    /**
+     * Get the attributes that should be cast.
+     *
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'next_client_account_number' => 'integer',
+        ];
     }
 }

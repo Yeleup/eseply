@@ -78,6 +78,48 @@ test('account number can repeat across organizations', function () {
     expect($client)->toBeInstanceOf(Client::class);
 });
 
+test('account number is generated separately inside each organization', function () {
+    $firstOrganization = Organization::factory()->create();
+    $secondOrganization = Organization::factory()->create();
+
+    $firstClient = Client::factory()->for($firstOrganization)->create();
+    $secondClient = Client::factory()->for($firstOrganization)->create();
+    $otherOrganizationClient = Client::factory()->for($secondOrganization)->create();
+
+    expect($firstClient->account_number)->toBe('100001')
+        ->and($secondClient->account_number)->toBe('100002')
+        ->and($otherOrganizationClient->account_number)->toBe('100001');
+});
+
+test('existing numeric account number advances the next generated account number', function () {
+    $organization = Organization::factory()->create();
+
+    Client::factory()->for($organization)->create([
+        'account_number' => '100010',
+    ]);
+
+    $client = Client::factory()->for($organization)->create();
+
+    expect($client->account_number)->toBe('100011');
+});
+
+test('existing account number cannot be changed after creation', function () {
+    $organization = Organization::factory()->create();
+    $client = Client::factory()->for($organization)->create([
+        'account_number' => '100010',
+    ]);
+
+    $client->account_number = '999999';
+    $client->save();
+
+    expect($client->refresh()->account_number)->toBe('100010');
+
+    $client->account_number = null;
+    $client->save();
+
+    expect($client->refresh()->account_number)->toBe('100010');
+});
+
 test('admin users can list only current tenant clients', function () {
     $organization = Organization::factory()->create();
     $currentTenantClient = Client::factory()->for($organization)->create();
@@ -107,13 +149,15 @@ test('admin users can create a client for the current tenant', function () {
 
     Livewire::test(CreateClient::class)
         ->fillForm([
-            'account_number' => '20001',
             'name' => 'Иванов Иван',
+            'iin' => '870101300123',
             'client_type' => ClientType::Individual->value,
             'billing_type' => 'per_person',
             'residents_count' => 3,
             'fixed_amount' => 0,
             'phone' => '+7 777 111 22 33',
+            'contract' => 'Договор №15',
+            'technical_conditions' => 'ТУ-2026-15',
             'region_id' => $region->getKey(),
             'street_id' => $street->getKey(),
             'house' => '10',
@@ -128,17 +172,144 @@ test('admin users can create a client for the current tenant', function () {
 
     expect(Client::query()
         ->whereBelongsTo($organization)
-        ->where('account_number', '20001')
+        ->where('account_number', '100001')
         ->where('name', 'Иванов Иван')
+        ->where('iin', '870101300123')
         ->whereBelongsTo($utilityService)
         ->where('client_type', ClientType::Individual->value)
         ->where('billing_type', 'per_person')
         ->where('residents_count', 3)
+        ->where('contract', 'Договор №15')
+        ->where('technical_conditions', 'ТУ-2026-15')
         ->whereBelongsTo($region)
         ->whereBelongsTo($street)
         ->where('house', '10')
         ->where('apartment', '15')
         ->exists())->toBeTrue();
+});
+
+test('admin client form ignores submitted account number', function () {
+    $organization = Organization::factory()->create();
+    UtilityService::factory()->for($organization)->create([
+        'name' => 'Водоснабжение',
+    ]);
+    $region = Region::factory()->for($organization)->create([
+        'name' => 'Алмалинский район',
+    ]);
+    $street = Street::factory()->for($region)->create([
+        'name' => 'Абая',
+    ]);
+
+    actingAsTenant($organization);
+
+    Livewire::test(CreateClient::class)
+        ->fillForm([
+            'account_number' => '999999',
+            'name' => 'Авто Абонент',
+            'iin' => '870101300789',
+            'client_type' => ClientType::Individual->value,
+            'billing_type' => 'per_person',
+            'residents_count' => 1,
+            'fixed_amount' => 0,
+            'phone' => '+7 777 333 44 55',
+            'contract' => 'Договор №18',
+            'region_id' => $region->getKey(),
+            'street_id' => $street->getKey(),
+            'status' => 'active',
+        ])
+        ->call('create')
+        ->assertHasNoFormErrors()
+        ->assertNotified()
+        ->assertRedirect();
+
+    expect(Client::query()
+        ->whereBelongsTo($organization)
+        ->where('account_number', '100001')
+        ->where('name', 'Авто Абонент')
+        ->exists())->toBeTrue();
+});
+
+test('client iin contract and phone are required client data fields', function () {
+    $organization = Organization::factory()->create();
+    UtilityService::factory()->for($organization)->create();
+    $region = Region::factory()->for($organization)->create();
+    $street = Street::factory()->for($region)->create();
+
+    actingAsTenant($organization);
+
+    Livewire::test(CreateClient::class)
+        ->fillForm([
+            'name' => 'Без реквизитов',
+            'iin' => null,
+            'client_type' => ClientType::Individual->value,
+            'billing_type' => 'per_person',
+            'residents_count' => 1,
+            'fixed_amount' => 0,
+            'phone' => null,
+            'contract' => null,
+            'region_id' => $region->getKey(),
+            'street_id' => $street->getKey(),
+            'status' => 'active',
+        ])
+        ->call('create')
+        ->assertHasFormErrors([
+            'iin' => 'required',
+            'phone' => 'required',
+            'contract' => 'required',
+        ]);
+});
+
+test('admin users cannot edit a client account number', function () {
+    $organization = Organization::factory()->create();
+    UtilityService::factory()->for($organization)->create([
+        'name' => 'Водоснабжение',
+    ]);
+    $region = Region::factory()->for($organization)->create([
+        'name' => 'Алмалинский район',
+    ]);
+    $street = Street::factory()->for($region)->create([
+        'name' => 'Абая',
+    ]);
+    $client = Client::factory()
+        ->for($organization)
+        ->for($region)
+        ->for($street)
+        ->create([
+            'account_number' => '100010',
+            'name' => 'Неизменяемый счёт',
+        ]);
+
+    actingAsTenant($organization);
+
+    Livewire::test(EditClient::class, [
+        'record' => $client->getRouteKey(),
+    ])
+        ->fillForm([
+            'account_number' => '999999',
+            'name' => 'Изменённое имя',
+            'iin' => '870101300456',
+            'client_type' => ClientType::Individual->value,
+            'billing_type' => 'per_person',
+            'residents_count' => 2,
+            'fixed_amount' => 0,
+            'phone' => '+7 777 333 44 55',
+            'contract' => 'Договор №20',
+            'technical_conditions' => 'ТУ-2026-20',
+            'region_id' => $region->getKey(),
+            'street_id' => $street->getKey(),
+            'status' => 'active',
+        ])
+        ->call('save')
+        ->assertHasNoFormErrors()
+        ->assertNotified();
+
+    $client->refresh();
+
+    expect($client->account_number)->toBe('100010')
+        ->and($client->name)->toBe('Изменённое имя')
+        ->and($client->iin)->toBe('870101300456')
+        ->and($client->contract)->toBe('Договор №20')
+        ->and($client->technical_conditions)->toBe('ТУ-2026-20');
 });
 
 test('client street must belong to the selected region', function () {
@@ -158,12 +329,13 @@ test('client street must belong to the selected region', function () {
 
     Livewire::test(CreateClient::class)
         ->fillForm([
-            'account_number' => '20002',
             'name' => 'Сидоров Сидор',
+            'iin' => '870101300321',
             'client_type' => ClientType::Individual->value,
             'billing_type' => 'per_person',
             'residents_count' => 1,
             'phone' => '+7 777 222 33 44',
+            'contract' => 'Договор №16',
             'region_id' => $selectedRegion->getKey(),
             'street_id' => $streetFromOtherRegion->getKey(),
             'status' => 'active',
@@ -173,7 +345,7 @@ test('client street must belong to the selected region', function () {
 
     expect(Client::query()
         ->whereBelongsTo($organization)
-        ->where('account_number', '20002')
+        ->where('name', 'Сидоров Сидор')
         ->exists())->toBeFalse();
 });
 
@@ -197,6 +369,65 @@ test('clients store billing settings', function () {
         ->and($client->fixed_amount)->toBe('12500.00');
 });
 
+test('client residents count is a required client data field', function () {
+    $organization = Organization::factory()->create();
+    UtilityService::factory()->for($organization)->create();
+    $region = Region::factory()->for($organization)->create();
+    $street = Street::factory()->for($region)->create();
+
+    actingAsTenant($organization);
+
+    Livewire::test(CreateClient::class)
+        ->fillForm([
+            'name' => 'Без количества',
+            'iin' => '870101300654',
+            'client_type' => ClientType::Individual->value,
+            'billing_type' => 'per_person',
+            'residents_count' => null,
+            'fixed_amount' => 0,
+            'phone' => '+7 777 444 55 66',
+            'contract' => 'Договор №17',
+            'region_id' => $region->getKey(),
+            'street_id' => $street->getKey(),
+            'status' => 'active',
+        ])
+        ->call('create')
+        ->assertHasFormErrors(['residents_count']);
+});
+
+test('client residents count defaults to one', function () {
+    $organization = Organization::factory()->create();
+    UtilityService::factory()->for($organization)->create();
+    $region = Region::factory()->for($organization)->create();
+    $street = Street::factory()->for($region)->create();
+
+    actingAsTenant($organization);
+
+    Livewire::test(CreateClient::class)
+        ->fillForm([
+            'name' => 'Один проживающий',
+            'iin' => '870101300987',
+            'client_type' => ClientType::Individual->value,
+            'billing_type' => 'per_person',
+            'fixed_amount' => 0,
+            'phone' => '+7 777 555 66 77',
+            'contract' => 'Договор №19',
+            'region_id' => $region->getKey(),
+            'street_id' => $street->getKey(),
+            'status' => 'active',
+        ])
+        ->call('create')
+        ->assertHasNoFormErrors()
+        ->assertNotified()
+        ->assertRedirect();
+
+    expect(Client::query()
+        ->whereBelongsTo($organization)
+        ->where('name', 'Один проживающий')
+        ->sole()
+        ->residents_count)->toBe(1);
+});
+
 test('client billing settings fields depend on billing type', function () {
     $organization = Organization::factory()->create();
 
@@ -213,38 +444,56 @@ test('client billing settings fields depend on billing type', function () {
         ->fillForm([
             'billing_type' => 'fixed',
         ])
-        ->assertFormFieldHidden('residents_count')
+        ->assertFormFieldVisible('residents_count')
         ->assertFormFieldVisible('fixed_amount')
         ->fillForm([
             'billing_type' => 'meter',
         ])
-        ->assertFormFieldHidden('residents_count')
+        ->assertFormFieldVisible('residents_count')
         ->assertFormFieldHidden('fixed_amount');
 });
 
-test('admin client form validates account number uniqueness inside current tenant', function () {
+test('admin client form ignores duplicate submitted account number', function () {
     $organization = Organization::factory()->create();
+    UtilityService::factory()->for($organization)->create();
+    $region = Region::factory()->for($organization)->create([
+        'name' => 'Алмалинский район',
+    ]);
+    $street = Street::factory()->for($region)->create([
+        'name' => 'Абая',
+    ]);
 
     Client::factory()->for($organization)->create([
-        'account_number' => '20001',
+        'account_number' => '100001',
     ]);
 
     actingAsTenant($organization);
 
     Livewire::test(CreateClient::class)
         ->fillForm([
-            'account_number' => '20001',
+            'account_number' => '100001',
             'name' => 'Петров Пётр',
+            'iin' => '870101300147',
             'client_type' => ClientType::Individual->value,
+            'billing_type' => 'per_person',
+            'residents_count' => 1,
+            'fixed_amount' => 0,
+            'phone' => '+7 777 666 77 88',
+            'contract' => 'Договор №21',
+            'region_id' => $region->getKey(),
+            'street_id' => $street->getKey(),
             'status' => 'active',
         ])
         ->call('create')
-        ->assertHasFormErrors(['account_number']);
+        ->assertHasNoFormErrors()
+        ->assertNotified()
+        ->assertRedirect();
 
-    expect(Client::query()
-        ->whereBelongsTo($organization)
-        ->where('account_number', '20001')
-        ->count())->toBe(1);
+    expect($organization->clients()->where('account_number', '100001')->count())->toBe(1)
+        ->and($organization->clients()
+            ->where('account_number', '100002')
+            ->where('name', 'Петров Пётр')
+            ->exists())->toBeTrue();
 });
 
 test('client resource shows accounting records as related tables', function () {

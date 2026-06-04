@@ -91,6 +91,69 @@
                 </div>
             </section>
 
+            <section class="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+                <div class="flex flex-col gap-3 border-b border-zinc-200 pb-4 dark:border-zinc-800 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                        <p class="text-sm text-zinc-500 dark:text-zinc-400">ClientResource</p>
+                        <h2 class="text-base font-semibold">Данные абонента</h2>
+                    </div>
+                    <span class="rounded-full bg-teal-100 px-2 py-1 text-xs font-medium text-teal-800 dark:bg-teal-900/40 dark:text-teal-200">
+                        Лицевой счёт readonly
+                    </span>
+                </div>
+
+                <form class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    <label class="flex flex-col gap-2 text-sm font-medium">
+                        Лицевой счёт
+                        <input readonly class="h-10 rounded-md border border-zinc-300 bg-zinc-100 px-3 text-sm font-normal text-zinc-600 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-400" value="100001">
+                    </label>
+
+                    <label class="flex flex-col gap-2 text-sm font-medium">
+                        ФИО / Наименование *
+                        <input class="h-10 rounded-md border border-zinc-300 bg-white px-3 text-sm font-normal text-zinc-950 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-50" value="Иванов Иван">
+                    </label>
+
+                    <label class="flex flex-col gap-2 text-sm font-medium">
+                        ИИН *
+                        <input class="h-10 rounded-md border border-zinc-300 bg-white px-3 text-sm font-normal text-zinc-950 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-50" value="870101300123">
+                    </label>
+
+                    <label class="flex flex-col gap-2 text-sm font-medium">
+                        Тип клиента *
+                        <select class="h-10 rounded-md border border-zinc-300 bg-white px-3 text-sm font-normal text-zinc-950 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-50">
+                            <option>Физ. лицо</option>
+                        </select>
+                    </label>
+
+                    <label class="flex flex-col gap-2 text-sm font-medium">
+                        Количество проживающих *
+                        <input type="number" min="1" class="h-10 rounded-md border border-zinc-300 bg-white px-3 text-sm font-normal text-zinc-950 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-50" value="1">
+                    </label>
+
+                    <label class="flex flex-col gap-2 text-sm font-medium">
+                        Статус *
+                        <select class="h-10 rounded-md border border-zinc-300 bg-white px-3 text-sm font-normal text-zinc-950 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-50">
+                            <option>Активный</option>
+                        </select>
+                    </label>
+
+                    <label class="flex flex-col gap-2 text-sm font-medium">
+                        Телефон *
+                        <input class="h-10 rounded-md border border-zinc-300 bg-white px-3 text-sm font-normal text-zinc-950 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-50" value="+7 777 111 22 33">
+                    </label>
+
+                    <label class="flex flex-col gap-2 text-sm font-medium">
+                        Договор *
+                        <input class="h-10 rounded-md border border-zinc-300 bg-white px-3 text-sm font-normal text-zinc-950 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-50" value="Договор №15">
+                    </label>
+
+                    <label class="flex flex-col gap-2 text-sm font-medium">
+                        Тех. условия
+                        <input class="h-10 rounded-md border border-zinc-300 bg-white px-3 text-sm font-normal text-zinc-950 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-50" value="ТУ-2026-15">
+                    </label>
+                </form>
+            </section>
+
             <section class="grid grid-cols-1 gap-4 md:grid-cols-3">
                 <div class="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
                     <p class="text-sm text-zinc-500 dark:text-zinc-400">Total</p>

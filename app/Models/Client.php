@@ -9,14 +9,18 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\DB;
 
 #[Fillable([
     'organization_id',
     'utility_service_id',
     'account_number',
     'name',
+    'iin',
     'client_type',
     'phone',
+    'contract',
+    'technical_conditions',
     'region_id',
     'street_id',
     'house',
@@ -32,6 +36,8 @@ class Client extends Model
     /** @use HasFactory<ClientFactory> */
     use HasFactory;
 
+    public const FIRST_AUTOMATIC_ACCOUNT_NUMBER = 100001;
+
     /**
      * @var array<string, mixed>
      */
@@ -39,7 +45,7 @@ class Client extends Model
         'client_type' => 'individual',
         'status' => 'active',
         'billing_type' => 'per_person',
-        'residents_count' => 0,
+        'residents_count' => 1,
         'fixed_amount' => 0,
     ];
 
@@ -96,14 +102,65 @@ class Client extends Model
     protected static function booted(): void
     {
         static::saving(function (Client $client): void {
+            if ($client->exists && $client->isDirty('account_number')) {
+                $client->account_number = $client->getOriginal('account_number');
+            }
+
             if (! $client->organization_id) {
                 return;
+            }
+
+            if (! $client->exists && blank($client->account_number)) {
+                $client->account_number = self::nextAccountNumberFor($client->organization_id);
             }
 
             $client->utility_service_id = UtilityService::query()
                 ->where('organization_id', $client->organization_id)
                 ->value('id');
+
+            self::advanceNextAccountNumber($client);
         });
+    }
+
+    private static function nextAccountNumberFor(int $organizationId): string
+    {
+        return DB::transaction(function () use ($organizationId): string {
+            $organization = Organization::query()
+                ->whereKey($organizationId)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $accountNumber = max(
+                self::FIRST_AUTOMATIC_ACCOUNT_NUMBER,
+                (int) $organization->next_client_account_number,
+            );
+
+            $organization->forceFill([
+                'next_client_account_number' => $accountNumber + 1,
+            ])->save();
+
+            return (string) $accountNumber;
+        }, attempts: 5);
+    }
+
+    private static function advanceNextAccountNumber(Client $client): void
+    {
+        if (blank($client->account_number) || ! ctype_digit((string) $client->account_number)) {
+            return;
+        }
+
+        $nextAccountNumber = ((int) $client->account_number) + 1;
+
+        if ($nextAccountNumber <= self::FIRST_AUTOMATIC_ACCOUNT_NUMBER) {
+            return;
+        }
+
+        Organization::query()
+            ->whereKey($client->organization_id)
+            ->where('next_client_account_number', '<', $nextAccountNumber)
+            ->update([
+                'next_client_account_number' => $nextAccountNumber,
+            ]);
     }
 
     /**

@@ -16,7 +16,10 @@ class CreateClient extends CreateRecord
      */
     protected function mutateFormDataBeforeCreate(array $data): array
     {
-        $data['utility_service_id'] = Filament::getTenant()?->utilityService?->getKey();
+        $tenant = Filament::getTenant();
+
+        $data['organization_id'] = $tenant?->getKey();
+        $data['utility_service_id'] = $tenant?->utilityService?->getKey();
 
         return $data;
     }

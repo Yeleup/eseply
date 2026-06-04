@@ -26,19 +26,31 @@ class ClientForm
                     ->schema([
                         TextInput::make('account_number')
                             ->label('Лицевой счёт')
-                            ->required()
+                            ->helperText('Присваивается автоматически при создании и не изменяется.')
                             ->maxLength(255)
-                            ->scopedUnique(),
+                            ->readOnly()
+                            ->saved(false)
+                            ->validatedWhenNotDehydrated(false),
                         TextInput::make('name')
                             ->label('ФИО / Наименование')
                             ->required()
                             ->maxLength(255),
+                        TextInput::make('iin')
+                            ->label('ИИН')
+                            ->required(),
                         Select::make('client_type')
                             ->label('Тип клиента')
                             ->options(ClientType::class)
                             ->default(ClientType::Individual->value)
                             ->required()
                             ->native(false),
+                        TextInput::make('residents_count')
+                            ->label('Количество проживающих')
+                            ->numeric()
+                            ->integer()
+                            ->minValue(1)
+                            ->default(1)
+                            ->required(),
                         Select::make('status')
                             ->label('Статус')
                             ->options([
@@ -51,7 +63,13 @@ class ClientForm
                         TextInput::make('phone')
                             ->label('Телефон')
                             ->tel()
+                            ->required()
                             ->maxLength(255),
+                        TextInput::make('contract')
+                            ->label('Договор')
+                            ->required(),
+                        TextInput::make('technical_conditions')
+                            ->label('Тех. условия'),
                         Select::make('region_id')
                             ->label('Регион')
                             ->options(fn (): array => Filament::getTenant()
@@ -108,14 +126,6 @@ class ClientForm
                             ->required()
                             ->live()
                             ->native(false),
-                        TextInput::make('residents_count')
-                            ->label('Количество проживающих')
-                            ->numeric()
-                            ->integer()
-                            ->minValue(0)
-                            ->default(0)
-                            ->required(fn (Get $get): bool => $get('billing_type') === 'per_person')
-                            ->visible(fn (Get $get): bool => $get('billing_type') === 'per_person'),
                         TextInput::make('fixed_amount')
                             ->label('Фиксированная сумма')
                             ->numeric()

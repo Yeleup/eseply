@@ -27,7 +27,9 @@ class Organization extends Model implements HasCurrentTenantLabel, HasName
 
     public function users(): BelongsToMany
     {
-        return $this->belongsToMany(User::class)->withTimestamps();
+        return $this->belongsToMany(User::class)
+            ->withPivot('role')
+            ->withTimestamps();
     }
 
     public function clients(): HasMany

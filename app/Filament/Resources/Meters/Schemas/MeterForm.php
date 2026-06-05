@@ -3,6 +3,8 @@
 namespace App\Filament\Resources\Meters\Schemas;
 
 use App\Models\Client;
+use App\Models\Organization;
+use App\Models\User;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
@@ -22,14 +24,23 @@ class MeterForm
                     ->schema([
                         Select::make('client_id')
                             ->label('Абонент')
-                            ->options(fn (): array => Filament::getTenant()
-                                ?->clients()
-                                ->orderBy('account_number')
-                                ->get()
-                                ->mapWithKeys(fn (Client $client): array => [
-                                    $client->id => "{$client->account_number} - {$client->name}",
-                                ])
-                                ->all() ?? [])
+                            ->options(function (): array {
+                                $tenant = Filament::getTenant();
+                                $user = auth()->user();
+
+                                if (! $tenant instanceof Organization || ! $user instanceof User) {
+                                    return [];
+                                }
+
+                                return Client::query()
+                                    ->visibleToOrganizationMember($user, $tenant)
+                                    ->orderBy('account_number')
+                                    ->get()
+                                    ->mapWithKeys(fn (Client $client): array => [
+                                        $client->id => "{$client->account_number} - {$client->name}",
+                                    ])
+                                    ->all();
+                            })
                             ->searchable()
                             ->preload()
                             ->required()

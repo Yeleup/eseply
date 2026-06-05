@@ -7,12 +7,14 @@ use App\Filament\Resources\MeterReadings\Pages\EditMeterReading;
 use App\Filament\Resources\MeterReadings\Pages\ListMeterReadings;
 use App\Filament\Resources\MeterReadings\Schemas\MeterReadingForm;
 use App\Filament\Resources\MeterReadings\Tables\MeterReadingsTable;
+use App\Filament\Support\OrganizationMemberAccess;
 use App\Models\MeterReading;
 use BackedEnum;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Model;
 use UnitEnum;
 
 class MeterReadingResource extends Resource
@@ -59,5 +61,43 @@ class MeterReadingResource extends Resource
             'create' => CreateMeterReading::route('/create'),
             'edit' => EditMeterReading::route('/{record}/edit'),
         ];
+    }
+
+    public static function canAccess(): bool
+    {
+        return OrganizationMemberAccess::canAccessTenant();
+    }
+
+    public static function canViewAny(): bool
+    {
+        return OrganizationMemberAccess::canAccessTenant();
+    }
+
+    public static function canCreate(): bool
+    {
+        return OrganizationMemberAccess::canAccessTenant();
+    }
+
+    public static function canView(Model $record): bool
+    {
+        return $record instanceof MeterReading
+            && OrganizationMemberAccess::canViewMeterReading($record);
+    }
+
+    public static function canEdit(Model $record): bool
+    {
+        return $record instanceof MeterReading
+            && OrganizationMemberAccess::canUpdateMeterReading($record);
+    }
+
+    public static function canDelete(Model $record): bool
+    {
+        return $record instanceof MeterReading
+            && OrganizationMemberAccess::canDeleteMeterReading($record);
+    }
+
+    public static function canDeleteAny(): bool
+    {
+        return OrganizationMemberAccess::canManageTenant();
     }
 }

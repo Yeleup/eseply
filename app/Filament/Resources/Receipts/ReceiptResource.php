@@ -5,6 +5,7 @@ namespace App\Filament\Resources\Receipts;
 use App\Filament\Resources\Receipts\Pages\ListReceipts;
 use App\Filament\Resources\Receipts\Pages\ViewReceipt;
 use App\Filament\Resources\Receipts\Tables\ReceiptsTable;
+use App\Filament\Support\OrganizationMemberAccess;
 use App\Models\Receipt;
 use BackedEnum;
 use Filament\Infolists\Components\TextEntry;
@@ -13,6 +14,7 @@ use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Model;
 use UnitEnum;
 
 class ReceiptResource extends Resource
@@ -119,5 +121,20 @@ class ReceiptResource extends Resource
             'index' => ListReceipts::route('/'),
             'view' => ViewReceipt::route('/{record}'),
         ];
+    }
+
+    public static function canAccess(): bool
+    {
+        return OrganizationMemberAccess::canManageTenant();
+    }
+
+    public static function canViewAny(): bool
+    {
+        return OrganizationMemberAccess::canManageTenant();
+    }
+
+    public static function canView(Model $record): bool
+    {
+        return OrganizationMemberAccess::canManageTenant();
     }
 }

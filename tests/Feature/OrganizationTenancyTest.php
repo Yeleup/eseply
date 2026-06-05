@@ -3,6 +3,7 @@
 use App\Filament\Pages\Tenancy\EditOrganizationProfile;
 use App\Filament\Pages\Tenancy\RegisterOrganization;
 use App\Filament\Pages\Tenancy\RelationManagers\RegionsRelationManager;
+use App\Filament\Pages\Tenancy\RelationManagers\UsersRelationManager;
 use App\Filament\Resources\Regions\Pages\EditRegion;
 use App\Filament\Resources\Regions\RegionResource;
 use App\Filament\Resources\Regions\RelationManagers\StreetsRelationManager;
@@ -11,9 +12,11 @@ use App\Models\Region;
 use App\Models\Street;
 use App\Models\User;
 use App\Models\UtilityService;
+use App\OrganizationMemberRole;
 use Filament\Facades\Filament;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 
 uses(RefreshDatabase::class);
@@ -72,6 +75,7 @@ test('tenant registration creates an organization and attaches the current user'
     expect($organization->name)
         ->toBe('ТОО Коммунальные услуги')
         ->and($user->organizations()->whereKey($organization)->exists())->toBeTrue()
+        ->and($user->organizationRole($organization))->toBe(OrganizationMemberRole::Operator)
         ->and($organization->utilityService->name)->toBe('Водоснабжение')
         ->and($organization->utilityService->unit_of_measurement)->toBe('м3');
 });
@@ -193,6 +197,87 @@ test('tenant profile manages organization regions', function () {
         ->assertHasNoTableActionErrors();
 
     expect($organization->regions()->where('name', 'Бостандыкский')->exists())->toBeTrue();
+});
+
+test('tenant profile manages organization users with controller responsibility areas', function () {
+    $organization = Organization::factory()->create();
+    $region = Region::factory()->for($organization)->create(['name' => 'Алмалинский']);
+    $street = Street::factory()->for($region)->create(['name' => 'Абая']);
+    $controller = User::factory()->create([
+        'name' => 'Контроллер района',
+        'email' => 'controller@example.com',
+    ]);
+
+    actingAsOrganizationTenant($organization);
+
+    Livewire::test(UsersRelationManager::class, [
+        'ownerRecord' => $organization,
+        'pageClass' => EditOrganizationProfile::class,
+    ])
+        ->assertOk()
+        ->assertCanNotSeeTableRecords([$controller])
+        ->callTableAction('attachUser', data: [
+            'user_id' => $controller->getKey(),
+            'role' => OrganizationMemberRole::Controller->value,
+            'region_ids' => [$region->getKey()],
+            'street_ids' => [$street->getKey()],
+        ])
+        ->assertHasNoTableActionErrors()
+        ->assertNotified();
+
+    expect($controller->organizationRole($organization))->toBe(OrganizationMemberRole::Controller)
+        ->and($controller->assignedRegionIdsForOrganization($organization))->toBe([(int) $region->getKey()])
+        ->and($controller->assignedStreetIdsForOrganization($organization))->toBe([(int) $street->getKey()]);
+
+    Livewire::test(UsersRelationManager::class, [
+        'ownerRecord' => $organization,
+        'pageClass' => EditOrganizationProfile::class,
+    ])
+        ->assertOk()
+        ->assertCanSeeTableRecords([$controller])
+        ->callTableAction('editAccess', $controller, data: [
+            'role' => OrganizationMemberRole::Operator->value,
+            'region_ids' => [$region->getKey()],
+            'street_ids' => [$street->getKey()],
+        ])
+        ->assertHasNoTableActionErrors()
+        ->assertNotified();
+
+    expect($controller->organizationRole($organization))->toBe(OrganizationMemberRole::Operator)
+        ->and($controller->assignedRegionIdsForOrganization($organization))->toBe([])
+        ->and($controller->assignedStreetIdsForOrganization($organization))->toBe([]);
+});
+
+test('tenant profile can create an organization user without controller areas for operator role', function () {
+    $organization = Organization::factory()->create();
+    $region = Region::factory()->for($organization)->create();
+    $street = Street::factory()->for($region)->create();
+
+    actingAsOrganizationTenant($organization);
+
+    Livewire::test(UsersRelationManager::class, [
+        'ownerRecord' => $organization,
+        'pageClass' => EditOrganizationProfile::class,
+    ])
+        ->assertOk()
+        ->callTableAction('createUser', data: [
+            'name' => 'Новый оператор',
+            'email' => 'new-operator@example.com',
+            'password' => 'password-secret',
+            'role' => OrganizationMemberRole::Operator->value,
+            'region_ids' => [$region->getKey()],
+            'street_ids' => [$street->getKey()],
+        ])
+        ->assertHasNoTableActionErrors()
+        ->assertNotified();
+
+    $user = User::query()->where('email', 'new-operator@example.com')->sole();
+
+    expect($user->organizationRole($organization))->toBe(OrganizationMemberRole::Operator)
+        ->and($user->assignedRegionIdsForOrganization($organization))->toBe([])
+        ->and($user->assignedStreetIdsForOrganization($organization))->toBe([])
+        ->and($user->password)->not->toBe('password-secret')
+        ->and(DB::table('organization_user')->where('organization_id', $organization->getKey())->where('user_id', $user->getKey())->exists())->toBeTrue();
 });
 
 test('region resource manages streets as a related table', function () {

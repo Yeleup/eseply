@@ -4,6 +4,7 @@ namespace App\Filament\Pages\Tenancy;
 
 use App\Models\Organization;
 use App\Models\User;
+use App\OrganizationMemberRole;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Pages\Tenancy\RegisterTenant;
@@ -86,7 +87,9 @@ class RegisterOrganization extends RegisterTenant
 
         $organization->utilityService()->create($utilityServiceData);
 
-        $organization->users()->attach($user);
+        $organization->users()->attach($user, [
+            'role' => OrganizationMemberRole::Operator->value,
+        ]);
 
         return $organization;
     }

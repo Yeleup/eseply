@@ -2,12 +2,17 @@
 
 namespace App\Filament\Resources\Meters\RelationManagers;
 
+use App\Filament\Support\OrganizationMemberAccess;
+use App\Models\Meter;
 use App\Models\MeterReading;
+use App\Models\Organization;
+use App\Models\User;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
+use Filament\Facades\Filament;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
@@ -77,7 +82,15 @@ class ReadingsRelationManager extends RelationManager
     {
         return $table
             ->recordTitleAttribute('period')
-            ->modifyQueryUsing(fn (Builder $query): Builder => $query->orderByDesc('period'))
+            ->modifyQueryUsing(function (Builder $query): Builder {
+                $query->orderByDesc('period');
+
+                if ($this->canAccessOwnerRecord()) {
+                    return $query;
+                }
+
+                return $query->whereRaw('1 = 0');
+            })
             ->columns([
                 TextColumn::make('period')
                     ->label('Период')
@@ -106,7 +119,10 @@ class ReadingsRelationManager extends RelationManager
             ])
             ->headerActions([
                 CreateAction::make()
+                    ->visible(fn (): bool => $this->canCreateReadingForOwner())
                     ->mutateDataUsing(function (array $data): array {
+                        abort_unless($this->canCreateReadingForOwner(), 403);
+
                         $data['previous_reading'] = $this->previousReadingForPeriod($data['period'] ?? null);
 
                         return $data;
@@ -114,16 +130,21 @@ class ReadingsRelationManager extends RelationManager
             ])
             ->recordActions([
                 EditAction::make()
+                    ->visible(fn (): bool => $this->canCreateReadingForOwner())
                     ->mutateDataUsing(function (array $data): array {
+                        abort_unless($this->canCreateReadingForOwner(), 403);
+
                         $data['previous_reading'] = $this->previousReadingForPeriod($data['period'] ?? null);
 
                         return $data;
                     }),
-                DeleteAction::make(),
+                DeleteAction::make()
+                    ->visible(fn (MeterReading $record): bool => OrganizationMemberAccess::canDeleteMeterReading($record)),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([
-                    DeleteBulkAction::make(),
+                    DeleteBulkAction::make()
+                        ->visible(fn (): bool => OrganizationMemberAccess::canManageTenant()),
                 ]),
             ]);
     }
@@ -134,5 +155,22 @@ class ReadingsRelationManager extends RelationManager
             $this->ownerRecord->getKey(),
             $period,
         ) ?? 0;
+    }
+
+    private function canAccessOwnerRecord(): bool
+    {
+        $tenant = Filament::getTenant();
+        $user = auth()->user();
+
+        return $this->ownerRecord instanceof Meter
+            && $tenant instanceof Organization
+            && $user instanceof User
+            && $user->canAccessMeterInOrganization($this->ownerRecord, $tenant);
+    }
+
+    private function canCreateReadingForOwner(): bool
+    {
+        return $this->ownerRecord instanceof Meter
+            && OrganizationMemberAccess::canCreateMeterReadingForMeter($this->ownerRecord);
     }
 }

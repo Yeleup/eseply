@@ -8,12 +8,14 @@ use App\Filament\Resources\Meters\Pages\ListMeters;
 use App\Filament\Resources\Meters\RelationManagers\ReadingsRelationManager;
 use App\Filament\Resources\Meters\Schemas\MeterForm;
 use App\Filament\Resources\Meters\Tables\MetersTable;
+use App\Filament\Support\OrganizationMemberAccess;
 use App\Models\Meter;
 use BackedEnum;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Model;
 use UnitEnum;
 
 class MeterResource extends Resource
@@ -60,5 +62,43 @@ class MeterResource extends Resource
             'create' => CreateMeter::route('/create'),
             'edit' => EditMeter::route('/{record}/edit'),
         ];
+    }
+
+    public static function canAccess(): bool
+    {
+        return OrganizationMemberAccess::canAccessTenant();
+    }
+
+    public static function canViewAny(): bool
+    {
+        return OrganizationMemberAccess::canAccessTenant();
+    }
+
+    public static function canCreate(): bool
+    {
+        return OrganizationMemberAccess::canCreateMeters();
+    }
+
+    public static function canView(Model $record): bool
+    {
+        return $record instanceof Meter
+            && OrganizationMemberAccess::canViewMeter($record);
+    }
+
+    public static function canEdit(Model $record): bool
+    {
+        return $record instanceof Meter
+            && OrganizationMemberAccess::canManageMeter($record);
+    }
+
+    public static function canDelete(Model $record): bool
+    {
+        return $record instanceof Meter
+            && OrganizationMemberAccess::canDeleteMeter($record);
+    }
+
+    public static function canDeleteAny(): bool
+    {
+        return OrganizationMemberAccess::canManageTenant();
     }
 }

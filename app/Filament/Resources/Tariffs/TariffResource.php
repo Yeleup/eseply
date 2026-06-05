@@ -7,12 +7,14 @@ use App\Filament\Resources\Tariffs\Pages\EditTariff;
 use App\Filament\Resources\Tariffs\Pages\ListTariffs;
 use App\Filament\Resources\Tariffs\Schemas\TariffForm;
 use App\Filament\Resources\Tariffs\Tables\TariffsTable;
+use App\Filament\Support\OrganizationMemberAccess;
 use App\Models\Tariff;
 use BackedEnum;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Model;
 use UnitEnum;
 
 class TariffResource extends Resource
@@ -55,5 +57,35 @@ class TariffResource extends Resource
             'create' => CreateTariff::route('/create'),
             'edit' => EditTariff::route('/{record}/edit'),
         ];
+    }
+
+    public static function canAccess(): bool
+    {
+        return OrganizationMemberAccess::canManageTenant();
+    }
+
+    public static function canViewAny(): bool
+    {
+        return OrganizationMemberAccess::canManageTenant();
+    }
+
+    public static function canCreate(): bool
+    {
+        return OrganizationMemberAccess::canManageTenant();
+    }
+
+    public static function canEdit(Model $record): bool
+    {
+        return OrganizationMemberAccess::canManageTenant();
+    }
+
+    public static function canDelete(Model $record): bool
+    {
+        return OrganizationMemberAccess::canManageTenant();
+    }
+
+    public static function canDeleteAny(): bool
+    {
+        return OrganizationMemberAccess::canManageTenant();
     }
 }

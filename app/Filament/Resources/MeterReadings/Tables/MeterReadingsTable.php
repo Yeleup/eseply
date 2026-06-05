@@ -2,6 +2,11 @@
 
 namespace App\Filament\Resources\MeterReadings\Tables;
 
+use App\Filament\Resources\MeterReadings\MeterReadingResource;
+use App\Models\Meter;
+use App\Models\MeterReading;
+use App\Models\Organization;
+use App\Models\User;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
@@ -16,13 +21,24 @@ class MeterReadingsTable
     public static function configure(Table $table): Table
     {
         return $table
-            ->modifyQueryUsing(fn (Builder $query): Builder => $query
-                ->with([
-                    'client',
-                    'meter',
-                    'utilityService',
-                ])
-                ->orderByDesc('period'))
+            ->modifyQueryUsing(function (Builder $query): Builder {
+                $query
+                    ->with([
+                        'client',
+                        'meter',
+                        'utilityService',
+                    ])
+                    ->orderByDesc('period');
+
+                $tenant = Filament::getTenant();
+                $user = auth()->user();
+
+                if ($tenant instanceof Organization && $user instanceof User) {
+                    return $query->visibleToOrganizationMember($user, $tenant);
+                }
+
+                return $query->whereRaw('1 = 0');
+            })
             ->columns([
                 TextColumn::make('period')
                     ->label('Период')
@@ -67,25 +83,45 @@ class MeterReadingsTable
             ->filters([
                 SelectFilter::make('period')
                     ->label('Период')
-                    ->options(fn (): array => Filament::getTenant()
-                        ?->meterReadings()
-                        ->orderByDesc('period')
-                        ->pluck('period', 'period')
-                        ->all() ?? []),
+                    ->options(function (): array {
+                        $tenant = Filament::getTenant();
+                        $user = auth()->user();
+
+                        if (! $tenant instanceof Organization || ! $user instanceof User) {
+                            return [];
+                        }
+
+                        return MeterReading::query()
+                            ->visibleToOrganizationMember($user, $tenant)
+                            ->orderByDesc('period')
+                            ->pluck('period', 'period')
+                            ->all();
+                    }),
                 SelectFilter::make('meter_id')
                     ->label('Счётчик')
-                    ->options(fn (): array => Filament::getTenant()
-                        ?->meters()
-                        ->orderBy('number')
-                        ->pluck('number', 'id')
-                        ->all() ?? []),
+                    ->options(function (): array {
+                        $tenant = Filament::getTenant();
+                        $user = auth()->user();
+
+                        if (! $tenant instanceof Organization || ! $user instanceof User) {
+                            return [];
+                        }
+
+                        return Meter::query()
+                            ->visibleToOrganizationMember($user, $tenant)
+                            ->orderBy('number')
+                            ->pluck('number', 'id')
+                            ->all();
+                    }),
             ])
             ->recordActions([
-                EditAction::make(),
+                EditAction::make()
+                    ->visible(fn (MeterReading $record): bool => MeterReadingResource::canEdit($record)),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([
-                    DeleteBulkAction::make(),
+                    DeleteBulkAction::make()
+                        ->visible(fn (): bool => MeterReadingResource::canDeleteAny()),
                 ]),
             ]);
     }

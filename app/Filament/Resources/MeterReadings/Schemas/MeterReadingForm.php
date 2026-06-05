@@ -4,6 +4,8 @@ namespace App\Filament\Resources\MeterReadings\Schemas;
 
 use App\Models\Meter;
 use App\Models\MeterReading;
+use App\Models\Organization;
+use App\Models\User;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
@@ -25,15 +27,24 @@ class MeterReadingForm
                     ->schema([
                         Select::make('meter_id')
                             ->label('Счётчик')
-                            ->options(fn (): array => Filament::getTenant()
-                                ?->meters()
-                                ->with('client')
-                                ->orderBy('number')
-                                ->get()
-                                ->mapWithKeys(fn (Meter $meter): array => [
-                                    $meter->id => "{$meter->number} - {$meter->client?->account_number}",
-                                ])
-                                ->all() ?? [])
+                            ->options(function (): array {
+                                $tenant = Filament::getTenant();
+                                $user = auth()->user();
+
+                                if (! $tenant instanceof Organization || ! $user instanceof User) {
+                                    return [];
+                                }
+
+                                return Meter::query()
+                                    ->visibleToOrganizationMember($user, $tenant)
+                                    ->with('client')
+                                    ->orderBy('number')
+                                    ->get()
+                                    ->mapWithKeys(fn (Meter $meter): array => [
+                                        $meter->id => "{$meter->number} - {$meter->client?->account_number}",
+                                    ])
+                                    ->all();
+                            })
                             ->searchable()
                             ->preload()
                             ->required()

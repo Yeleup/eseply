@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Actions\BuildClientCardViewData;
 use App\Models\Client;
+use App\Models\Organization;
+use App\Models\User;
 use Filament\Facades\Filament;
 use Illuminate\Http\Response;
 
@@ -12,11 +14,13 @@ class ClientCardController extends Controller
     public function __invoke(string $tenantKey, Client $client, BuildClientCardViewData $buildClientCardViewData): Response
     {
         $tenant = Filament::getTenant();
+        $user = auth()->user();
 
         abort_unless(
-            $tenant
+            $tenant instanceof Organization
+                && $user instanceof User
                 && (string) $tenant->getRouteKey() === $tenantKey
-                && (int) $client->organization_id === (int) $tenant->getKey(),
+                && $user->canAccessClientInOrganization($client, $tenant),
             404,
         );
 

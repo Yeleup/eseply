@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Regions\RelationManagers;
 
+use App\Filament\Support\OrganizationMemberAccess;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
@@ -9,11 +10,11 @@ use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Forms\Components\TextInput;
 use Filament\Resources\RelationManagers\RelationManager;
-use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Validation\Rules\Unique;
 
 class StreetsRelationManager extends RelationManager
@@ -25,6 +26,19 @@ class StreetsRelationManager extends RelationManager
     protected static ?string $modelLabel = 'улица';
 
     protected static ?string $pluralModelLabel = 'улицы';
+
+    public static function canViewForRecord(Model $ownerRecord, string $pageClass): bool
+    {
+        return OrganizationMemberAccess::canManageTenant()
+            && parent::canViewForRecord($ownerRecord, $pageClass);
+    }
+
+    public function mount(): void
+    {
+        abort_unless(static::canViewForRecord($this->ownerRecord, $this->pageClass ?? static::class), 403);
+
+        parent::mount();
+    }
 
     public function form(Schema $schema): Schema
     {

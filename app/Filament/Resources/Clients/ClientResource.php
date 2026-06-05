@@ -12,12 +12,14 @@ use App\Filament\Resources\Clients\RelationManagers\PaymentsRelationManager;
 use App\Filament\Resources\Clients\RelationManagers\ReceiptsRelationManager;
 use App\Filament\Resources\Clients\Schemas\ClientForm;
 use App\Filament\Resources\Clients\Tables\ClientsTable;
+use App\Filament\Support\OrganizationMemberAccess;
 use App\Models\Client;
 use BackedEnum;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Model;
 use UnitEnum;
 
 class ClientResource extends Resource
@@ -50,6 +52,12 @@ class ClientResource extends Resource
 
     public static function getRelations(): array
     {
+        if (OrganizationMemberAccess::canAccessTenant() && ! OrganizationMemberAccess::canManageTenant()) {
+            return [
+                MetersRelationManager::class,
+            ];
+        }
+
         return [
             MetersRelationManager::class,
             PaymentsRelationManager::class,
@@ -66,5 +74,43 @@ class ClientResource extends Resource
             'create' => CreateClient::route('/create'),
             'edit' => EditClient::route('/{record}/edit'),
         ];
+    }
+
+    public static function canAccess(): bool
+    {
+        return OrganizationMemberAccess::canAccessTenant();
+    }
+
+    public static function canViewAny(): bool
+    {
+        return OrganizationMemberAccess::canAccessTenant();
+    }
+
+    public static function canCreate(): bool
+    {
+        return OrganizationMemberAccess::canCreateClients();
+    }
+
+    public static function canView(Model $record): bool
+    {
+        return $record instanceof Client
+            && OrganizationMemberAccess::canViewClient($record);
+    }
+
+    public static function canEdit(Model $record): bool
+    {
+        return $record instanceof Client
+            && OrganizationMemberAccess::canManageClient($record);
+    }
+
+    public static function canDelete(Model $record): bool
+    {
+        return $record instanceof Client
+            && OrganizationMemberAccess::canDeleteClient($record);
+    }
+
+    public static function canDeleteAny(): bool
+    {
+        return OrganizationMemberAccess::canManageTenant();
     }
 }

@@ -3,9 +3,15 @@
 namespace App\Filament\Resources\Clients\Tables;
 
 use App\ClientType;
+use App\Filament\Resources\Clients\ClientResource;
+use App\Models\Client;
+use App\Models\Organization;
+use App\Models\User;
+use Filament\Actions\Action;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
+use Filament\Facades\Filament;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
@@ -16,11 +22,22 @@ class ClientsTable
     public static function configure(Table $table): Table
     {
         return $table
-            ->modifyQueryUsing(fn (Builder $query): Builder => $query->with([
-                'region',
-                'street',
-                'utilityService',
-            ]))
+            ->modifyQueryUsing(function (Builder $query): Builder {
+                $query->with([
+                    'region',
+                    'street',
+                    'utilityService',
+                ]);
+
+                $tenant = Filament::getTenant();
+                $user = auth()->user();
+
+                if ($tenant instanceof Organization && $user instanceof User) {
+                    return $query->visibleToOrganizationMember($user, $tenant);
+                }
+
+                return $query->whereRaw('1 = 0');
+            })
             ->columns([
                 TextColumn::make('account_number')
                     ->label('Лицевой счёт')
@@ -110,11 +127,17 @@ class ClientsTable
                     ]),
             ])
             ->recordActions([
-                EditAction::make(),
+                Action::make('open')
+                    ->label('Открыть')
+                    ->url(fn (Client $record): string => ClientResource::getUrl('edit', ['record' => $record]))
+                    ->visible(fn (Client $record): bool => ClientResource::canView($record) && ! ClientResource::canEdit($record)),
+                EditAction::make()
+                    ->visible(fn (Client $record): bool => ClientResource::canEdit($record)),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([
-                    DeleteBulkAction::make(),
+                    DeleteBulkAction::make()
+                        ->visible(fn (): bool => ClientResource::canDeleteAny()),
                 ]),
             ]);
     }

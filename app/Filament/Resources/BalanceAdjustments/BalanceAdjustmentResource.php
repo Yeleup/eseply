@@ -7,12 +7,14 @@ use App\Filament\Resources\BalanceAdjustments\Pages\EditBalanceAdjustment;
 use App\Filament\Resources\BalanceAdjustments\Pages\ListBalanceAdjustments;
 use App\Filament\Resources\BalanceAdjustments\Schemas\BalanceAdjustmentForm;
 use App\Filament\Resources\BalanceAdjustments\Tables\BalanceAdjustmentsTable;
+use App\Filament\Support\OrganizationMemberAccess;
 use App\Models\BalanceAdjustment;
 use BackedEnum;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Model;
 use UnitEnum;
 
 class BalanceAdjustmentResource extends Resource
@@ -59,5 +61,35 @@ class BalanceAdjustmentResource extends Resource
             'create' => CreateBalanceAdjustment::route('/create'),
             'edit' => EditBalanceAdjustment::route('/{record}/edit'),
         ];
+    }
+
+    public static function canAccess(): bool
+    {
+        return OrganizationMemberAccess::canManageTenant();
+    }
+
+    public static function canViewAny(): bool
+    {
+        return OrganizationMemberAccess::canManageTenant();
+    }
+
+    public static function canCreate(): bool
+    {
+        return OrganizationMemberAccess::canManageTenant();
+    }
+
+    public static function canEdit(Model $record): bool
+    {
+        return OrganizationMemberAccess::canManageTenant();
+    }
+
+    public static function canDelete(Model $record): bool
+    {
+        return OrganizationMemberAccess::canManageTenant();
+    }
+
+    public static function canDeleteAny(): bool
+    {
+        return OrganizationMemberAccess::canManageTenant();
     }
 }

@@ -3,6 +3,7 @@
 namespace App\Filament\Pages\Reports;
 
 use App\Models\Organization;
+use App\Models\User;
 use App\Reports\Contracts\OrganizationReport;
 use App\Reports\ReportRegistry;
 use Filament\Actions\Action;
@@ -47,19 +48,23 @@ class ViewReport extends Page implements HasTable
     public function table(Table $table): Table
     {
         $tenant = Filament::getTenant();
+        $user = auth()->user();
 
         abort_unless($tenant instanceof Organization, 404);
+        abort_unless($user instanceof User, 403);
 
-        return $this->getReport()->table($table, $tenant);
+        return $this->getReport()->table($table, $tenant, $user);
     }
 
     public function downloadExcel(): StreamedResponse
     {
         $tenant = Filament::getTenant();
+        $user = auth()->user();
 
         abort_unless($tenant instanceof Organization, 404);
+        abort_unless($user instanceof User, 403);
 
-        return $this->getReport()->downloadExcel($tenant);
+        return $this->getReport()->downloadExcel($tenant, $user);
     }
 
     /**

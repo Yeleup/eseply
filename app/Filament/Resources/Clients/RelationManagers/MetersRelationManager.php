@@ -3,14 +3,19 @@
 namespace App\Filament\Resources\Clients\RelationManagers;
 
 use App\Filament\Resources\Meters\MeterResource;
+use App\Filament\Support\OrganizationMemberAccess;
+use App\Models\Client;
 use App\Models\Meter;
 use App\Models\MeterReading;
+use App\Models\Organization;
+use App\Models\User;
 use Filament\Actions\Action;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
+use Filament\Facades\Filament;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
@@ -68,9 +73,17 @@ class MetersRelationManager extends RelationManager
     {
         return $table
             ->recordTitleAttribute('number')
-            ->modifyQueryUsing(fn (Builder $query): Builder => $query
-                ->with('utilityService')
-                ->orderBy('number'))
+            ->modifyQueryUsing(function (Builder $query): Builder {
+                $query
+                    ->with('utilityService')
+                    ->orderBy('number');
+
+                if ($this->canAccessOwnerRecord()) {
+                    return $query;
+                }
+
+                return $query->whereRaw('1 = 0');
+            })
             ->columns([
                 TextColumn::make('number')
                     ->label('Номер')
@@ -121,7 +134,10 @@ class MetersRelationManager extends RelationManager
             ])
             ->headerActions([
                 CreateAction::make()
+                    ->visible(fn (): bool => $this->canCreateMeterForOwner())
                     ->mutateDataUsing(function (array $data): array {
+                        abort_unless($this->canCreateMeterForOwner(), 403);
+
                         $data['organization_id'] = $this->ownerRecord->organization_id;
                         $data['utility_service_id'] = $this->ownerRecord->utility_service_id;
 
@@ -140,7 +156,10 @@ class MetersRelationManager extends RelationManager
                     ->modalSubmitActionLabel('Добавить')
                     ->successNotificationTitle('Показание добавлено')
                     ->schema(fn (Meter $record): array => $this->readingFormComponents($record))
+                    ->visible(fn (Meter $record): bool => $this->canAddReadingForMeter($record))
                     ->action(function (Meter $record, array $data): void {
+                        abort_unless($this->canAddReadingForMeter($record), 403);
+
                         $record->readings()->create([
                             'period' => $data['period'],
                             'previous_reading' => $this->previousReadingForMeterAndPeriod($record, $data['period'] ?? null),
@@ -156,8 +175,10 @@ class MetersRelationManager extends RelationManager
                     ->modalHeading('Отправить счётчик в архив?')
                     ->modalDescription('Дата снятия будет проставлена сегодняшней датой.')
                     ->modalSubmitActionLabel('Отправить в архив')
-                    ->visible(fn (Meter $record): bool => ! $record->isArchived())
+                    ->visible(fn (Meter $record): bool => ! $record->isArchived() && $this->canManageMeter($record))
                     ->action(function (Meter $record): void {
+                        abort_unless($this->canManageMeter($record), 403);
+
                         $record->archive();
                     }),
                 Action::make('restoreFromArchive')
@@ -167,16 +188,21 @@ class MetersRelationManager extends RelationManager
                     ->modalHeading('Вывести счётчик из архива?')
                     ->modalDescription('Дата снятия будет очищена, счётчик снова станет активным.')
                     ->modalSubmitActionLabel('Вывести из архива')
-                    ->visible(fn (Meter $record): bool => $record->isArchived())
+                    ->visible(fn (Meter $record): bool => $record->isArchived() && $this->canManageMeter($record))
                     ->action(function (Meter $record): void {
+                        abort_unless($this->canManageMeter($record), 403);
+
                         $record->restoreFromArchive();
                     }),
-                EditAction::make(),
-                DeleteAction::make(),
+                EditAction::make()
+                    ->visible(fn (Meter $record): bool => $this->canManageMeter($record)),
+                DeleteAction::make()
+                    ->visible(fn (Meter $record): bool => $this->canManageMeter($record)),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([
-                    DeleteBulkAction::make(),
+                    DeleteBulkAction::make()
+                        ->visible(fn (): bool => OrganizationMemberAccess::canManageTenant()),
                 ]),
             ]);
     }
@@ -229,5 +255,32 @@ class MetersRelationManager extends RelationManager
     protected function previousReadingForMeterAndPeriod(Meter $meter, mixed $period): float
     {
         return MeterReading::previousReadingFor($meter->getKey(), $period) ?? 0;
+    }
+
+    private function canAccessOwnerRecord(): bool
+    {
+        $tenant = Filament::getTenant();
+        $user = auth()->user();
+
+        return $this->ownerRecord instanceof Client
+            && $tenant instanceof Organization
+            && $user instanceof User
+            && $user->canAccessClientInOrganization($this->ownerRecord, $tenant);
+    }
+
+    private function canCreateMeterForOwner(): bool
+    {
+        return $this->canAccessOwnerRecord()
+            && OrganizationMemberAccess::canCreateMeters();
+    }
+
+    private function canManageMeter(Meter $meter): bool
+    {
+        return OrganizationMemberAccess::canManageMeter($meter);
+    }
+
+    private function canAddReadingForMeter(Meter $meter): bool
+    {
+        return OrganizationMemberAccess::canCreateMeterReadingForMeter($meter);
     }
 }

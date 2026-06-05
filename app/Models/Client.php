@@ -5,6 +5,7 @@ namespace App\Models;
 use App\ClientType;
 use Database\Factories\ClientFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -99,6 +100,48 @@ class Client extends Model
         return $this->hasMany(Receipt::class);
     }
 
+    /**
+     * @param  Builder<Client>  $query
+     * @return Builder<Client>
+     */
+    public function scopeVisibleToOrganizationMember(Builder $query, User $user, Organization|int|string|null $organization): Builder
+    {
+        $organizationId = self::organizationId($organization);
+
+        if ($organizationId === null) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        $query->where($query->getModel()->qualifyColumn('organization_id'), $organizationId);
+
+        if ($user->isOrganizationOperator($organizationId)) {
+            return $query;
+        }
+
+        if (! $user->isOrganizationController($organizationId)) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        $regionIds = $user->assignedRegionIdsForOrganization($organizationId);
+        $streetIds = $user->assignedStreetIdsForOrganization($organizationId);
+
+        if ($regionIds === [] && $streetIds === []) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return $query->where(function (Builder $query) use ($regionIds, $streetIds): void {
+            if ($regionIds !== []) {
+                $query->whereIn($query->getModel()->qualifyColumn('region_id'), $regionIds);
+            }
+
+            if ($streetIds !== []) {
+                $method = $regionIds === [] ? 'whereIn' : 'orWhereIn';
+
+                $query->{$method}($query->getModel()->qualifyColumn('street_id'), $streetIds);
+            }
+        });
+    }
+
     protected static function booted(): void
     {
         static::saving(function (Client $client): void {
@@ -175,5 +218,22 @@ class Client extends Model
             'residents_count' => 'integer',
             'fixed_amount' => 'decimal:2',
         ];
+    }
+
+    private static function organizationId(Organization|int|string|null $organization): ?int
+    {
+        if ($organization instanceof Organization) {
+            return (int) $organization->getKey();
+        }
+
+        if (is_int($organization)) {
+            return $organization;
+        }
+
+        if (is_string($organization) && ctype_digit($organization)) {
+            return (int) $organization;
+        }
+
+        return null;
     }
 }

@@ -5,6 +5,7 @@ namespace App\Reports;
 use App\Models\Meter;
 use App\Models\MeterReading;
 use App\Models\Organization;
+use App\Models\User;
 use App\Reports\Contracts\OrganizationReport;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
@@ -38,10 +39,10 @@ class MeterReadingSheetReport implements OrganizationReport
         return 'Активные счётчики активных абонентов выбранной организации. Если у абонента несколько счётчиков, они выводятся соседними строками.';
     }
 
-    public function table(Table $table, Organization $organization): Table
+    public function table(Table $table, Organization $organization, User $user): Table
     {
         return $table
-            ->query($this->query($organization))
+            ->query($this->query($organization, $user))
             ->columns([
                 TextColumn::make('client.account_number')
                     ->label('Лицевой счёт')
@@ -82,16 +83,16 @@ class MeterReadingSheetReport implements OrganizationReport
             ->striped();
     }
 
-    public function downloadExcel(Organization $organization): StreamedResponse
+    public function downloadExcel(Organization $organization, User $user): StreamedResponse
     {
         return response()->streamDownload(
-            function () use ($organization): void {
+            function () use ($organization, $user): void {
                 $writer = new Writer($this->excelOptions());
                 $writer->openToFile('php://output');
 
                 $writer->addRow(new Row($this->excelHeadingCells()));
 
-                foreach ($this->query($organization)->lazy(500) as $meter) {
+                foreach ($this->query($organization, $user)->lazy(500) as $meter) {
                     $writer->addRow(new Row($this->excelCells($meter)));
                 }
 
@@ -104,7 +105,7 @@ class MeterReadingSheetReport implements OrganizationReport
         );
     }
 
-    private function query(Organization $organization): Builder
+    private function query(Organization $organization, User $user): Builder
     {
         return Meter::query()
             ->select('meters.*')
@@ -121,7 +122,7 @@ class MeterReadingSheetReport implements OrganizationReport
                 'client.region',
                 'client.street',
             ])
-            ->whereBelongsTo($organization)
+            ->visibleToOrganizationMember($user, $organization)
             ->where('clients.status', 'active')
             ->where('meters.status', 'active')
             ->orderBy('clients.account_number')

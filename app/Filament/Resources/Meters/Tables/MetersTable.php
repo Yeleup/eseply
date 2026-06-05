@@ -2,7 +2,11 @@
 
 namespace App\Filament\Resources\Meters\Tables;
 
+use App\Filament\Resources\Meters\MeterResource;
+use App\Models\Client;
 use App\Models\Meter;
+use App\Models\Organization;
+use App\Models\User;
 use Filament\Actions\Action;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
@@ -18,10 +22,21 @@ class MetersTable
     public static function configure(Table $table): Table
     {
         return $table
-            ->modifyQueryUsing(fn (Builder $query): Builder => $query->with([
-                'client',
-                'utilityService',
-            ]))
+            ->modifyQueryUsing(function (Builder $query): Builder {
+                $query->with([
+                    'client',
+                    'utilityService',
+                ]);
+
+                $tenant = Filament::getTenant();
+                $user = auth()->user();
+
+                if ($tenant instanceof Organization && $user instanceof User) {
+                    return $query->visibleToOrganizationMember($user, $tenant);
+                }
+
+                return $query->whereRaw('1 = 0');
+            })
             ->columns([
                 TextColumn::make('number')
                     ->label('Номер')
@@ -73,11 +88,20 @@ class MetersTable
             ->filters([
                 SelectFilter::make('client_id')
                     ->label('Абонент')
-                    ->options(fn (): array => Filament::getTenant()
-                        ?->clients()
-                        ->orderBy('account_number')
-                        ->pluck('account_number', 'id')
-                        ->all() ?? []),
+                    ->options(function (): array {
+                        $tenant = Filament::getTenant();
+                        $user = auth()->user();
+
+                        if (! $tenant instanceof Organization || ! $user instanceof User) {
+                            return [];
+                        }
+
+                        return Client::query()
+                            ->visibleToOrganizationMember($user, $tenant)
+                            ->orderBy('account_number')
+                            ->pluck('account_number', 'id')
+                            ->all();
+                    }),
                 SelectFilter::make('status')
                     ->label('Статус')
                     ->options([
@@ -86,6 +110,10 @@ class MetersTable
                     ]),
             ])
             ->recordActions([
+                Action::make('open')
+                    ->label('Открыть')
+                    ->url(fn (Meter $record): string => MeterResource::getUrl('edit', ['record' => $record]))
+                    ->visible(fn (Meter $record): bool => MeterResource::canView($record) && ! MeterResource::canEdit($record)),
                 Action::make('archive')
                     ->label('Отправить в архив')
                     ->color('gray')
@@ -93,8 +121,10 @@ class MetersTable
                     ->modalHeading('Отправить счётчик в архив?')
                     ->modalDescription('Дата снятия будет проставлена сегодняшней датой.')
                     ->modalSubmitActionLabel('Отправить в архив')
-                    ->visible(fn (Meter $record): bool => ! $record->isArchived())
+                    ->visible(fn (Meter $record): bool => ! $record->isArchived() && MeterResource::canEdit($record))
                     ->action(function (Meter $record): void {
+                        abort_unless(MeterResource::canEdit($record), 403);
+
                         $record->archive();
                     }),
                 Action::make('restoreFromArchive')
@@ -104,15 +134,19 @@ class MetersTable
                     ->modalHeading('Вывести счётчик из архива?')
                     ->modalDescription('Дата снятия будет очищена, счётчик снова станет активным.')
                     ->modalSubmitActionLabel('Вывести из архива')
-                    ->visible(fn (Meter $record): bool => $record->isArchived())
+                    ->visible(fn (Meter $record): bool => $record->isArchived() && MeterResource::canEdit($record))
                     ->action(function (Meter $record): void {
+                        abort_unless(MeterResource::canEdit($record), 403);
+
                         $record->restoreFromArchive();
                     }),
-                EditAction::make(),
+                EditAction::make()
+                    ->visible(fn (Meter $record): bool => MeterResource::canEdit($record)),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([
-                    DeleteBulkAction::make(),
+                    DeleteBulkAction::make()
+                        ->visible(fn (): bool => MeterResource::canDeleteAny()),
                 ]),
             ]);
     }

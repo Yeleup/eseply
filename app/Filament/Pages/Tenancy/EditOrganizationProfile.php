@@ -3,7 +3,9 @@
 namespace App\Filament\Pages\Tenancy;
 
 use App\Filament\Pages\Tenancy\RelationManagers\RegionsRelationManager;
+use App\Filament\Pages\Tenancy\RelationManagers\UsersRelationManager;
 use App\Models\Organization;
+use App\Models\User;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Pages\Tenancy\EditTenantProfile;
@@ -19,11 +21,26 @@ class EditOrganizationProfile extends EditTenantProfile
         return 'Профиль организации';
     }
 
+    public static function canView(Model $tenant): bool
+    {
+        $user = auth()->user();
+
+        return $tenant instanceof Organization
+            && $user instanceof User
+            && $user->canManageOrganization($tenant);
+    }
+
     public function content(Schema $schema): Schema
     {
         return $schema
             ->components([
                 $this->getFormContentComponent(),
+                Livewire::make(UsersRelationManager::class, fn (): array => [
+                    'ownerRecord' => $this->tenant,
+                    'pageClass' => static::class,
+                ])
+                    ->key('organization-users')
+                    ->columnSpanFull(),
                 Livewire::make(RegionsRelationManager::class, fn (): array => [
                     'ownerRecord' => $this->tenant,
                     'pageClass' => static::class,

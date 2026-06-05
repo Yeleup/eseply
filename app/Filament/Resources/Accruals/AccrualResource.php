@@ -6,12 +6,14 @@ use App\Filament\Resources\Accruals\Pages\CloseBillingMonth;
 use App\Filament\Resources\Accruals\Pages\ListAccruals;
 use App\Filament\Resources\Accruals\Schemas\AccrualForm;
 use App\Filament\Resources\Accruals\Tables\AccrualsTable;
+use App\Filament\Support\OrganizationMemberAccess;
 use App\Models\Accrual;
 use BackedEnum;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Model;
 use UnitEnum;
 
 class AccrualResource extends Resource
@@ -55,5 +57,20 @@ class AccrualResource extends Resource
             'index' => ListAccruals::route('/'),
             'close' => CloseBillingMonth::route('/close-month'),
         ];
+    }
+
+    public static function canAccess(): bool
+    {
+        return OrganizationMemberAccess::canManageTenant();
+    }
+
+    public static function canViewAny(): bool
+    {
+        return OrganizationMemberAccess::canManageTenant();
+    }
+
+    public static function canView(Model $record): bool
+    {
+        return OrganizationMemberAccess::canManageTenant();
     }
 }

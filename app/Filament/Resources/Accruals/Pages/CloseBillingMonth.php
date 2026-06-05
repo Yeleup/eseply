@@ -4,6 +4,7 @@ namespace App\Filament\Resources\Accruals\Pages;
 
 use App\Actions\CloseBillingMonth as CloseBillingMonthAction;
 use App\Filament\Resources\Accruals\AccrualResource;
+use App\Filament\Support\OrganizationMemberAccess;
 use App\Models\Organization;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\TextInput;
@@ -34,6 +35,8 @@ class CloseBillingMonth extends Page
 
     public function mount(): void
     {
+        abort_unless(OrganizationMemberAccess::canManageTenant(), 403);
+
         $this->form->fill([
             'period' => now()->format('Ym'),
         ]);
@@ -62,6 +65,8 @@ class CloseBillingMonth extends Page
 
     public function close(): void
     {
+        abort_unless(OrganizationMemberAccess::canManageTenant(), 403);
+
         $tenant = Filament::getTenant();
 
         if (! $tenant instanceof Organization) {

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Database\Factories\MeterReadingFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -50,6 +51,34 @@ class MeterReading extends Model
     public function utilityService(): BelongsTo
     {
         return $this->belongsTo(UtilityService::class);
+    }
+
+    /**
+     * @param  Builder<MeterReading>  $query
+     * @return Builder<MeterReading>
+     */
+    public function scopeVisibleToOrganizationMember(Builder $query, User $user, Organization|int|string|null $organization): Builder
+    {
+        $organizationId = self::organizationId($organization);
+
+        if ($organizationId === null) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        $query->where($query->getModel()->qualifyColumn('organization_id'), $organizationId);
+
+        if ($user->isOrganizationOperator($organizationId)) {
+            return $query;
+        }
+
+        if (! $user->isOrganizationController($organizationId)) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return $query->whereHas(
+            'client',
+            fn (Builder $query): Builder => $query->visibleToOrganizationMember($user, $organizationId),
+        );
     }
 
     public static function previousReadingFor(int|string|null $meterId, int|string|null $period = null): ?float
@@ -120,5 +149,22 @@ class MeterReading extends Model
 
             $meterReading->consumption = (float) $meterReading->current_reading - (float) $meterReading->previous_reading;
         });
+    }
+
+    private static function organizationId(Organization|int|string|null $organization): ?int
+    {
+        if ($organization instanceof Organization) {
+            return (int) $organization->getKey();
+        }
+
+        if (is_int($organization)) {
+            return $organization;
+        }
+
+        if (is_string($organization) && ctype_digit($organization)) {
+            return (int) $organization;
+        }
+
+        return null;
     }
 }

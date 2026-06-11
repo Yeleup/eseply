@@ -107,18 +107,20 @@ test('billing month closure creates receipts from created accruals without dupli
         ]);
 
     $firstSummary = app(CloseBillingMonth::class)->handle($organization, '202605');
-    $secondSummary = app(CloseBillingMonth::class)->handle($organization, '202605');
+
+    expect(fn () => app(CloseBillingMonth::class)->handle($organization, '202605'))
+        ->toThrow(InvalidArgumentException::class, 'Расчётный месяц уже закрыт.');
 
     $accrual = Accrual::query()
         ->whereBelongsTo($organization)
         ->whereBelongsTo($client)
-        ->where('period', '202605')
+        ->forPeriod('202605')
         ->sole();
 
     $receipt = Receipt::query()
         ->whereBelongsTo($organization)
         ->whereBelongsTo($client)
-        ->where('period', '202605')
+        ->forPeriod('202605')
         ->sole();
 
     expect($firstSummary)->toMatchArray([
@@ -126,11 +128,6 @@ test('billing month closure creates receipts from created accruals without dupli
         'skipped' => 0,
         'failed' => 0,
     ])
-        ->and($secondSummary)->toMatchArray([
-            'created' => 0,
-            'skipped' => 1,
-            'failed' => 0,
-        ])
         ->and($receipt->accrual->is($accrual))->toBeTrue()
         ->and($receipt->receipt_number)->toBe('202605-20001')
         ->and($receipt->client_name)->toBe('ТОО Дала')
@@ -138,7 +135,7 @@ test('billing month closure creates receipts from created accruals without dupli
         ->and($receipt->amount)->toBe($accrual->amount)
         ->and($receipt->adjustment_amount)->toBe($accrual->adjustment_amount)
         ->and($receipt->closing_balance)->toBe($accrual->closing_balance)
-        ->and(Receipt::query()->whereBelongsTo($client)->where('period', '202605')->count())->toBe(1);
+        ->and(Receipt::query()->whereBelongsTo($client)->forPeriod('202605')->count())->toBe(1);
 });
 
 test('admin users can list receipts for the current tenant', function () {

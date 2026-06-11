@@ -94,6 +94,7 @@ class BuildClientCardViewData
             },
             'payments' => function (HasMany $query): void {
                 $query
+                    ->with('billingPeriod')
                     ->orderByDesc('paid_at')
                     ->orderByDesc('id');
             },

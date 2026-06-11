@@ -157,11 +157,13 @@ test('billing month closure uses previous closing balance and does not duplicate
         ]);
 
     $firstSummary = app(CloseBillingMonth::class)->handle($organization, '202605');
-    $secondSummary = app(CloseBillingMonth::class)->handle($organization, '202605');
+
+    expect(fn () => app(CloseBillingMonth::class)->handle($organization, '202605'))
+        ->toThrow(InvalidArgumentException::class, 'Расчётный месяц уже закрыт.');
 
     $accrual = Accrual::query()
         ->whereBelongsTo($client)
-        ->where('period', '202605')
+        ->forPeriod('202605')
         ->sole();
 
     expect($firstSummary)->toBe([
@@ -171,16 +173,9 @@ test('billing month closure uses previous closing balance and does not duplicate
         'failed' => 0,
         'errors' => [],
     ])
-        ->and($secondSummary)->toBe([
-            'active' => 1,
-            'created' => 0,
-            'skipped' => 1,
-            'failed' => 0,
-            'errors' => [],
-        ])
         ->and($accrual->opening_balance)->toBe('5000.00')
         ->and($accrual->closing_balance)->toBe('7500.00')
-        ->and(Accrual::query()->whereBelongsTo($client)->where('period', '202605')->count())->toBe(1);
+        ->and(Accrual::query()->whereBelongsTo($client)->forPeriod('202605')->count())->toBe(1);
 });
 
 test('admin users can close a fixed billing month and see the accrual', function () {
@@ -211,13 +206,14 @@ test('admin users can close a fixed billing month and see the accrual', function
     $otherTenantAccrual = Accrual::factory()->for(Organization::factory())->create([
         'period' => '202605',
     ]);
+    $billingPeriod = billingPeriodFor($organization);
 
     actingAsBillingTenant($organization);
 
     Livewire::test(CloseBillingMonthPage::class)
         ->assertOk()
         ->fillForm([
-            'period' => '202605',
+            'billing_period_id' => $billingPeriod->id,
         ])
         ->call('close')
         ->assertHasNoFormErrors()
@@ -228,7 +224,7 @@ test('admin users can close a fixed billing month and see the accrual', function
     $accrual = Accrual::query()
         ->whereBelongsTo($organization)
         ->where('account_number', '40001')
-        ->where('period', '202605')
+        ->forPeriod('202605')
         ->sole();
 
     expect($accrual->amount)->toBe('8000.00')
@@ -299,7 +295,7 @@ test('billing month closure calculates per person accruals by client type tariff
         $accrual = Accrual::query()
             ->whereBelongsTo($organization)
             ->where('account_number', $case['account_number'])
-            ->where('period', '202605')
+            ->forPeriod('202605')
             ->sole();
 
         expect($accrual->billing_type)->toBe('per_person')
@@ -504,7 +500,7 @@ test('billing month closure calculates meter accruals from all active meter read
     $accrual = Accrual::query()
         ->whereBelongsTo($organization)
         ->whereBelongsTo($client)
-        ->where('period', '202605')
+        ->forPeriod('202605')
         ->sole();
 
     expect($accrual->billing_type)->toBe('meter')

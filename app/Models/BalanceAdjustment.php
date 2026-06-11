@@ -12,14 +12,17 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 #[Fillable([
     'organization_id',
     'client_id',
-    'period',
+    'billing_period_id',
     'type',
     'amount',
     'adjusted_at',
     'note',
+    'period',
 ])]
 class BalanceAdjustment extends Model
 {
+    use HasBillingPeriod;
+
     /** @use HasFactory<BalanceAdjustmentFactory> */
     use HasFactory;
 
@@ -53,5 +56,17 @@ class BalanceAdjustment extends Model
             'amount' => 'decimal:2',
             'adjusted_at' => 'date',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        static::saving(function (BalanceAdjustment $balanceAdjustment): void {
+            $balanceAdjustment->resolveBillingPeriodIdFromPeriodCode();
+            $balanceAdjustment->ensureBillingPeriodIsEditable();
+        });
+
+        static::deleting(function (BalanceAdjustment $balanceAdjustment): void {
+            $balanceAdjustment->ensureBillingPeriodIsEditable();
+        });
     }
 }

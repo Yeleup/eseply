@@ -64,6 +64,16 @@ test('billing month closure applies all balance adjustments for the period', fun
         ]);
 
     BalanceAdjustment::factory()
+        ->for($organization)
+        ->for($client)
+        ->create([
+            'period' => '202604',
+            'amount' => 900,
+        ]);
+
+    closedBillingPeriodFor($organization, '202604');
+
+    BalanceAdjustment::factory()
         ->count(2)
         ->for($organization)
         ->for($client)
@@ -81,20 +91,12 @@ test('billing month closure applies all balance adjustments for the period', fun
         )
         ->create();
 
-    BalanceAdjustment::factory()
-        ->for($organization)
-        ->for($client)
-        ->create([
-            'period' => '202604',
-            'amount' => 900,
-        ]);
-
     app(CloseBillingMonth::class)->handle($organization, '202605');
 
     $accrual = Accrual::query()
         ->whereBelongsTo($organization)
         ->whereBelongsTo($client)
-        ->where('period', '202605')
+        ->forPeriod('202605')
         ->sole();
 
     expect($accrual->opening_balance)->toBe('0.00')
@@ -113,13 +115,14 @@ test('admin users can create and list balance adjustments for the current tenant
     $otherTenantBalanceAdjustment = BalanceAdjustment::factory()->for(Organization::factory())->create([
         'period' => '202605',
     ]);
+    $billingPeriod = billingPeriodFor($organization);
 
     actingAsBalanceAdjustmentTenant($organization);
 
     Livewire::test(CreateBalanceAdjustment::class)
         ->fillForm([
             'client_id' => $client->id,
-            'period' => '202605',
+            'billing_period_id' => $billingPeriod->id,
             'type' => BalanceAdjustmentType::ManualAdjustment->value,
             'amount' => -500,
             'adjusted_at' => '2026-05-29',
@@ -133,7 +136,7 @@ test('admin users can create and list balance adjustments for the current tenant
     $balanceAdjustment = BalanceAdjustment::query()
         ->whereBelongsTo($organization)
         ->whereBelongsTo($client)
-        ->where('period', '202605')
+        ->forPeriod('202605')
         ->sole();
 
     expect($balanceAdjustment->amount)->toBe('-500.00');

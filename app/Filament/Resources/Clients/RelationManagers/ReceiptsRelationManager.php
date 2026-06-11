@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Clients\RelationManagers;
 
 use App\Filament\Resources\Receipts\ReceiptResource;
+use App\Filament\Support\BillingPeriodOptions;
 use App\Filament\Support\OrganizationMemberAccess;
 use App\Models\Receipt;
 use Filament\Actions\Action;
@@ -46,7 +47,10 @@ class ReceiptsRelationManager extends RelationManager
     {
         return $table
             ->recordTitleAttribute('receipt_number')
-            ->modifyQueryUsing(fn (Builder $query): Builder => $query->latest('issued_at'))
+            ->modifyQueryUsing(fn (Builder $query): Builder => $query
+                ->with('billingPeriod')
+                ->orderByBillingPeriodDesc()
+                ->latest('issued_at'))
             ->columns([
                 TextColumn::make('receipt_number')
                     ->label('Номер')
@@ -54,8 +58,7 @@ class ReceiptsRelationManager extends RelationManager
                     ->sortable(),
                 TextColumn::make('period')
                     ->label('Период')
-                    ->searchable()
-                    ->sortable(),
+                    ->placeholder('-'),
                 TextColumn::make('utility_service_name')
                     ->label('Услуга')
                     ->searchable()
@@ -84,13 +87,9 @@ class ReceiptsRelationManager extends RelationManager
                     ->sortable(),
             ])
             ->filters([
-                SelectFilter::make('period')
+                SelectFilter::make('billing_period_id')
                     ->label('Период')
-                    ->options(fn (): array => $this->ownerRecord
-                        ->receipts()
-                        ->orderByDesc('period')
-                        ->pluck('period', 'period')
-                        ->all()),
+                    ->options(fn (): array => BillingPeriodOptions::all($this->ownerRecord->organization)),
             ])
             ->recordActions([
                 Action::make('open')

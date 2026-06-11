@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\BillingPeriodStatus;
 use Database\Factories\ReceiptFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -12,8 +13,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'organization_id',
     'client_id',
     'accrual_id',
+    'billing_period_id',
     'receipt_number',
-    'period',
     'account_number',
     'client_name',
     'utility_service_name',
@@ -26,9 +27,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'opening_balance',
     'closing_balance',
     'issued_at',
+    'period',
 ])]
 class Receipt extends Model
 {
+    use HasBillingPeriod;
+
     /** @use HasFactory<ReceiptFactory> */
     use HasFactory;
 
@@ -48,7 +52,7 @@ class Receipt extends Model
             [
                 'organization_id' => $accrual->organization_id,
                 'client_id' => $accrual->client_id,
-                'period' => $accrual->period,
+                'billing_period_id' => $accrual->billing_period_id,
             ],
             [
                 'accrual_id' => $accrual->id,
@@ -106,5 +110,12 @@ class Receipt extends Model
     private static function receiptNumber(Accrual $accrual): string
     {
         return "{$accrual->period}-{$accrual->account_number}";
+    }
+
+    protected static function booted(): void
+    {
+        static::saving(function (Receipt $receipt): void {
+            $receipt->resolveBillingPeriodIdFromPeriodCode(BillingPeriodStatus::Closed);
+        });
     }
 }

@@ -4,10 +4,12 @@ namespace App\Filament\Resources\Accruals\Pages;
 
 use App\Actions\CloseBillingMonth as CloseBillingMonthAction;
 use App\Filament\Resources\Accruals\AccrualResource;
+use App\Filament\Support\BillingPeriodOptions;
 use App\Filament\Support\OrganizationMemberAccess;
+use App\Models\BillingPeriod;
 use App\Models\Organization;
 use Filament\Facades\Filament;
-use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\Select;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\Page;
 use Filament\Schemas\Schema;
@@ -37,9 +39,7 @@ class CloseBillingMonth extends Page
     {
         abort_unless(OrganizationMemberAccess::canManageTenant(), 403);
 
-        $this->form->fill([
-            'period' => now()->format('Ym'),
-        ]);
+        $this->form->fill();
     }
 
     public function getTitle(): string|Htmlable
@@ -52,14 +52,15 @@ class CloseBillingMonth extends Page
         return $schema
             ->statePath('data')
             ->components([
-                TextInput::make('period')
-                    ->label('Период')
-                    ->placeholder('202605')
-                    ->helperText('Формат: ГГГГММ')
+                Select::make('billing_period_id')
+                    ->label('Расчётный месяц')
+                    ->helperText('Выберите открытый месяц. Новый месяц сначала откройте в разделе «Расчётные месяцы».')
+                    ->options(fn (): array => BillingPeriodOptions::editable())
+                    ->searchable()
+                    ->preload()
                     ->required()
-                    ->length(6)
-                    ->regex('/^\d{6}$/')
-                    ->rules(['date_format:Ym']),
+                    ->scopedExists(BillingPeriod::class, 'id')
+                    ->native(false),
             ]);
     }
 
@@ -76,7 +77,9 @@ class CloseBillingMonth extends Page
         $data = $this->form->getState();
 
         try {
-            $this->result = app(CloseBillingMonthAction::class)->handle($tenant, $data['period']);
+            $billingPeriod = BillingPeriod::query()->findOrFail($data['billing_period_id']);
+
+            $this->result = app(CloseBillingMonthAction::class)->handle($tenant, $billingPeriod);
         } catch (InvalidArgumentException $exception) {
             Notification::make()
                 ->title($exception->getMessage())

@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\BalanceAdjustments\Tables;
 
 use App\BalanceAdjustmentType;
+use App\Filament\Support\BillingPeriodOptions;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
@@ -18,14 +19,16 @@ class BalanceAdjustmentsTable
     {
         return $table
             ->modifyQueryUsing(fn (Builder $query): Builder => $query
-                ->with('client')
+                ->with([
+                    'billingPeriod',
+                    'client',
+                ])
                 ->orderByDesc('adjusted_at')
                 ->orderByDesc('id'))
             ->columns([
                 TextColumn::make('period')
                     ->label('Период')
-                    ->searchable()
-                    ->sortable(),
+                    ->placeholder('-'),
                 TextColumn::make('client.account_number')
                     ->label('Лицевой счёт')
                     ->searchable()
@@ -54,13 +57,9 @@ class BalanceAdjustmentsTable
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
-                SelectFilter::make('period')
+                SelectFilter::make('billing_period_id')
                     ->label('Период')
-                    ->options(fn (): array => Filament::getTenant()
-                        ?->balanceAdjustments()
-                        ->orderByDesc('period')
-                        ->pluck('period', 'period')
-                        ->all() ?? []),
+                    ->options(fn (): array => BillingPeriodOptions::all()),
                 SelectFilter::make('client_id')
                     ->label('Абонент')
                     ->options(fn (): array => Filament::getTenant()

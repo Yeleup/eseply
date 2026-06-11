@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Clients\RelationManagers;
 
+use App\Filament\Support\BillingPeriodOptions;
 use App\Filament\Support\OrganizationMemberAccess;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Schema;
@@ -43,12 +44,14 @@ class AccrualsRelationManager extends RelationManager
     {
         return $table
             ->recordTitleAttribute('period')
-            ->modifyQueryUsing(fn (Builder $query): Builder => $query->latest('closed_at'))
+            ->modifyQueryUsing(fn (Builder $query): Builder => $query
+                ->with('billingPeriod')
+                ->orderByBillingPeriodDesc()
+                ->latest('closed_at'))
             ->columns([
                 TextColumn::make('period')
                     ->label('Период')
-                    ->searchable()
-                    ->sortable(),
+                    ->placeholder('-'),
                 TextColumn::make('utility_service_name')
                     ->label('Услуга')
                     ->searchable()
@@ -103,13 +106,9 @@ class AccrualsRelationManager extends RelationManager
                     ->sortable(),
             ])
             ->filters([
-                SelectFilter::make('period')
+                SelectFilter::make('billing_period_id')
                     ->label('Период')
-                    ->options(fn (): array => $this->ownerRecord
-                        ->accruals()
-                        ->orderByDesc('period')
-                        ->pluck('period', 'period')
-                        ->all()),
+                    ->options(fn (): array => BillingPeriodOptions::all($this->ownerRecord->organization)),
             ]);
     }
 }

@@ -258,6 +258,7 @@ test('controller can create and edit meter readings only for assigned clients', 
             'previous_reading' => 20,
             'current_reading' => 25,
         ]);
+    closedBillingPeriodFor($organization, '202604');
 
     $user = actingAsOrganizationAccessTenant($organization, OrganizationMemberRole::Controller);
     DB::table('organization_user_regions')->insert([
@@ -267,11 +268,12 @@ test('controller can create and edit meter readings only for assigned clients', 
         'created_at' => now(),
         'updated_at' => now(),
     ]);
+    $billingPeriod = billingPeriodFor($organization);
 
     Livewire::test(CreateMeterReading::class)
         ->fillForm([
             'meter_id' => $assignedMeter->id,
-            'period' => '202605',
+            'billing_period_id' => $billingPeriod->id,
             'current_reading' => 15,
         ])
         ->call('create')
@@ -282,13 +284,13 @@ test('controller can create and edit meter readings only for assigned clients', 
     expect(MeterReading::query()
         ->whereBelongsTo($organization)
         ->whereBelongsTo($assignedMeter)
-        ->where('period', '202605')
+        ->forPeriod('202605')
         ->exists())->toBeTrue();
 
     Livewire::test(CreateMeterReading::class)
         ->fillForm([
             'meter_id' => $outsideMeter->id,
-            'period' => '202605',
+            'billing_period_id' => $billingPeriod->id,
             'current_reading' => 30,
         ])
         ->call('create')
@@ -297,7 +299,7 @@ test('controller can create and edit meter readings only for assigned clients', 
     expect(MeterReading::query()
         ->whereBelongsTo($organization)
         ->whereBelongsTo($outsideMeter)
-        ->where('period', '202605')
+        ->forPeriod('202605')
         ->exists())->toBeFalse();
 
     Livewire::test(EditMeterReading::class, [
@@ -393,6 +395,9 @@ test('controller can add and edit readings from meter context without meter oper
             'previous_reading' => 10,
             'current_reading' => 15,
         ]);
+    closedBillingPeriodFor($organization, '202604');
+
+    $billingPeriod = billingPeriodFor($organization);
 
     $user = actingAsOrganizationAccessTenant($organization, OrganizationMemberRole::Controller);
     DB::table('organization_user_regions')->insert([
@@ -414,30 +419,33 @@ test('controller can add and edit readings from meter context without meter oper
         ->assertTableActionHidden('delete', $meter)
         ->assertTableActionHidden('archive', $meter)
         ->callTableAction('addReading', $meter, data: [
-            'period' => '202605',
+            'billing_period_id' => $billingPeriod->id,
             'current_reading' => 20,
         ])
         ->assertHasNoTableActionErrors()
         ->assertNotified();
 
-    expect($meter->readings()->where('period', '202605')->exists())->toBeTrue();
+    expect($meter->readings()->forPeriod('202605')->exists())->toBeTrue();
+
+    $currentReading = $meter->readings()->forPeriod('202605')->sole();
 
     Livewire::test(ReadingsRelationManager::class, [
         'ownerRecord' => $meter,
         'pageClass' => EditMeter::class,
     ])
         ->assertOk()
-        ->assertTableActionVisible('edit', $reading)
+        ->assertTableActionHidden('edit', $reading)
+        ->assertTableActionVisible('edit', $currentReading)
         ->assertTableActionHidden('delete', $reading)
-        ->callTableAction('edit', $reading, data: [
-            'period' => '202604',
-            'previous_reading' => 10,
-            'current_reading' => 16,
+        ->callTableAction('edit', $currentReading, data: [
+            'billing_period_id' => $currentReading->billing_period_id,
+            'previous_reading' => 15,
+            'current_reading' => 21,
         ])
         ->assertHasNoTableActionErrors()
         ->assertNotified();
 
-    expect($reading->refresh()->current_reading)->toBe('16.0000');
+    expect($currentReading->refresh()->current_reading)->toBe('21.0000');
 });
 
 test('controller cannot access organization setup and non-reading operations', function () {

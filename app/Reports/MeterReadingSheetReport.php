@@ -2,6 +2,7 @@
 
 namespace App\Reports;
 
+use App\Models\BillingPeriod;
 use App\Models\Meter;
 use App\Models\MeterReading;
 use App\Models\Organization;
@@ -113,7 +114,11 @@ class MeterReadingSheetReport implements OrganizationReport
                 'previous_reading_for_report' => MeterReading::query()
                     ->select('current_reading')
                     ->whereColumn('meter_readings.meter_id', 'meters.id')
-                    ->orderByDesc('period')
+                    ->orderByDesc(
+                        BillingPeriod::query()
+                            ->select('starts_on')
+                            ->whereColumn('billing_periods.id', 'meter_readings.billing_period_id'),
+                    )
                     ->orderByDesc('id')
                     ->limit(1),
             ])

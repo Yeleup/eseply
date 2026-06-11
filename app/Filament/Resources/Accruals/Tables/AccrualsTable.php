@@ -2,7 +2,7 @@
 
 namespace App\Filament\Resources\Accruals\Tables;
 
-use Filament\Facades\Filament;
+use App\Filament\Support\BillingPeriodOptions;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
@@ -15,15 +15,16 @@ class AccrualsTable
         return $table
             ->modifyQueryUsing(fn (Builder $query): Builder => $query
                 ->with([
+                    'billingPeriod',
                     'client',
                     'utilityService',
                 ])
+                ->orderByBillingPeriodDesc()
                 ->latest('closed_at'))
             ->columns([
                 TextColumn::make('period')
                     ->label('Период')
-                    ->searchable()
-                    ->sortable(),
+                    ->placeholder('-'),
                 TextColumn::make('account_number')
                     ->label('Лицевой счёт')
                     ->searchable()
@@ -86,13 +87,9 @@ class AccrualsTable
                     ->sortable(),
             ])
             ->filters([
-                SelectFilter::make('period')
+                SelectFilter::make('billing_period_id')
                     ->label('Период')
-                    ->options(fn (): array => Filament::getTenant()
-                        ?->accruals()
-                        ->orderByDesc('period')
-                        ->pluck('period', 'period')
-                        ->all() ?? []),
+                    ->options(fn (): array => BillingPeriodOptions::all()),
                 SelectFilter::make('billing_type')
                     ->label('Тип начисления')
                     ->options([

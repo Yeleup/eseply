@@ -2,8 +2,10 @@
 
 namespace App\Actions;
 
+use App\BillingPeriodStatus;
 use App\ClientType;
 use App\Models\Accrual;
+use App\Models\BillingPeriod;
 use App\Models\Client;
 use App\Models\Organization;
 use App\Models\Receipt;
@@ -18,11 +20,15 @@ class CloseBillingMonth
     /**
      * @return array{active:int, created:int, skipped:int, failed:int, errors:list<array{client_id:int, account_number:string, client_name:string, message:string}>}
      */
-    public function handle(Organization $organization, string $period): array
+    public function handle(Organization $organization, string|BillingPeriod $period): array
     {
-        $periodStart = $this->periodStart($period);
+        return DB::transaction(function () use ($organization, $period): array {
+            $billingPeriod = $this->lockedBillingPeriod($organization, $period);
+            $periodStart = CarbonImmutable::instance($billingPeriod->starts_on)->startOfMonth();
 
-        return DB::transaction(function () use ($organization, $period, $periodStart): array {
+            $this->ensureCanClose($billingPeriod);
+
+            $billingPeriod->markProcessing();
             $organization->loadMissing('utilityService');
 
             $summary = [
@@ -41,7 +47,7 @@ class CloseBillingMonth
             $summary['active'] = $clients->count();
 
             foreach ($clients as $client) {
-                $existingAccrual = $this->existingAccrual($organization, $client, $period);
+                $existingAccrual = $this->existingAccrual($organization, $client, $billingPeriod);
 
                 if ($existingAccrual) {
                     Receipt::fromAccrual($existingAccrual);
@@ -51,7 +57,7 @@ class CloseBillingMonth
                     continue;
                 }
 
-                $calculation = $this->calculation($client, $organization->utilityService, $period, $periodStart);
+                $calculation = $this->calculation($client, $organization->utilityService, $billingPeriod, $periodStart);
 
                 if (is_string($calculation)) {
                     $this->recordError($summary, $client, $calculation);
@@ -59,16 +65,16 @@ class CloseBillingMonth
                     continue;
                 }
 
-                $openingBalance = $this->openingBalance($client, $period);
-                $paidAmount = $this->paidAmount($client, $period);
-                $adjustmentAmount = $this->adjustmentAmount($client, $period);
+                $openingBalance = $this->openingBalance($client, $billingPeriod);
+                $paidAmount = $this->paidAmount($client, $billingPeriod);
+                $adjustmentAmount = $this->adjustmentAmount($client, $billingPeriod);
                 $closingBalance = $openingBalance + $calculation['amount'] - $paidAmount + $adjustmentAmount;
 
                 $accrual = Accrual::create([
                     'organization_id' => $organization->id,
                     'client_id' => $client->id,
                     'utility_service_id' => $organization->utilityService?->id,
-                    'period' => $period,
+                    'billing_period_id' => $billingPeriod->id,
                     'account_number' => $client->account_number,
                     'client_name' => $client->name,
                     'utility_service_name' => $organization->utilityService?->name,
@@ -88,14 +94,22 @@ class CloseBillingMonth
                 $summary['created']++;
             }
 
+            if ($summary['failed'] > 0) {
+                $billingPeriod->markFailed($summary, 'Не все активные абоненты были рассчитаны.');
+
+                return $summary;
+            }
+
+            $billingPeriod->markClosed($summary, auth()->user());
+
             return $summary;
-        });
+        }, attempts: 5);
     }
 
     /**
      * @return array{volume:float|null, tariff_price:float|null, amount:float}|string
      */
-    private function calculation(Client $client, ?UtilityService $utilityService, string $period, CarbonImmutable $periodStart): array|string
+    private function calculation(Client $client, ?UtilityService $utilityService, BillingPeriod $billingPeriod, CarbonImmutable $periodStart): array|string
     {
         if (! $utilityService) {
             return 'Не задана услуга организации.';
@@ -103,18 +117,18 @@ class CloseBillingMonth
 
         return match ($client->billing_type) {
             'fixed' => $this->fixedCalculation($client),
-            'meter' => $this->meterCalculation($client, $utilityService, $period, $periodStart),
+            'meter' => $this->meterCalculation($client, $utilityService, $billingPeriod, $periodStart),
             'per_person' => $this->perPersonCalculation($client, $utilityService, $periodStart),
             default => 'Не выбран поддерживаемый тип начисления.',
         };
     }
 
-    private function existingAccrual(Organization $organization, Client $client, string $period): ?Accrual
+    private function existingAccrual(Organization $organization, Client $client, BillingPeriod $billingPeriod): ?Accrual
     {
         return Accrual::query()
             ->whereBelongsTo($organization)
             ->whereBelongsTo($client)
-            ->where('period', $period)
+            ->whereBelongsTo($billingPeriod)
             ->first();
     }
 
@@ -166,11 +180,11 @@ class CloseBillingMonth
     /**
      * @return array{volume:float, tariff_price:float, amount:float}|string
      */
-    private function meterCalculation(Client $client, UtilityService $utilityService, string $period, CarbonImmutable $periodStart): array|string
+    private function meterCalculation(Client $client, UtilityService $utilityService, BillingPeriod $billingPeriod, CarbonImmutable $periodStart): array|string
     {
         $meters = $client->meters()
             ->with([
-                'readings' => fn ($query) => $query->where('period', $period),
+                'readings' => fn ($query) => $query->whereBelongsTo($billingPeriod),
             ])
             ->where('status', 'active')
             ->where('utility_service_id', $utilityService->id)
@@ -238,11 +252,11 @@ class CloseBillingMonth
         return (string) $client->client_type;
     }
 
-    private function openingBalance(Client $client, string $period): float
+    private function openingBalance(Client $client, BillingPeriod $billingPeriod): float
     {
         $previousAccrual = $client->accruals()
-            ->where('period', '<', $period)
-            ->orderByDesc('period')
+            ->beforePeriod($billingPeriod->code)
+            ->orderByBillingPeriodDesc()
             ->first();
 
         if ($previousAccrual) {
@@ -252,33 +266,44 @@ class CloseBillingMonth
         return 0.0;
     }
 
-    private function paidAmount(Client $client, string $period): float
+    private function paidAmount(Client $client, BillingPeriod $billingPeriod): float
     {
         return (float) $client->payments()
-            ->where('period', $period)
+            ->whereBelongsTo($billingPeriod)
             ->sum('amount');
     }
 
-    private function adjustmentAmount(Client $client, string $period): float
+    private function adjustmentAmount(Client $client, BillingPeriod $billingPeriod): float
     {
         return (float) $client->balanceAdjustments()
-            ->where('period', $period)
+            ->whereBelongsTo($billingPeriod)
             ->sum('amount');
     }
 
-    private function periodStart(string $period): CarbonImmutable
+    private function lockedBillingPeriod(Organization $organization, string|BillingPeriod $period): BillingPeriod
     {
-        if (! preg_match('/^\d{6}$/', $period)) {
-            throw new InvalidArgumentException('Период должен быть в формате ГГГГММ.');
+        if (is_string($period)) {
+            $period = BillingPeriod::openFor($organization, $period, auth()->user());
         }
 
-        $month = (int) substr($period, 4, 2);
+        return BillingPeriod::query()
+            ->whereBelongsTo($organization)
+            ->whereKey($period->getKey())
+            ->lockForUpdate()
+            ->firstOrFail();
+    }
 
-        if ($month < 1 || $month > 12) {
-            throw new InvalidArgumentException('Месяц в периоде должен быть от 01 до 12.');
+    private function ensureCanClose(BillingPeriod $billingPeriod): void
+    {
+        if ($billingPeriod->canStartClosing()) {
+            return;
         }
 
-        return CarbonImmutable::createFromFormat('Ym', $period)->startOfMonth();
+        if ($billingPeriod->status === BillingPeriodStatus::Processing) {
+            throw new InvalidArgumentException('Расчётный месяц уже закрывается.');
+        }
+
+        throw new InvalidArgumentException('Расчётный месяц уже закрыт.');
     }
 
     /**

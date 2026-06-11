@@ -80,12 +80,16 @@ class PaymentResource extends Resource
 
     public static function canEdit(Model $record): bool
     {
-        return OrganizationMemberAccess::canManageTenant();
+        return $record instanceof Payment
+            && ($record->billingPeriod?->isEditable() ?? false)
+            && OrganizationMemberAccess::canManageTenant();
     }
 
     public static function canDelete(Model $record): bool
     {
-        return OrganizationMemberAccess::canManageTenant();
+        return $record instanceof Payment
+            && ($record->billingPeriod?->isEditable() ?? false)
+            && OrganizationMemberAccess::canManageTenant();
     }
 
     public static function canDeleteAny(): bool

@@ -14,15 +14,18 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'meter_id',
     'client_id',
     'utility_service_id',
-    'period',
+    'billing_period_id',
     'previous_reading',
     'current_reading',
     'consumption',
     'read_at',
     'note',
+    'period',
 ])]
 class MeterReading extends Model
 {
+    use HasBillingPeriod;
+
     /** @use HasFactory<MeterReadingFactory> */
     use HasFactory;
 
@@ -96,20 +99,29 @@ class MeterReading extends Model
         $previousReadingQuery = self::query()
             ->where('meter_id', $meter->id);
 
-        $period = $period === null ? null : (string) $period;
-
-        if ($period !== null && preg_match('/^\d{6}$/', $period) === 1) {
-            $previousReadingQuery->where('period', '<', $period);
+        if ($period !== null && $period !== '') {
+            $previousReadingQuery->beforePeriod((string) $period);
         }
 
         $previousReading = $previousReadingQuery
-            ->orderByDesc('period')
+            ->orderByBillingPeriodDesc()
             ->orderByDesc('id')
             ->value('current_reading');
 
         return $previousReading === null
             ? (float) $meter->initial_reading
             : (float) $previousReading;
+    }
+
+    public static function previousReadingForBillingPeriod(int|string|null $meterId, int|string|null $billingPeriodId = null): ?float
+    {
+        if ($billingPeriodId === null || $billingPeriodId === '') {
+            return self::previousReadingFor($meterId);
+        }
+
+        $billingPeriod = BillingPeriod::query()->find((int) $billingPeriodId);
+
+        return self::previousReadingFor($meterId, $billingPeriod?->code);
     }
 
     /**
@@ -147,7 +159,14 @@ class MeterReading extends Model
                 ) ?? 0;
             }
 
+            $meterReading->resolveBillingPeriodIdFromPeriodCode();
+            $meterReading->ensureBillingPeriodIsEditable();
+
             $meterReading->consumption = (float) $meterReading->current_reading - (float) $meterReading->previous_reading;
+        });
+
+        static::deleting(function (MeterReading $meterReading): void {
+            $meterReading->ensureBillingPeriodIsEditable();
         });
     }
 

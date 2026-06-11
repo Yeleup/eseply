@@ -146,6 +146,8 @@ test('meter readings default previous reading from meter history', function () {
             'current_reading' => 17.5,
         ]);
 
+    closedBillingPeriodFor($meter->organization, '202604');
+
     $reading = MeterReading::query()->create([
         'meter_id' => $meter->id,
         'period' => '202605',
@@ -281,13 +283,14 @@ test('admin users can create and list meter readings for the current tenant', fu
     $otherTenantReading = MeterReading::factory()->for(Meter::factory()->for(Organization::factory()))->create([
         'period' => '202605',
     ]);
+    $billingPeriod = billingPeriodFor($organization);
 
     actingAsMeterTenant($organization);
 
     Livewire::test(CreateMeterReading::class)
         ->fillForm([
             'meter_id' => $meter->id,
-            'period' => '202605',
+            'billing_period_id' => $billingPeriod->id,
             'current_reading' => 137.125,
             'read_at' => '2026-05-26',
         ])
@@ -299,7 +302,7 @@ test('admin users can create and list meter readings for the current tenant', fu
     $reading = MeterReading::query()
         ->whereBelongsTo($organization)
         ->whereBelongsTo($meter)
-        ->where('period', '202605')
+        ->forPeriod('202605')
         ->sole();
 
     expect($reading->previous_reading)->toBe('100.0000')
@@ -336,6 +339,9 @@ test('client meter table can add a reading for the selected meter', function () 
             'previous_reading' => 100,
             'current_reading' => 125,
         ]);
+    closedBillingPeriodFor($organization, '202604');
+
+    $billingPeriod = billingPeriodFor($organization);
 
     actingAsMeterTenant($organization);
 
@@ -345,7 +351,7 @@ test('client meter table can add a reading for the selected meter', function () 
     ])
         ->assertTableActionExists('addReading', null, $meter)
         ->callTableAction('addReading', $meter, data: [
-            'period' => '202605',
+            'billing_period_id' => $billingPeriod->id,
             'current_reading' => 140.75,
             'read_at' => '2026-05-29',
             'note' => 'Показание из карточки абонента',
@@ -357,7 +363,7 @@ test('client meter table can add a reading for the selected meter', function () 
         ->whereBelongsTo($organization)
         ->whereBelongsTo($client)
         ->whereBelongsTo($meter)
-        ->where('period', '202605')
+        ->forPeriod('202605')
         ->sole();
 
     expect($reading->previous_reading)->toBe('125.0000')

@@ -15,14 +15,14 @@ return new class extends Migration
             $table->id();
             $table->foreignId('organization_id')->constrained()->cascadeOnDelete();
             $table->foreignId('client_id')->constrained()->restrictOnDelete();
-            $table->string('period', 6);
+            $table->foreignId('billing_period_id')->constrained()->restrictOnDelete();
             $table->decimal('amount', 14, 2);
             $table->date('paid_at')->nullable();
             $table->text('note')->nullable();
             $table->timestamps();
 
-            $table->index(['organization_id', 'period'], 'payments_org_period_idx');
-            $table->index(['organization_id', 'client_id', 'period'], 'payments_org_client_period_idx');
+            $table->index(['organization_id', 'billing_period_id'], 'payments_org_period_idx');
+            $table->index(['organization_id', 'client_id', 'billing_period_id'], 'payments_org_client_period_idx');
         });
     }
 

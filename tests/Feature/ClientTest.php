@@ -785,12 +785,14 @@ test('client related tables can create meters, payments and balance adjustments 
         ])
         ->assertHasNoTableActionErrors();
 
+    $billingPeriod = billingPeriodFor($organization);
+
     Livewire::test(PaymentsRelationManager::class, [
         'ownerRecord' => $client,
         'pageClass' => EditClient::class,
     ])
         ->callTableAction('create', data: [
-            'period' => '202605',
+            'billing_period_id' => $billingPeriod->id,
             'amount' => 3500,
             'paid_at' => '2026-05-29',
             'note' => 'Оплата из карточки абонента',
@@ -802,7 +804,7 @@ test('client related tables can create meters, payments and balance adjustments 
         'pageClass' => EditClient::class,
     ])
         ->callTableAction('create', data: [
-            'period' => '202605',
+            'billing_period_id' => $billingPeriod->id,
             'type' => 'opening_balance',
             'amount' => 1500,
             'adjusted_at' => '2026-05-29',
@@ -819,13 +821,13 @@ test('client related tables can create meters, payments and balance adjustments 
         ->and(Payment::query()
             ->whereBelongsTo($organization)
             ->whereBelongsTo($client)
-            ->where('period', '202605')
+            ->forPeriod('202605')
             ->where('amount', 3500)
             ->exists())->toBeTrue()
         ->and(BalanceAdjustment::query()
             ->whereBelongsTo($organization)
             ->whereBelongsTo($client)
-            ->where('period', '202605')
+            ->forPeriod('202605')
             ->where('amount', 1500)
             ->exists())->toBeTrue();
 });

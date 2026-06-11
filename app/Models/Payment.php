@@ -11,13 +11,16 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 #[Fillable([
     'organization_id',
     'client_id',
-    'period',
+    'billing_period_id',
     'amount',
     'paid_at',
     'note',
+    'period',
 ])]
 class Payment extends Model
 {
+    use HasBillingPeriod;
+
     /** @use HasFactory<PaymentFactory> */
     use HasFactory;
 
@@ -42,5 +45,17 @@ class Payment extends Model
             'amount' => 'decimal:2',
             'paid_at' => 'date',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        static::saving(function (Payment $payment): void {
+            $payment->resolveBillingPeriodIdFromPeriodCode();
+            $payment->ensureBillingPeriodIsEditable();
+        });
+
+        static::deleting(function (Payment $payment): void {
+            $payment->ensureBillingPeriodIsEditable();
+        });
     }
 }

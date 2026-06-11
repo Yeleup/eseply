@@ -17,7 +17,7 @@ return new class extends Migration
             $table->foreignId('meter_id')->constrained()->cascadeOnDelete();
             $table->foreignId('client_id')->constrained()->restrictOnDelete();
             $table->foreignId('utility_service_id')->nullable()->constrained()->nullOnDelete();
-            $table->string('period', 6);
+            $table->foreignId('billing_period_id')->constrained()->restrictOnDelete();
             $table->decimal('previous_reading', 14, 4)->default(0);
             $table->decimal('current_reading', 14, 4);
             $table->decimal('consumption', 14, 4)->default(0);
@@ -25,8 +25,8 @@ return new class extends Migration
             $table->text('note')->nullable();
             $table->timestamps();
 
-            $table->unique(['meter_id', 'period'], 'meter_readings_meter_period_unique');
-            $table->index(['organization_id', 'period'], 'meter_readings_org_period_idx');
+            $table->unique(['meter_id', 'billing_period_id'], 'meter_readings_meter_period_unique');
+            $table->index(['organization_id', 'billing_period_id'], 'meter_readings_org_period_idx');
             $table->index(['organization_id', 'client_id'], 'meter_readings_org_client_idx');
         });
     }

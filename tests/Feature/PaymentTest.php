@@ -68,7 +68,7 @@ test('multiple payments are allowed for the same client and period', function ()
     expect(Payment::query()
         ->whereBelongsTo($organization)
         ->whereBelongsTo($client)
-        ->where('period', '202605')
+        ->forPeriod('202605')
         ->sum('amount'))->toBe('2000.00');
 });
 
@@ -82,6 +82,16 @@ test('billing month closure subtracts all payments from closing balance', functi
             'billing_type' => 'fixed',
             'fixed_amount' => 5000,
         ]);
+
+    Payment::factory()
+        ->for($organization)
+        ->for($client)
+        ->create([
+            'period' => '202604',
+            'amount' => 700,
+        ]);
+
+    closedBillingPeriodFor($organization, '202604');
 
     BalanceAdjustment::factory()
         ->for($organization)
@@ -102,20 +112,12 @@ test('billing month closure subtracts all payments from closing balance', functi
         )
         ->create();
 
-    Payment::factory()
-        ->for($organization)
-        ->for($client)
-        ->create([
-            'period' => '202604',
-            'amount' => 700,
-        ]);
-
     app(CloseBillingMonth::class)->handle($organization, '202605');
 
     $accrual = Accrual::query()
         ->whereBelongsTo($organization)
         ->whereBelongsTo($client)
-        ->where('period', '202605')
+        ->forPeriod('202605')
         ->sole();
 
     expect($accrual->opening_balance)->toBe('0.00')
@@ -134,13 +136,14 @@ test('admin users can create and list payments for the current tenant', function
     $otherTenantPayment = Payment::factory()->for(Organization::factory())->create([
         'period' => '202605',
     ]);
+    $billingPeriod = billingPeriodFor($organization);
 
     actingAsPaymentTenant($organization);
 
     Livewire::test(CreatePayment::class)
         ->fillForm([
             'client_id' => $client->id,
-            'period' => '202605',
+            'billing_period_id' => $billingPeriod->id,
             'amount' => 2500,
             'paid_at' => '2026-05-26',
             'note' => 'Оплата через кассу',
@@ -153,7 +156,7 @@ test('admin users can create and list payments for the current tenant', function
     $payment = Payment::query()
         ->whereBelongsTo($organization)
         ->whereBelongsTo($client)
-        ->where('period', '202605')
+        ->forPeriod('202605')
         ->sole();
 
     expect($payment->amount)->toBe('2500.00');

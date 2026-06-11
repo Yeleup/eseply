@@ -452,6 +452,80 @@
                 </div>
             </section>
 
+            <section class="overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+                <div class="flex flex-col gap-3 border-b border-zinc-200 p-4 dark:border-zinc-800 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                        <p class="text-sm text-zinc-500 dark:text-zinc-400">BillingPeriodResource</p>
+                        <h2 class="text-base font-semibold">Расчётные месяцы</h2>
+                        <p class="mt-2 max-w-2xl text-sm text-zinc-500 dark:text-zinc-400">
+                            Месяц открывается отдельно и строго по очереди: новый месяц доступен только после закрытия предыдущего.
+                        </p>
+                    </div>
+                    <button class="rounded-md bg-amber-600 px-3 py-2 text-sm font-medium text-white hover:bg-amber-700 dark:bg-amber-400 dark:text-zinc-950 dark:hover:bg-amber-300">
+                        Открыть месяц
+                    </button>
+                </div>
+
+                <div class="grid grid-cols-1 gap-4 p-4 xl:grid-cols-[1fr_22rem]">
+                    <div class="overflow-x-auto rounded-lg border border-zinc-200 dark:border-zinc-800">
+                        <table class="w-full min-w-180 text-left text-sm">
+                            <thead class="bg-zinc-100 text-xs font-semibold uppercase text-zinc-500 dark:bg-zinc-950 dark:text-zinc-400">
+                                <tr>
+                                    <th class="px-4 py-3">Месяц</th>
+                                    <th class="px-4 py-3">Статус</th>
+                                    <th class="px-4 py-3">Создано</th>
+                                    <th class="px-4 py-3">Ошибок</th>
+                                    <th class="px-4 py-3">Закрыт</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-zinc-200 dark:divide-zinc-800">
+                                <tr>
+                                    <td class="px-4 py-3 font-medium">05.2026</td>
+                                    <td class="px-4 py-3">
+                                        <span class="rounded-full bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200">Открыт</span>
+                                    </td>
+                                    <td class="px-4 py-3 text-zinc-500 dark:text-zinc-400">0</td>
+                                    <td class="px-4 py-3 text-zinc-500 dark:text-zinc-400">0</td>
+                                    <td class="px-4 py-3 text-zinc-400 dark:text-zinc-600">-</td>
+                                </tr>
+                                <tr>
+                                    <td class="px-4 py-3 font-medium">04.2026</td>
+                                    <td class="px-4 py-3">
+                                        <span class="rounded-full bg-zinc-200 px-2 py-1 text-xs font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">Закрыт</span>
+                                    </td>
+                                    <td class="px-4 py-3">128</td>
+                                    <td class="px-4 py-3">0</td>
+                                    <td class="px-4 py-3">30.04.2026 18:20</td>
+                                </tr>
+                                <tr>
+                                    <td class="px-4 py-3 font-medium">03.2026</td>
+                                    <td class="px-4 py-3">
+                                        <span class="rounded-full bg-rose-100 px-2 py-1 text-xs font-medium text-rose-700 dark:bg-rose-900/60 dark:text-rose-200">Ошибка закрытия</span>
+                                    </td>
+                                    <td class="px-4 py-3">124</td>
+                                    <td class="px-4 py-3">4</td>
+                                    <td class="px-4 py-3 text-zinc-400 dark:text-zinc-600">-</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/60 dark:bg-amber-950/20">
+                        <p class="text-sm font-medium text-amber-950 dark:text-amber-100">Форма закрытия месяца</p>
+                        <label class="mt-4 flex flex-col gap-2 text-sm font-medium">
+                            Расчётный месяц
+                            <select class="h-10 rounded-md border border-amber-300 bg-white px-3 text-sm font-normal text-zinc-950 dark:border-amber-800 dark:bg-zinc-950 dark:text-zinc-50">
+                                <option>05.2026 · открыт</option>
+                                <option>03.2026 · ошибка закрытия</option>
+                            </select>
+                        </label>
+                        <p class="mt-3 text-xs text-amber-800 dark:text-amber-200">
+                            Пока 05.2026 открыт, система не позволит открыть 06.2026; закрытые месяцы не принимают изменения оплат, показаний или корректировок.
+                        </p>
+                    </div>
+                </div>
+            </section>
+
             <section class="grid grid-cols-1 gap-4 md:grid-cols-3">
                 <div class="rounded-lg border border-dashed border-zinc-300 bg-white p-6 text-center dark:border-zinc-700 dark:bg-zinc-900">
                     <h2 class="text-base font-semibold">Empty State</h2>

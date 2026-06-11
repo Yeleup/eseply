@@ -2,8 +2,8 @@
 
 namespace App\Filament\Resources\Receipts\Tables;
 
+use App\Filament\Support\BillingPeriodOptions;
 use Filament\Actions\ViewAction;
-use Filament\Facades\Filament;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
@@ -17,8 +17,10 @@ class ReceiptsTable
             ->modifyQueryUsing(fn (Builder $query): Builder => $query
                 ->with([
                     'accrual',
+                    'billingPeriod',
                     'client',
                 ])
+                ->orderByBillingPeriodDesc()
                 ->latest('issued_at'))
             ->columns([
                 TextColumn::make('receipt_number')
@@ -27,8 +29,7 @@ class ReceiptsTable
                     ->sortable(),
                 TextColumn::make('period')
                     ->label('Период')
-                    ->searchable()
-                    ->sortable(),
+                    ->placeholder('-'),
                 TextColumn::make('account_number')
                     ->label('Лицевой счёт')
                     ->searchable()
@@ -65,13 +66,9 @@ class ReceiptsTable
                     ->sortable(),
             ])
             ->filters([
-                SelectFilter::make('period')
+                SelectFilter::make('billing_period_id')
                     ->label('Период')
-                    ->options(fn (): array => Filament::getTenant()
-                        ?->receipts()
-                        ->orderByDesc('period')
-                        ->pluck('period', 'period')
-                        ->all() ?? []),
+                    ->options(fn (): array => BillingPeriodOptions::all()),
             ])
             ->recordActions([
                 ViewAction::make(),

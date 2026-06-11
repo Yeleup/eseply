@@ -16,7 +16,7 @@ return new class extends Migration
             $table->foreignId('organization_id')->constrained()->cascadeOnDelete();
             $table->foreignId('client_id')->constrained()->restrictOnDelete();
             $table->foreignId('utility_service_id')->nullable()->constrained()->nullOnDelete();
-            $table->string('period', 6);
+            $table->foreignId('billing_period_id')->constrained()->restrictOnDelete();
             $table->string('account_number');
             $table->string('client_name');
             $table->string('utility_service_name')->nullable();
@@ -30,8 +30,8 @@ return new class extends Migration
             $table->timestamp('closed_at');
             $table->timestamps();
 
-            $table->unique(['organization_id', 'client_id', 'period'], 'accruals_client_period_unique');
-            $table->index(['organization_id', 'period'], 'accruals_org_period_idx');
+            $table->unique(['billing_period_id', 'client_id'], 'accruals_period_client_unique');
+            $table->index(['organization_id', 'billing_period_id'], 'accruals_org_period_idx');
             $table->index(['organization_id', 'account_number'], 'accruals_org_account_idx');
         });
     }

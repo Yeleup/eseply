@@ -3,7 +3,10 @@
 namespace App\Filament\Resources\Clients\RelationManagers;
 
 use App\BalanceAdjustmentType;
+use App\Filament\Support\BillingPeriodOptions;
 use App\Filament\Support\OrganizationMemberAccess;
+use App\Models\BalanceAdjustment;
+use App\Models\BillingPeriod;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
@@ -52,14 +55,15 @@ class BalanceAdjustmentsRelationManager extends RelationManager
                 Section::make('Корректировка сальдо')
                     ->columns(2)
                     ->schema([
-                        TextInput::make('period')
-                            ->label('Период')
-                            ->placeholder('202605')
-                            ->helperText('Формат: ГГГГММ')
+                        Select::make('billing_period_id')
+                            ->label('Расчётный месяц')
+                            ->options(fn (): array => BillingPeriodOptions::editable($this->ownerRecord->organization))
+                            ->helperText('Корректировку можно внести только в открытый месяц.')
+                            ->searchable()
+                            ->preload()
                             ->required()
-                            ->length(6)
-                            ->regex('/^\d{6}$/')
-                            ->rules(['date_format:Ym']),
+                            ->scopedExists(BillingPeriod::class, 'id')
+                            ->native(false),
                         Select::make('type')
                             ->label('Тип')
                             ->options(BalanceAdjustmentType::class)
@@ -87,13 +91,13 @@ class BalanceAdjustmentsRelationManager extends RelationManager
         return $table
             ->recordTitleAttribute('period')
             ->modifyQueryUsing(fn (Builder $query): Builder => $query
+                ->with('billingPeriod')
                 ->orderByDesc('adjusted_at')
                 ->orderByDesc('id'))
             ->columns([
                 TextColumn::make('period')
                     ->label('Период')
-                    ->searchable()
-                    ->sortable(),
+                    ->placeholder('-'),
                 TextColumn::make('type')
                     ->label('Тип')
                     ->badge()
@@ -114,13 +118,9 @@ class BalanceAdjustmentsRelationManager extends RelationManager
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
-                SelectFilter::make('period')
+                SelectFilter::make('billing_period_id')
                     ->label('Период')
-                    ->options(fn (): array => $this->ownerRecord
-                        ->balanceAdjustments()
-                        ->orderByDesc('period')
-                        ->pluck('period', 'period')
-                        ->all()),
+                    ->options(fn (): array => BillingPeriodOptions::all($this->ownerRecord->organization)),
                 SelectFilter::make('type')
                     ->label('Тип')
                     ->options(BalanceAdjustmentType::class),
@@ -134,8 +134,10 @@ class BalanceAdjustmentsRelationManager extends RelationManager
                     }),
             ])
             ->recordActions([
-                EditAction::make(),
-                DeleteAction::make(),
+                EditAction::make()
+                    ->visible(fn (BalanceAdjustment $record): bool => $record->billingPeriod?->isEditable() ?? false),
+                DeleteAction::make()
+                    ->visible(fn (BalanceAdjustment $record): bool => $record->billingPeriod?->isEditable() ?? false),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([

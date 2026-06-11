@@ -43,9 +43,9 @@ class EditMeterReading extends EditRecord
     {
         $this->authorizeMeter($data['meter_id'] ?? null);
 
-        $data['previous_reading'] = MeterReading::previousReadingFor(
+        $data['previous_reading'] = MeterReading::previousReadingForBillingPeriod(
             $data['meter_id'] ?? null,
-            $data['period'] ?? null,
+            $data['billing_period_id'] ?? null,
         ) ?? 0;
 
         return $data;

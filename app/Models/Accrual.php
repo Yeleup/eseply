@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\BillingPeriodStatus;
 use Database\Factories\AccrualFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -13,7 +14,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
     'organization_id',
     'client_id',
     'utility_service_id',
-    'period',
+    'billing_period_id',
     'account_number',
     'client_name',
     'utility_service_name',
@@ -26,9 +27,12 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
     'opening_balance',
     'closing_balance',
     'closed_at',
+    'period',
 ])]
 class Accrual extends Model
 {
+    use HasBillingPeriod;
+
     /** @use HasFactory<AccrualFactory> */
     use HasFactory;
 
@@ -79,5 +83,12 @@ class Accrual extends Model
             'closing_balance' => 'decimal:2',
             'closed_at' => 'datetime',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        static::saving(function (Accrual $accrual): void {
+            $accrual->resolveBillingPeriodIdFromPeriodCode(BillingPeriodStatus::Closed);
+        });
     }
 }

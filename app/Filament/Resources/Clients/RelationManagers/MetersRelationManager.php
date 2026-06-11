@@ -3,7 +3,9 @@
 namespace App\Filament\Resources\Clients\RelationManagers;
 
 use App\Filament\Resources\Meters\MeterResource;
+use App\Filament\Support\BillingPeriodOptions;
 use App\Filament\Support\OrganizationMemberAccess;
+use App\Models\BillingPeriod;
 use App\Models\Client;
 use App\Models\Meter;
 use App\Models\MeterReading;
@@ -17,6 +19,7 @@ use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Resources\RelationManagers\RelationManager;
@@ -161,8 +164,8 @@ class MetersRelationManager extends RelationManager
                         abort_unless($this->canAddReadingForMeter($record), 403);
 
                         $record->readings()->create([
-                            'period' => $data['period'],
-                            'previous_reading' => $this->previousReadingForMeterAndPeriod($record, $data['period'] ?? null),
+                            'billing_period_id' => $data['billing_period_id'],
+                            'previous_reading' => $this->previousReadingForMeterAndPeriod($record, $data['billing_period_id'] ?? null),
                             'current_reading' => $data['current_reading'],
                             'read_at' => $data['read_at'] ?? null,
                             'note' => $data['note'] ?? null,
@@ -216,24 +219,25 @@ class MetersRelationManager extends RelationManager
             Section::make('Показание')
                 ->columns(2)
                 ->schema([
-                    TextInput::make('period')
-                        ->label('Период')
-                        ->placeholder('202605')
-                        ->helperText('Формат: ГГГГММ')
+                    Select::make('billing_period_id')
+                        ->label('Расчётный месяц')
+                        ->options(fn (): array => BillingPeriodOptions::editable($this->ownerRecord->organization))
+                        ->helperText('Показание можно внести только в открытый месяц.')
+                        ->searchable()
+                        ->preload()
                         ->required()
-                        ->length(6)
-                        ->regex('/^\d{6}$/')
-                        ->rules(['date_format:Ym'])
-                        ->live(onBlur: true)
+                        ->scopedExists(BillingPeriod::class, 'id')
+                        ->live()
                         ->afterStateUpdated(function (Set $set, mixed $state) use ($meter): void {
                             $set('previous_reading', $this->previousReadingForMeterAndPeriod($meter, $state));
-                        }),
+                        })
+                        ->native(false),
                     TextInput::make('previous_reading')
                         ->label('Предыдущее показание')
                         ->numeric()
                         ->step('0.0001')
                         ->minValue(0)
-                        ->default(fn (Get $get): float => $this->previousReadingForMeterAndPeriod($meter, $get('period')))
+                        ->default(fn (Get $get): float => $this->previousReadingForMeterAndPeriod($meter, $get('billing_period_id')))
                         ->readOnly()
                         ->required(),
                     TextInput::make('current_reading')
@@ -252,9 +256,9 @@ class MetersRelationManager extends RelationManager
         ];
     }
 
-    protected function previousReadingForMeterAndPeriod(Meter $meter, mixed $period): float
+    protected function previousReadingForMeterAndPeriod(Meter $meter, mixed $billingPeriodId): float
     {
-        return MeterReading::previousReadingFor($meter->getKey(), $period) ?? 0;
+        return MeterReading::previousReadingForBillingPeriod($meter->getKey(), $billingPeriodId) ?? 0;
     }
 
     private function canAccessOwnerRecord(): bool

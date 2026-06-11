@@ -87,12 +87,14 @@ class MeterReadingResource extends Resource
     public static function canEdit(Model $record): bool
     {
         return $record instanceof MeterReading
+            && ($record->billingPeriod?->isEditable() ?? false)
             && OrganizationMemberAccess::canUpdateMeterReading($record);
     }
 
     public static function canDelete(Model $record): bool
     {
         return $record instanceof MeterReading
+            && ($record->billingPeriod?->isEditable() ?? false)
             && OrganizationMemberAccess::canDeleteMeterReading($record);
     }
 

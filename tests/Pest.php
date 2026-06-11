@@ -1,5 +1,8 @@
 <?php
 
+use App\BillingPeriodStatus;
+use App\Models\BillingPeriod;
+use App\Models\Organization;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -44,7 +47,23 @@ expect()->extend('toBeOne', function () {
 |
 */
 
-function something()
+function billingPeriodFor(Organization $organization, string $period = '202605'): BillingPeriod
 {
-    // ..
+    return BillingPeriod::openFor($organization, $period);
+}
+
+function closedBillingPeriodFor(Organization $organization, string $period): BillingPeriod
+{
+    $billingPeriod = BillingPeriod::openFor(
+        organization: $organization,
+        period: $period,
+        status: BillingPeriodStatus::Closed,
+    );
+
+    $billingPeriod->forceFill([
+        'status' => BillingPeriodStatus::Closed,
+        'closed_at' => now(),
+    ])->save();
+
+    return $billingPeriod;
 }

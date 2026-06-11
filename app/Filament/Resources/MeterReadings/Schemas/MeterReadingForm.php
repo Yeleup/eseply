@@ -2,6 +2,8 @@
 
 namespace App\Filament\Resources\MeterReadings\Schemas;
 
+use App\Filament\Support\BillingPeriodOptions;
+use App\Models\BillingPeriod;
 use App\Models\Meter;
 use App\Models\MeterReading;
 use App\Models\Organization;
@@ -51,27 +53,28 @@ class MeterReadingForm
                             ->scopedExists(Meter::class, 'id')
                             ->live()
                             ->afterStateUpdated(function (Set $set, Get $get, mixed $state): void {
-                                $set('previous_reading', MeterReading::previousReadingFor($state, $get('period')) ?? 0);
+                                $set('previous_reading', MeterReading::previousReadingForBillingPeriod($state, $get('billing_period_id')) ?? 0);
                             })
                             ->native(false),
-                        TextInput::make('period')
-                            ->label('Период')
-                            ->placeholder('202605')
-                            ->helperText('Формат: ГГГГММ')
+                        Select::make('billing_period_id')
+                            ->label('Расчётный месяц')
+                            ->options(fn (): array => BillingPeriodOptions::editable())
+                            ->helperText('Показание можно внести только в открытый месяц.')
+                            ->searchable()
+                            ->preload()
                             ->required()
-                            ->length(6)
-                            ->regex('/^\d{6}$/')
-                            ->rules(['date_format:Ym'])
-                            ->live(onBlur: true)
+                            ->scopedExists(BillingPeriod::class, 'id')
+                            ->live()
                             ->afterStateUpdated(function (Set $set, Get $get, mixed $state): void {
-                                $set('previous_reading', MeterReading::previousReadingFor($get('meter_id'), $state) ?? 0);
-                            }),
+                                $set('previous_reading', MeterReading::previousReadingForBillingPeriod($get('meter_id'), $state) ?? 0);
+                            })
+                            ->native(false),
                         TextInput::make('previous_reading')
                             ->label('Предыдущее показание')
                             ->numeric()
                             ->step('0.0001')
                             ->minValue(0)
-                            ->default(fn (Get $get): float => MeterReading::previousReadingFor($get('meter_id'), $get('period')) ?? 0)
+                            ->default(fn (Get $get): float => MeterReading::previousReadingForBillingPeriod($get('meter_id'), $get('billing_period_id')) ?? 0)
                             ->readOnly()
                             ->required(),
                         TextInput::make('current_reading')

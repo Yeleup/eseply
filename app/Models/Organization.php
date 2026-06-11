@@ -57,6 +57,11 @@ class Organization extends Model implements HasCurrentTenantLabel, HasName
         return $this->hasMany(Tariff::class);
     }
 
+    public function billingPeriods(): HasMany
+    {
+        return $this->hasMany(BillingPeriod::class);
+    }
+
     public function accruals(): HasMany
     {
         return $this->hasMany(Accrual::class);

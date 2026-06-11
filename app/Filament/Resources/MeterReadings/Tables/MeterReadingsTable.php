@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\MeterReadings\Tables;
 
 use App\Filament\Resources\MeterReadings\MeterReadingResource;
+use App\Filament\Support\BillingPeriodOptions;
 use App\Models\Meter;
 use App\Models\MeterReading;
 use App\Models\Organization;
@@ -24,11 +25,12 @@ class MeterReadingsTable
             ->modifyQueryUsing(function (Builder $query): Builder {
                 $query
                     ->with([
+                        'billingPeriod',
                         'client',
                         'meter',
                         'utilityService',
                     ])
-                    ->orderByDesc('period');
+                    ->orderByBillingPeriodDesc();
 
                 $tenant = Filament::getTenant();
                 $user = auth()->user();
@@ -42,8 +44,7 @@ class MeterReadingsTable
             ->columns([
                 TextColumn::make('period')
                     ->label('Период')
-                    ->searchable()
-                    ->sortable(),
+                    ->placeholder('-'),
                 TextColumn::make('meter.number')
                     ->label('Счётчик')
                     ->searchable()
@@ -81,21 +82,16 @@ class MeterReadingsTable
                     ->toggleable(),
             ])
             ->filters([
-                SelectFilter::make('period')
+                SelectFilter::make('billing_period_id')
                     ->label('Период')
                     ->options(function (): array {
                         $tenant = Filament::getTenant();
-                        $user = auth()->user();
 
-                        if (! $tenant instanceof Organization || ! $user instanceof User) {
+                        if (! $tenant instanceof Organization) {
                             return [];
                         }
 
-                        return MeterReading::query()
-                            ->visibleToOrganizationMember($user, $tenant)
-                            ->orderByDesc('period')
-                            ->pluck('period', 'period')
-                            ->all();
+                        return BillingPeriodOptions::all($tenant);
                     }),
                 SelectFilter::make('meter_id')
                     ->label('Счётчик')

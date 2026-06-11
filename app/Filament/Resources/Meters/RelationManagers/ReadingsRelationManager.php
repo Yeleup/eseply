@@ -2,7 +2,9 @@
 
 namespace App\Filament\Resources\Meters\RelationManagers;
 
+use App\Filament\Support\BillingPeriodOptions;
 use App\Filament\Support\OrganizationMemberAccess;
+use App\Models\BillingPeriod;
 use App\Models\Meter;
 use App\Models\MeterReading;
 use App\Models\Organization;
@@ -14,6 +16,7 @@ use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Resources\RelationManagers\RelationManager;
@@ -42,24 +45,25 @@ class ReadingsRelationManager extends RelationManager
                 Section::make('Показание')
                     ->columns(2)
                     ->schema([
-                        TextInput::make('period')
-                            ->label('Период')
-                            ->placeholder('202605')
-                            ->helperText('Формат: ГГГГММ')
+                        Select::make('billing_period_id')
+                            ->label('Расчётный месяц')
+                            ->options(fn (): array => BillingPeriodOptions::editable($this->ownerRecord->organization))
+                            ->helperText('Показание можно внести только в открытый месяц.')
+                            ->searchable()
+                            ->preload()
                             ->required()
-                            ->length(6)
-                            ->regex('/^\d{6}$/')
-                            ->rules(['date_format:Ym'])
-                            ->live(onBlur: true)
+                            ->scopedExists(BillingPeriod::class, 'id')
+                            ->live()
                             ->afterStateUpdated(function (Set $set, mixed $state): void {
                                 $set('previous_reading', $this->previousReadingForPeriod($state));
-                            }),
+                            })
+                            ->native(false),
                         TextInput::make('previous_reading')
                             ->label('Предыдущее показание')
                             ->numeric()
                             ->step('0.0001')
                             ->minValue(0)
-                            ->default(fn (Get $get): float => $this->previousReadingForPeriod($get('period')))
+                            ->default(fn (Get $get): float => $this->previousReadingForPeriod($get('billing_period_id')))
                             ->readOnly()
                             ->required(),
                         TextInput::make('current_reading')
@@ -83,7 +87,9 @@ class ReadingsRelationManager extends RelationManager
         return $table
             ->recordTitleAttribute('period')
             ->modifyQueryUsing(function (Builder $query): Builder {
-                $query->orderByDesc('period');
+                $query
+                    ->with('billingPeriod')
+                    ->orderByBillingPeriodDesc();
 
                 if ($this->canAccessOwnerRecord()) {
                     return $query;
@@ -94,8 +100,7 @@ class ReadingsRelationManager extends RelationManager
             ->columns([
                 TextColumn::make('period')
                     ->label('Период')
-                    ->searchable()
-                    ->sortable(),
+                    ->placeholder('-'),
                 TextColumn::make('previous_reading')
                     ->label('Предыдущее')
                     ->numeric(4)
@@ -123,18 +128,18 @@ class ReadingsRelationManager extends RelationManager
                     ->mutateDataUsing(function (array $data): array {
                         abort_unless($this->canCreateReadingForOwner(), 403);
 
-                        $data['previous_reading'] = $this->previousReadingForPeriod($data['period'] ?? null);
+                        $data['previous_reading'] = $this->previousReadingForPeriod($data['billing_period_id'] ?? null);
 
                         return $data;
                     }),
             ])
             ->recordActions([
                 EditAction::make()
-                    ->visible(fn (): bool => $this->canCreateReadingForOwner())
+                    ->visible(fn (MeterReading $record): bool => $this->canEditReading($record))
                     ->mutateDataUsing(function (array $data): array {
                         abort_unless($this->canCreateReadingForOwner(), 403);
 
-                        $data['previous_reading'] = $this->previousReadingForPeriod($data['period'] ?? null);
+                        $data['previous_reading'] = $this->previousReadingForPeriod($data['billing_period_id'] ?? null);
 
                         return $data;
                     }),
@@ -149,11 +154,11 @@ class ReadingsRelationManager extends RelationManager
             ]);
     }
 
-    protected function previousReadingForPeriod(mixed $period): float
+    protected function previousReadingForPeriod(mixed $billingPeriodId): float
     {
-        return MeterReading::previousReadingFor(
+        return MeterReading::previousReadingForBillingPeriod(
             $this->ownerRecord->getKey(),
-            $period,
+            $billingPeriodId,
         ) ?? 0;
     }
 
@@ -172,5 +177,12 @@ class ReadingsRelationManager extends RelationManager
     {
         return $this->ownerRecord instanceof Meter
             && OrganizationMemberAccess::canCreateMeterReadingForMeter($this->ownerRecord);
+    }
+
+    private function canEditReading(MeterReading $meterReading): bool
+    {
+        return ($meterReading->billingPeriod?->isEditable() ?? false)
+            && $this->canCreateReadingForOwner()
+            && OrganizationMemberAccess::canUpdateMeterReading($meterReading);
     }
 }

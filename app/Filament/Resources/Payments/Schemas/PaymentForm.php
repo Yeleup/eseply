@@ -2,6 +2,8 @@
 
 namespace App\Filament\Resources\Payments\Schemas;
 
+use App\Filament\Support\BillingPeriodOptions;
+use App\Models\BillingPeriod;
 use App\Models\Client;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\DatePicker;
@@ -35,14 +37,15 @@ class PaymentForm
                             ->required()
                             ->scopedExists(Client::class, 'id')
                             ->native(false),
-                        TextInput::make('period')
-                            ->label('Период')
-                            ->placeholder('202605')
-                            ->helperText('Формат: ГГГГММ')
+                        Select::make('billing_period_id')
+                            ->label('Расчётный месяц')
+                            ->options(fn (): array => BillingPeriodOptions::editable())
+                            ->helperText('Оплату можно внести только в открытый месяц.')
+                            ->searchable()
+                            ->preload()
                             ->required()
-                            ->length(6)
-                            ->regex('/^\d{6}$/')
-                            ->rules(['date_format:Ym']),
+                            ->scopedExists(BillingPeriod::class, 'id')
+                            ->native(false),
                         TextInput::make('amount')
                             ->label('Сумма')
                             ->numeric()

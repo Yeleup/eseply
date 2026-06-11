@@ -146,6 +146,8 @@ test('meter reading sheet report keeps client meters together and scopes records
             'previous_reading' => 10,
             'current_reading' => 15.5,
         ]);
+    closedBillingPeriodFor($organization, '202604');
+
     MeterReading::factory()
         ->for($firstMeter)
         ->create([

@@ -46,12 +46,12 @@ class CloseBillingMonth
 
             $summary['active'] = $clients->count();
 
+            $pendingAccruals = [];
+
             foreach ($clients as $client) {
                 $existingAccrual = $this->existingAccrual($organization, $client, $billingPeriod);
 
                 if ($existingAccrual) {
-                    Receipt::fromAccrual($existingAccrual);
-
                     $summary['skipped']++;
 
                     continue;
@@ -64,6 +64,32 @@ class CloseBillingMonth
 
                     continue;
                 }
+
+                $pendingAccruals[] = [
+                    'client' => $client,
+                    'calculation' => $calculation,
+                ];
+            }
+
+            if ($summary['failed'] > 0) {
+                $billingPeriod->markFailed($summary, 'Не все активные абоненты были рассчитаны.');
+
+                return $summary;
+            }
+
+            foreach ($clients as $client) {
+                $existingAccrual = $this->existingAccrual($organization, $client, $billingPeriod);
+
+                if ($existingAccrual) {
+                    Receipt::fromAccrual($existingAccrual);
+                }
+            }
+
+            foreach ($pendingAccruals as $pendingAccrual) {
+                /** @var Client $client */
+                $client = $pendingAccrual['client'];
+                /** @var array{volume:float|null, tariff_price:float|null, amount:float} $calculation */
+                $calculation = $pendingAccrual['calculation'];
 
                 $openingBalance = $this->openingBalance($client, $billingPeriod);
                 $paidAmount = $this->paidAmount($client, $billingPeriod);
@@ -92,12 +118,6 @@ class CloseBillingMonth
                 Receipt::fromAccrual($accrual);
 
                 $summary['created']++;
-            }
-
-            if ($summary['failed'] > 0) {
-                $billingPeriod->markFailed($summary, 'Не все активные абоненты были рассчитаны.');
-
-                return $summary;
             }
 
             $billingPeriod->markClosed($summary, auth()->user());

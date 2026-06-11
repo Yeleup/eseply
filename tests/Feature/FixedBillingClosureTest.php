@@ -11,6 +11,7 @@ use App\Models\Client;
 use App\Models\Meter;
 use App\Models\MeterReading;
 use App\Models\Organization;
+use App\Models\Receipt;
 use App\Models\Tariff;
 use App\Models\User;
 use App\Models\UtilityService;
@@ -395,6 +396,50 @@ test('billing month closure reports active clients without required billing data
             ],
         ])
         ->and(Accrual::query()->count())->toBe(0);
+});
+
+test('billing month closure does not create partial accruals when any active client has an error', function () {
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create();
+
+    Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'account_number' => '80501',
+            'name' => 'Валидный абонент',
+            'billing_type' => 'fixed',
+            'fixed_amount' => 5000,
+        ]);
+
+    $invalidClient = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'account_number' => '80502',
+            'name' => 'Без суммы',
+            'billing_type' => 'fixed',
+            'fixed_amount' => 0,
+        ]);
+
+    $summary = app(CloseBillingMonth::class)->handle($organization, '202605');
+
+    expect($summary)->toMatchArray([
+        'active' => 2,
+        'created' => 0,
+        'skipped' => 0,
+        'failed' => 1,
+    ])
+        ->and($summary['errors'])->toBe([
+            [
+                'client_id' => $invalidClient->id,
+                'account_number' => '80502',
+                'client_name' => 'Без суммы',
+                'message' => 'Не указана фиксированная сумма.',
+            ],
+        ])
+        ->and(Accrual::query()->whereBelongsTo($organization)->forPeriod('202605')->count())->toBe(0)
+        ->and(Receipt::query()->whereBelongsTo($organization)->forPeriod('202605')->count())->toBe(0);
 });
 
 test('billing month closure reports active clients when organization service is missing', function () {

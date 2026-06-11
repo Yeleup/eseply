@@ -778,6 +778,15 @@ test('client related tables can create meters, payments and balance adjustments 
         'ownerRecord' => $client,
         'pageClass' => EditClient::class,
     ])
+        ->mountTableAction('create')
+        ->assertTableActionDataSet([
+            'installed_on' => today()->toDateString(),
+        ]);
+
+    Livewire::test(MetersRelationManager::class, [
+        'ownerRecord' => $client,
+        'pageClass' => EditClient::class,
+    ])
         ->callTableAction('create', data: [
             'number' => 'MTR-REL-1',
             'initial_reading' => 12.5,

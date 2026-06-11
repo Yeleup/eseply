@@ -6,6 +6,7 @@ use App\Filament\Resources\MeterReadings\Pages\CreateMeterReading;
 use App\Filament\Resources\MeterReadings\Pages\ListMeterReadings;
 use App\Filament\Resources\Meters\MeterResource;
 use App\Filament\Resources\Meters\Pages\CreateMeter;
+use App\Filament\Resources\Meters\Pages\EditMeter;
 use App\Filament\Resources\Meters\Pages\ListMeters;
 use App\Filament\Resources\Meters\RelationManagers\ReadingsRelationManager;
 use App\Models\Client;
@@ -71,6 +72,21 @@ test('meter number is unique inside an organization', function () {
     expect(fn () => Meter::factory()->for($organization)->create([
         'number' => 'MTR-10001',
     ]))->toThrow(QueryException::class);
+});
+
+test('meter initial reading cannot be changed after creation', function () {
+    $meter = Meter::factory()->create([
+        'number' => 'MTR-IMMUTABLE',
+        'initial_reading' => 12.5,
+    ]);
+
+    $meter->update([
+        'number' => 'MTR-IMMUTABLE-UPDATED',
+        'initial_reading' => 99.75,
+    ]);
+
+    expect($meter->refresh()->number)->toBe('MTR-IMMUTABLE-UPDATED')
+        ->and($meter->initial_reading)->toBe('12.5000');
 });
 
 test('a client can have multiple active meters', function () {
@@ -207,6 +223,10 @@ test('admin users can create and list meters for the current tenant', function (
     actingAsMeterTenant($organization);
 
     Livewire::test(CreateMeter::class)
+        ->assertFormFieldEnabled('initial_reading')
+        ->assertFormSet([
+            'installed_on' => today()->toDateString(),
+        ])
         ->fillForm([
             'client_id' => $client->id,
             'number' => 'MTR-60001',
@@ -222,6 +242,11 @@ test('admin users can create and list meters for the current tenant', function (
         ->whereBelongsTo($organization)
         ->where('number', 'MTR-60001')
         ->sole();
+
+    Livewire::test(EditMeter::class, [
+        'record' => $meter->getRouteKey(),
+    ])
+        ->assertFormFieldDisabled('initial_reading');
 
     Livewire::test(ListMeters::class)
         ->assertOk()

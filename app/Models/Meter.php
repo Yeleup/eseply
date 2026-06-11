@@ -104,6 +104,10 @@ class Meter extends Model
     protected static function booted(): void
     {
         static::saving(function (Meter $meter): void {
+            if ($meter->exists && $meter->isDirty('initial_reading')) {
+                $meter->initial_reading = $meter->getOriginal('initial_reading');
+            }
+
             if ($meter->organization_id) {
                 $meter->utility_service_id = UtilityService::query()
                     ->where('organization_id', $meter->organization_id)

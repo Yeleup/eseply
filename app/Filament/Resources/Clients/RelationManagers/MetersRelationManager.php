@@ -57,9 +57,11 @@ class MetersRelationManager extends RelationManager
                             ->step('0.0001')
                             ->minValue(0)
                             ->default(0)
+                            ->disabledOn('edit')
                             ->required(),
                         DatePicker::make('installed_on')
                             ->label('Дата установки')
+                            ->default(fn (): string => today()->toDateString())
                             ->native(false),
                         Textarea::make('note')
                             ->label('Примечание')

@@ -189,6 +189,11 @@ class BillingPeriod extends Model
         return $this->hasMany(Receipt::class);
     }
 
+    public function closureErrors(): HasMany
+    {
+        return $this->hasMany(BillingPeriodClosureError::class);
+    }
+
     public function getCodeAttribute(): string
     {
         return $this->starts_on->format('Ym');
@@ -271,6 +276,8 @@ class BillingPeriod extends Model
             'failed_at' => null,
             'failure_message' => null,
         ])->save();
+
+        $this->closureErrors()->delete();
     }
 
     /**
@@ -291,12 +298,15 @@ class BillingPeriod extends Model
             'skipped_accruals_count' => $summary['skipped'],
             'failed_clients_count' => $summary['failed'],
         ])->save();
+
+        $this->closureErrors()->delete();
     }
 
     /**
      * @param  array{active:int, created:int, skipped:int, failed:int}  $summary
+     * @param  list<array{client_id:int|null, account_number:string|null, client_name:string|null, billing_type:string|null, code:string, message:string, context:array<string, mixed>|null}>  $errors
      */
-    public function markFailed(array $summary, string $message): void
+    public function markFailed(array $summary, string $message, array $errors = []): void
     {
         $this->forceFill([
             'status' => BillingPeriodStatus::Failed,
@@ -307,6 +317,25 @@ class BillingPeriod extends Model
             'skipped_accruals_count' => $summary['skipped'],
             'failed_clients_count' => $summary['failed'],
         ])->save();
+
+        $this->closureErrors()->delete();
+
+        if ($errors === []) {
+            return;
+        }
+
+        $this->closureErrors()->createMany(
+            array_map(fn (array $error): array => [
+                'organization_id' => $this->organization_id,
+                'client_id' => $error['client_id'],
+                'account_number' => $error['account_number'],
+                'client_name' => $error['client_name'],
+                'billing_type' => $error['billing_type'],
+                'code' => $error['code'],
+                'message' => $error['message'],
+                'context' => $error['context'],
+            ], $errors)
+        );
     }
 
     /**

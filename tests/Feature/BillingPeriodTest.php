@@ -6,6 +6,7 @@ use App\BillingPeriodStatus;
 use App\Filament\Resources\BillingPeriods\Pages\ListBillingPeriods;
 use App\Models\BalanceAdjustment;
 use App\Models\BillingPeriod;
+use App\Models\BillingPeriodClosureError;
 use App\Models\Client;
 use App\Models\Meter;
 use App\Models\MeterReading;
@@ -168,7 +169,7 @@ test('new billing period action does not open next month while latest period is 
 test('failed billing period can be closed after data is fixed', function () {
     $organization = Organization::factory()->create();
     $utilityService = UtilityService::factory()->for($organization)->create();
-    Client::factory()
+    $client = Client::factory()
         ->for($organization)
         ->for($utilityService)
         ->create([
@@ -182,6 +183,15 @@ test('failed billing period can be closed after data is fixed', function () {
             'status' => BillingPeriodStatus::Failed,
             'failed_at' => now(),
             'failure_message' => 'Не все активные абоненты были рассчитаны.',
+            'failed_clients_count' => 1,
+        ]);
+    BillingPeriodClosureError::factory()
+        ->for($organization)
+        ->for($billingPeriod)
+        ->for($client)
+        ->create([
+            'code' => 'missing_fixed_amount',
+            'message' => 'Не указана фиксированная сумма.',
         ]);
 
     $summary = app(CloseBillingMonth::class)->handle($organization, $billingPeriod);
@@ -192,5 +202,41 @@ test('failed billing period can be closed after data is fixed', function () {
         'failed' => 0,
     ])
         ->and($billingPeriod->refresh()->status)->toBe(BillingPeriodStatus::Closed)
-        ->and($billingPeriod->closed_at)->not->toBeNull();
+        ->and($billingPeriod->closed_at)->not->toBeNull()
+        ->and($billingPeriod->closureErrors()->count())->toBe(0);
+});
+
+test('failed billing period shows closure error report action', function () {
+    $organization = Organization::factory()->create();
+    actingAsBillingPeriodTenant($organization);
+
+    $billingPeriod = BillingPeriod::factory()
+        ->for($organization)
+        ->period('202605')
+        ->create([
+            'status' => BillingPeriodStatus::Failed,
+            'failed_at' => now(),
+            'failure_message' => 'Не все активные абоненты были рассчитаны.',
+            'failed_clients_count' => 1,
+        ]);
+
+    BillingPeriodClosureError::factory()
+        ->for($organization)
+        ->for($billingPeriod)
+        ->create([
+            'account_number' => '80502',
+            'client_name' => 'Без суммы',
+            'billing_type' => 'fixed',
+            'code' => 'missing_fixed_amount',
+            'message' => 'Не указана фиксированная сумма.',
+        ]);
+
+    Livewire::test(ListBillingPeriods::class)
+        ->assertOk()
+        ->assertTableActionVisible('closureErrors', $billingPeriod)
+        ->mountTableAction('closureErrors', $billingPeriod)
+        ->assertMountedActionModalSee('80502')
+        ->assertMountedActionModalSee('Без суммы')
+        ->assertMountedActionModalSee('Не указана фиксированная сумма.')
+        ->assertMountedActionModalSee('missing_fixed_amount');
 });

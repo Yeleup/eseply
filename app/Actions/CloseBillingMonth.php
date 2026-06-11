@@ -11,6 +11,7 @@ use App\Models\Organization;
 use App\Models\Receipt;
 use App\Models\Tariff;
 use App\Models\UtilityService;
+use App\Support\BillingClosureIssue;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
@@ -47,6 +48,7 @@ class CloseBillingMonth
             $summary['active'] = $clients->count();
 
             $pendingAccruals = [];
+            $closureErrors = [];
 
             foreach ($clients as $client) {
                 $existingAccrual = $this->existingAccrual($organization, $client, $billingPeriod);
@@ -59,8 +61,8 @@ class CloseBillingMonth
 
                 $calculation = $this->calculation($client, $organization->utilityService, $billingPeriod, $periodStart);
 
-                if (is_string($calculation)) {
-                    $this->recordError($summary, $client, $calculation);
+                if ($calculation instanceof BillingClosureIssue) {
+                    $this->recordError($summary, $closureErrors, $client, $calculation);
 
                     continue;
                 }
@@ -72,7 +74,7 @@ class CloseBillingMonth
             }
 
             if ($summary['failed'] > 0) {
-                $billingPeriod->markFailed($summary, 'Не все активные абоненты были рассчитаны.');
+                $billingPeriod->markFailed($summary, 'Не все активные абоненты были рассчитаны.', $closureErrors);
 
                 return $summary;
             }
@@ -127,19 +129,23 @@ class CloseBillingMonth
     }
 
     /**
-     * @return array{volume:float|null, tariff_price:float|null, amount:float}|string
+     * @return array{volume:float|null, tariff_price:float|null, amount:float}|BillingClosureIssue
      */
-    private function calculation(Client $client, ?UtilityService $utilityService, BillingPeriod $billingPeriod, CarbonImmutable $periodStart): array|string
+    private function calculation(Client $client, ?UtilityService $utilityService, BillingPeriod $billingPeriod, CarbonImmutable $periodStart): array|BillingClosureIssue
     {
         if (! $utilityService) {
-            return 'Не задана услуга организации.';
+            return new BillingClosureIssue('missing_organization_utility_service', 'Не задана услуга организации.');
         }
 
         return match ($client->billing_type) {
             'fixed' => $this->fixedCalculation($client),
             'meter' => $this->meterCalculation($client, $utilityService, $billingPeriod, $periodStart),
             'per_person' => $this->perPersonCalculation($client, $utilityService, $periodStart),
-            default => 'Не выбран поддерживаемый тип начисления.',
+            default => new BillingClosureIssue(
+                'unsupported_billing_type',
+                'Не выбран поддерживаемый тип начисления.',
+                ['billing_type' => $client->billing_type],
+            ),
         };
     }
 
@@ -153,12 +159,12 @@ class CloseBillingMonth
     }
 
     /**
-     * @return array{volume:null, tariff_price:null, amount:float}|string
+     * @return array{volume:null, tariff_price:null, amount:float}|BillingClosureIssue
      */
-    private function fixedCalculation(Client $client): array|string
+    private function fixedCalculation(Client $client): array|BillingClosureIssue
     {
         if ((float) $client->fixed_amount <= 0) {
-            return 'Не указана фиксированная сумма.';
+            return new BillingClosureIssue('missing_fixed_amount', 'Не указана фиксированная сумма.');
         }
 
         return [
@@ -169,22 +175,34 @@ class CloseBillingMonth
     }
 
     /**
-     * @return array{volume:float, tariff_price:float, amount:float}|string
+     * @return array{volume:float, tariff_price:float, amount:float}|BillingClosureIssue
      */
-    private function perPersonCalculation(Client $client, UtilityService $utilityService, CarbonImmutable $periodStart): array|string
+    private function perPersonCalculation(Client $client, UtilityService $utilityService, CarbonImmutable $periodStart): array|BillingClosureIssue
     {
         if ((int) $client->residents_count <= 0) {
-            return 'Не указано количество проживающих.';
+            return new BillingClosureIssue('missing_residents_count', 'Не указано количество проживающих.');
         }
 
         $tariff = $this->activeTariff($client, $utilityService, $periodStart);
 
         if (! $tariff) {
-            return 'Не найден активный тариф на начало периода.';
+            return new BillingClosureIssue(
+                'missing_tariff',
+                'Не найден активный тариф на начало периода.',
+                [
+                    'client_type' => $this->clientTypeValue($client),
+                    'utility_service_id' => $utilityService->id,
+                    'period_start' => $periodStart->toDateString(),
+                ],
+            );
         }
 
         if ((float) $tariff->per_person_price <= 0) {
-            return 'Не указана цена тарифа на одного человека.';
+            return new BillingClosureIssue(
+                'missing_per_person_price',
+                'Не указана цена тарифа на одного человека.',
+                ['tariff_id' => $tariff->id],
+            );
         }
 
         $volume = (float) $client->residents_count;
@@ -198,9 +216,9 @@ class CloseBillingMonth
     }
 
     /**
-     * @return array{volume:float, tariff_price:float, amount:float}|string
+     * @return array{volume:float, tariff_price:float, amount:float}|BillingClosureIssue
      */
-    private function meterCalculation(Client $client, UtilityService $utilityService, BillingPeriod $billingPeriod, CarbonImmutable $periodStart): array|string
+    private function meterCalculation(Client $client, UtilityService $utilityService, BillingPeriod $billingPeriod, CarbonImmutable $periodStart): array|BillingClosureIssue
     {
         $meters = $client->meters()
             ->with([
@@ -212,7 +230,7 @@ class CloseBillingMonth
             ->get();
 
         if ($meters->isEmpty()) {
-            return 'Не найдены активные счётчики по услуге организации.';
+            return new BillingClosureIssue('missing_active_meters', 'Не найдены активные счётчики по услуге организации.');
         }
 
         $volume = 0.0;
@@ -221,11 +239,26 @@ class CloseBillingMonth
             $reading = $meter->readings->first();
 
             if (! $reading) {
-                return "Нет показания счётчика {$meter->number} за период.";
+                return new BillingClosureIssue(
+                    'missing_meter_reading',
+                    "Нет показания счётчика {$meter->number} за период.",
+                    [
+                        'meter_id' => $meter->id,
+                        'meter_number' => $meter->number,
+                    ],
+                );
             }
 
             if ((float) $reading->consumption < 0) {
-                return "Расход по счётчику {$meter->number} не может быть отрицательным.";
+                return new BillingClosureIssue(
+                    'negative_meter_consumption',
+                    "Расход по счётчику {$meter->number} не может быть отрицательным.",
+                    [
+                        'meter_id' => $meter->id,
+                        'meter_number' => $meter->number,
+                        'consumption' => (float) $reading->consumption,
+                    ],
+                );
             }
 
             $volume += (float) $reading->consumption;
@@ -234,11 +267,23 @@ class CloseBillingMonth
         $tariff = $this->activeTariff($client, $utilityService, $periodStart);
 
         if (! $tariff) {
-            return 'Не найден активный тариф на начало периода.';
+            return new BillingClosureIssue(
+                'missing_tariff',
+                'Не найден активный тариф на начало периода.',
+                [
+                    'client_type' => $this->clientTypeValue($client),
+                    'utility_service_id' => $utilityService->id,
+                    'period_start' => $periodStart->toDateString(),
+                ],
+            );
         }
 
         if ((float) $tariff->unit_price <= 0) {
-            return 'Не указана цена за единицу услуги.';
+            return new BillingClosureIssue(
+                'missing_unit_price',
+                'Не указана цена за единицу услуги.',
+                ['tariff_id' => $tariff->id],
+            );
         }
 
         $tariffPrice = (float) $tariff->unit_price;
@@ -328,15 +373,26 @@ class CloseBillingMonth
 
     /**
      * @param  array{active:int, created:int, skipped:int, failed:int, errors:list<array{client_id:int, account_number:string, client_name:string, message:string}>}  $summary
+     * @param  list<array{client_id:int|null, account_number:string|null, client_name:string|null, billing_type:string|null, code:string, message:string, context:array<string, mixed>|null}>  $closureErrors
      */
-    private function recordError(array &$summary, Client $client, string $message): void
+    private function recordError(array &$summary, array &$closureErrors, Client $client, BillingClosureIssue $issue): void
     {
         $summary['failed']++;
         $summary['errors'][] = [
             'client_id' => $client->id,
             'account_number' => $client->account_number,
             'client_name' => $client->name,
-            'message' => $message,
+            'message' => $issue->message,
+        ];
+
+        $closureErrors[] = [
+            'client_id' => $client->id,
+            'account_number' => $client->account_number,
+            'client_name' => $client->name,
+            'billing_type' => $client->billing_type,
+            'code' => $issue->code,
+            'message' => $issue->message,
+            'context' => $issue->context === [] ? null : $issue->context,
         ];
     }
 }

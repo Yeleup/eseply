@@ -7,6 +7,8 @@ use App\ClientType;
 use App\Filament\Resources\Accruals\Pages\ListAccruals;
 use App\Models\Accrual;
 use App\Models\BalanceAdjustment;
+use App\Models\BillingPeriod;
+use App\Models\BillingPeriodClosureError;
 use App\Models\Client;
 use App\Models\Meter;
 use App\Models\MeterReading;
@@ -423,6 +425,13 @@ test('billing month closure does not create partial accruals when any active cli
         ]);
 
     $summary = app(CloseBillingMonth::class)->handle($organization, '202605');
+    $billingPeriod = BillingPeriod::query()
+        ->forOrganization($organization)
+        ->forCode('202605')
+        ->sole();
+    $closureError = BillingPeriodClosureError::query()
+        ->whereBelongsTo($billingPeriod)
+        ->sole();
 
     expect($summary)->toMatchArray([
         'active' => 2,
@@ -439,7 +448,16 @@ test('billing month closure does not create partial accruals when any active cli
             ],
         ])
         ->and(Accrual::query()->whereBelongsTo($organization)->forPeriod('202605')->count())->toBe(0)
-        ->and(Receipt::query()->whereBelongsTo($organization)->forPeriod('202605')->count())->toBe(0);
+        ->and(Receipt::query()->whereBelongsTo($organization)->forPeriod('202605')->count())->toBe(0)
+        ->and($billingPeriod->status)->toBe(BillingPeriodStatus::Failed)
+        ->and($billingPeriod->failure_message)->toBe('Не все активные абоненты были рассчитаны.')
+        ->and($closureError->client->is($invalidClient))->toBeTrue()
+        ->and($closureError->account_number)->toBe('80502')
+        ->and($closureError->client_name)->toBe('Без суммы')
+        ->and($closureError->billing_type)->toBe('fixed')
+        ->and($closureError->code)->toBe('missing_fixed_amount')
+        ->and($closureError->message)->toBe('Не указана фиксированная сумма.')
+        ->and($closureError->context)->toBeNull();
 });
 
 test('billing month closure reports active clients when organization service is missing', function () {

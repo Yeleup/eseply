@@ -76,9 +76,15 @@ trait HasBillingPeriod
         );
     }
 
-    protected function resolveBillingPeriodIdFromPeriodCode(BillingPeriodStatus $newBillingPeriodStatus = BillingPeriodStatus::Open): void
-    {
+    protected function resolveBillingPeriodIdFromPeriodCode(
+        BillingPeriodStatus $newBillingPeriodStatus = BillingPeriodStatus::Open,
+        bool $useCurrentWhenMissing = false,
+    ): void {
         if ($this->pendingBillingPeriodCode === null) {
+            if ($useCurrentWhenMissing && ! $this->getAttribute('billing_period_id')) {
+                $this->setCurrentBillingPeriodId();
+            }
+
             $this->assertBillingPeriodBelongsToOrganization();
 
             return;
@@ -100,6 +106,20 @@ trait HasBillingPeriod
         $this->pendingBillingPeriodCode = null;
 
         $this->assertBillingPeriodBelongsToOrganization();
+    }
+
+    private function setCurrentBillingPeriodId(): void
+    {
+        $organizationId = $this->getAttribute('organization_id');
+
+        if (! $organizationId) {
+            throw new InvalidArgumentException('Нельзя определить организацию для расчётного месяца.');
+        }
+
+        $this->setAttribute(
+            'billing_period_id',
+            BillingPeriod::requireCurrentEditableFor((int) $organizationId)->getKey(),
+        );
     }
 
     protected function assertBillingPeriodBelongsToOrganization(): void

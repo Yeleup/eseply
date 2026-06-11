@@ -2,7 +2,6 @@
 
 namespace App\Filament\Resources\Meters\RelationManagers;
 
-use App\Filament\Support\BillingPeriodOptions;
 use App\Filament\Support\OrganizationMemberAccess;
 use App\Models\BillingPeriod;
 use App\Models\Meter;
@@ -16,13 +15,10 @@ use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\DatePicker;
-use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Components\Section;
-use Filament\Schemas\Components\Utilities\Get;
-use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
@@ -45,25 +41,12 @@ class ReadingsRelationManager extends RelationManager
                 Section::make('Показание')
                     ->columns(2)
                     ->schema([
-                        Select::make('billing_period_id')
-                            ->label('Расчётный месяц')
-                            ->options(fn (): array => BillingPeriodOptions::editable($this->ownerRecord->organization))
-                            ->helperText('Показание можно внести только в открытый месяц.')
-                            ->searchable()
-                            ->preload()
-                            ->required()
-                            ->scopedExists(BillingPeriod::class, 'id')
-                            ->live()
-                            ->afterStateUpdated(function (Set $set, mixed $state): void {
-                                $set('previous_reading', $this->previousReadingForPeriod($state));
-                            })
-                            ->native(false),
                         TextInput::make('previous_reading')
                             ->label('Предыдущее показание')
                             ->numeric()
                             ->step('0.0001')
                             ->minValue(0)
-                            ->default(fn (Get $get): float => $this->previousReadingForPeriod($get('billing_period_id')))
+                            ->default(fn (): float => $this->previousReadingForPeriod($this->currentBillingPeriodId()))
                             ->readOnly()
                             ->required(),
                         TextInput::make('current_reading')
@@ -128,21 +111,16 @@ class ReadingsRelationManager extends RelationManager
                     ->mutateDataUsing(function (array $data): array {
                         abort_unless($this->canCreateReadingForOwner(), 403);
 
-                        $data['previous_reading'] = $this->previousReadingForPeriod($data['billing_period_id'] ?? null);
+                        $billingPeriod = $this->currentBillingPeriod();
+                        $data['billing_period_id'] = $billingPeriod->getKey();
+                        $data['previous_reading'] = $this->previousReadingForPeriod($billingPeriod->getKey());
 
                         return $data;
                     }),
             ])
             ->recordActions([
                 EditAction::make()
-                    ->visible(fn (MeterReading $record): bool => $this->canEditReading($record))
-                    ->mutateDataUsing(function (array $data): array {
-                        abort_unless($this->canCreateReadingForOwner(), 403);
-
-                        $data['previous_reading'] = $this->previousReadingForPeriod($data['billing_period_id'] ?? null);
-
-                        return $data;
-                    }),
+                    ->visible(fn (MeterReading $record): bool => $this->canEditReading($record)),
                 DeleteAction::make()
                     ->visible(fn (MeterReading $record): bool => OrganizationMemberAccess::canDeleteMeterReading($record)),
             ])
@@ -160,6 +138,16 @@ class ReadingsRelationManager extends RelationManager
             $this->ownerRecord->getKey(),
             $billingPeriodId,
         ) ?? 0;
+    }
+
+    private function currentBillingPeriod(): BillingPeriod
+    {
+        return BillingPeriod::requireCurrentEditableFor($this->ownerRecord->organization);
+    }
+
+    private function currentBillingPeriodId(): ?int
+    {
+        return BillingPeriod::currentEditableFor($this->ownerRecord->organization)?->getKey();
     }
 
     private function canAccessOwnerRecord(): bool

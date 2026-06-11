@@ -511,16 +511,17 @@
                     </div>
 
                     <div class="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/60 dark:bg-amber-950/20">
-                        <p class="text-sm font-medium text-amber-950 dark:text-amber-100">Форма закрытия месяца</p>
-                        <label class="mt-4 flex flex-col gap-2 text-sm font-medium">
-                            Расчётный месяц
-                            <select class="h-10 rounded-md border border-amber-300 bg-white px-3 text-sm font-normal text-zinc-950 dark:border-amber-800 dark:bg-zinc-950 dark:text-zinc-50">
-                                <option>05.2026 · открыт</option>
-                                <option>03.2026 · ошибка закрытия</option>
-                            </select>
-                        </label>
+                        <p class="text-sm font-medium text-amber-950 dark:text-amber-100">Текущий месяц</p>
+                        <div class="mt-4 rounded-md border border-amber-300 bg-white p-3 dark:border-amber-800 dark:bg-zinc-950">
+                            <p class="text-xs font-medium uppercase tracking-wide text-amber-700 dark:text-amber-300">Будет закрыт</p>
+                            <p class="mt-1 text-2xl font-semibold text-zinc-950 dark:text-zinc-50">05.2026</p>
+                            <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Статус: открыт</p>
+                        </div>
+                        <button class="mt-4 w-full rounded-md bg-amber-600 px-3 py-2 text-sm font-medium text-white hover:bg-amber-700 dark:bg-amber-400 dark:text-zinc-950 dark:hover:bg-amber-300">
+                            Закрыть месяц
+                        </button>
                         <p class="mt-3 text-xs text-amber-800 dark:text-amber-200">
-                            Пока 05.2026 открыт, система не позволит открыть 06.2026; закрытые месяцы не принимают изменения оплат, показаний или корректировок.
+                            Оплаты, показания и корректировки автоматически относятся к 05.2026. Пока он открыт, система не позволит открыть 06.2026.
                         </p>
                     </div>
                 </div>

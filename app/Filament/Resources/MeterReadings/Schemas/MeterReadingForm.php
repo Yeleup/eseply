@@ -2,7 +2,6 @@
 
 namespace App\Filament\Resources\MeterReadings\Schemas;
 
-use App\Filament\Support\BillingPeriodOptions;
 use App\Models\BillingPeriod;
 use App\Models\Meter;
 use App\Models\MeterReading;
@@ -52,21 +51,8 @@ class MeterReadingForm
                             ->required()
                             ->scopedExists(Meter::class, 'id')
                             ->live()
-                            ->afterStateUpdated(function (Set $set, Get $get, mixed $state): void {
-                                $set('previous_reading', MeterReading::previousReadingForBillingPeriod($state, $get('billing_period_id')) ?? 0);
-                            })
-                            ->native(false),
-                        Select::make('billing_period_id')
-                            ->label('Расчётный месяц')
-                            ->options(fn (): array => BillingPeriodOptions::editable())
-                            ->helperText('Показание можно внести только в открытый месяц.')
-                            ->searchable()
-                            ->preload()
-                            ->required()
-                            ->scopedExists(BillingPeriod::class, 'id')
-                            ->live()
-                            ->afterStateUpdated(function (Set $set, Get $get, mixed $state): void {
-                                $set('previous_reading', MeterReading::previousReadingForBillingPeriod($get('meter_id'), $state) ?? 0);
+                            ->afterStateUpdated(function (Set $set, mixed $state): void {
+                                $set('previous_reading', MeterReading::previousReadingForBillingPeriod($state, self::currentBillingPeriodId()) ?? 0);
                             })
                             ->native(false),
                         TextInput::make('previous_reading')
@@ -74,7 +60,7 @@ class MeterReadingForm
                             ->numeric()
                             ->step('0.0001')
                             ->minValue(0)
-                            ->default(fn (Get $get): float => MeterReading::previousReadingForBillingPeriod($get('meter_id'), $get('billing_period_id')) ?? 0)
+                            ->default(fn (Get $get): float => MeterReading::previousReadingForBillingPeriod($get('meter_id'), self::currentBillingPeriodId()) ?? 0)
                             ->readOnly()
                             ->required(),
                         TextInput::make('current_reading')
@@ -91,5 +77,16 @@ class MeterReadingForm
                             ->columnSpanFull(),
                     ]),
             ]);
+    }
+
+    private static function currentBillingPeriodId(): ?int
+    {
+        $tenant = Filament::getTenant();
+
+        if (! $tenant instanceof Organization) {
+            return null;
+        }
+
+        return BillingPeriod::currentEditableFor($tenant)?->getKey();
     }
 }

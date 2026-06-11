@@ -3,7 +3,6 @@
 namespace App\Filament\Resources\Clients\RelationManagers;
 
 use App\Filament\Resources\Meters\MeterResource;
-use App\Filament\Support\BillingPeriodOptions;
 use App\Filament\Support\OrganizationMemberAccess;
 use App\Models\BillingPeriod;
 use App\Models\Client;
@@ -19,13 +18,10 @@ use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\DatePicker;
-use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Components\Section;
-use Filament\Schemas\Components\Utilities\Get;
-use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
@@ -163,9 +159,11 @@ class MetersRelationManager extends RelationManager
                     ->action(function (Meter $record, array $data): void {
                         abort_unless($this->canAddReadingForMeter($record), 403);
 
+                        $billingPeriod = $this->currentBillingPeriod();
+
                         $record->readings()->create([
-                            'billing_period_id' => $data['billing_period_id'],
-                            'previous_reading' => $this->previousReadingForMeterAndPeriod($record, $data['billing_period_id'] ?? null),
+                            'billing_period_id' => $billingPeriod->getKey(),
+                            'previous_reading' => $this->previousReadingForMeterAndPeriod($record, $billingPeriod->getKey()),
                             'current_reading' => $data['current_reading'],
                             'read_at' => $data['read_at'] ?? null,
                             'note' => $data['note'] ?? null,
@@ -219,25 +217,12 @@ class MetersRelationManager extends RelationManager
             Section::make('Показание')
                 ->columns(2)
                 ->schema([
-                    Select::make('billing_period_id')
-                        ->label('Расчётный месяц')
-                        ->options(fn (): array => BillingPeriodOptions::editable($this->ownerRecord->organization))
-                        ->helperText('Показание можно внести только в открытый месяц.')
-                        ->searchable()
-                        ->preload()
-                        ->required()
-                        ->scopedExists(BillingPeriod::class, 'id')
-                        ->live()
-                        ->afterStateUpdated(function (Set $set, mixed $state) use ($meter): void {
-                            $set('previous_reading', $this->previousReadingForMeterAndPeriod($meter, $state));
-                        })
-                        ->native(false),
                     TextInput::make('previous_reading')
                         ->label('Предыдущее показание')
                         ->numeric()
                         ->step('0.0001')
                         ->minValue(0)
-                        ->default(fn (Get $get): float => $this->previousReadingForMeterAndPeriod($meter, $get('billing_period_id')))
+                        ->default(fn (): float => $this->previousReadingForMeterAndPeriod($meter, $this->currentBillingPeriodId()))
                         ->readOnly()
                         ->required(),
                     TextInput::make('current_reading')
@@ -259,6 +244,16 @@ class MetersRelationManager extends RelationManager
     protected function previousReadingForMeterAndPeriod(Meter $meter, mixed $billingPeriodId): float
     {
         return MeterReading::previousReadingForBillingPeriod($meter->getKey(), $billingPeriodId) ?? 0;
+    }
+
+    private function currentBillingPeriod(): BillingPeriod
+    {
+        return BillingPeriod::requireCurrentEditableFor($this->ownerRecord->organization);
+    }
+
+    private function currentBillingPeriodId(): ?int
+    {
+        return BillingPeriod::currentEditableFor($this->ownerRecord->organization)?->getKey();
     }
 
     private function canAccessOwnerRecord(): bool

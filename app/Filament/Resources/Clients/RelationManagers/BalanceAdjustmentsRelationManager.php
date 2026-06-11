@@ -6,7 +6,6 @@ use App\BalanceAdjustmentType;
 use App\Filament\Support\BillingPeriodOptions;
 use App\Filament\Support\OrganizationMemberAccess;
 use App\Models\BalanceAdjustment;
-use App\Models\BillingPeriod;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
@@ -55,15 +54,6 @@ class BalanceAdjustmentsRelationManager extends RelationManager
                 Section::make('Корректировка сальдо')
                     ->columns(2)
                     ->schema([
-                        Select::make('billing_period_id')
-                            ->label('Расчётный месяц')
-                            ->options(fn (): array => BillingPeriodOptions::editable($this->ownerRecord->organization))
-                            ->helperText('Корректировку можно внести только в открытый месяц.')
-                            ->searchable()
-                            ->preload()
-                            ->required()
-                            ->scopedExists(BillingPeriod::class, 'id')
-                            ->native(false),
                         Select::make('type')
                             ->label('Тип')
                             ->options(BalanceAdjustmentType::class)

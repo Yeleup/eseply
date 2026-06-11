@@ -61,7 +61,7 @@ class BalanceAdjustment extends Model
     protected static function booted(): void
     {
         static::saving(function (BalanceAdjustment $balanceAdjustment): void {
-            $balanceAdjustment->resolveBillingPeriodIdFromPeriodCode();
+            $balanceAdjustment->resolveBillingPeriodIdFromPeriodCode(useCurrentWhenMissing: true);
             $balanceAdjustment->ensureBillingPeriodIsEditable();
         });
 

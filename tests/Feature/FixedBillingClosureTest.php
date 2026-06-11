@@ -2,8 +2,8 @@
 
 use App\Actions\CloseBillingMonth;
 use App\BalanceAdjustmentType;
+use App\BillingPeriodStatus;
 use App\ClientType;
-use App\Filament\Resources\Accruals\Pages\CloseBillingMonth as CloseBillingMonthPage;
 use App\Filament\Resources\Accruals\Pages\ListAccruals;
 use App\Models\Accrual;
 use App\Models\BalanceAdjustment;
@@ -210,16 +210,11 @@ test('admin users can close a fixed billing month and see the accrual', function
 
     actingAsBillingTenant($organization);
 
-    Livewire::test(CloseBillingMonthPage::class)
+    Livewire::test(ListAccruals::class)
         ->assertOk()
-        ->fillForm([
-            'billing_period_id' => $billingPeriod->id,
-        ])
-        ->call('close')
-        ->assertHasNoFormErrors()
-        ->assertNotified()
-        ->assertSet('result.created', 1)
-        ->assertSet('result.failed', 0);
+        ->assertActionExists('closeBillingMonth')
+        ->callAction('closeBillingMonth')
+        ->assertNotified();
 
     $accrual = Accrual::query()
         ->whereBelongsTo($organization)
@@ -228,6 +223,7 @@ test('admin users can close a fixed billing month and see the accrual', function
         ->sole();
 
     expect($accrual->amount)->toBe('8000.00')
+        ->and($billingPeriod->refresh()->status)->toBe(BillingPeriodStatus::Closed)
         ->and($accrual->closing_balance)->toBe('10000.00');
 
     Livewire::test(ListAccruals::class)

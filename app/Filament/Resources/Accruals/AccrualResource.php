@@ -2,7 +2,6 @@
 
 namespace App\Filament\Resources\Accruals;
 
-use App\Filament\Resources\Accruals\Pages\CloseBillingMonth;
 use App\Filament\Resources\Accruals\Pages\ListAccruals;
 use App\Filament\Resources\Accruals\Schemas\AccrualForm;
 use App\Filament\Resources\Accruals\Tables\AccrualsTable;
@@ -55,7 +54,6 @@ class AccrualResource extends Resource
     {
         return [
             'index' => ListAccruals::route('/'),
-            'close' => CloseBillingMonth::route('/close-month'),
         ];
     }
 

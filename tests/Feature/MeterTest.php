@@ -283,14 +283,13 @@ test('admin users can create and list meter readings for the current tenant', fu
     $otherTenantReading = MeterReading::factory()->for(Meter::factory()->for(Organization::factory()))->create([
         'period' => '202605',
     ]);
-    $billingPeriod = billingPeriodFor($organization);
+    billingPeriodFor($organization);
 
     actingAsMeterTenant($organization);
 
     Livewire::test(CreateMeterReading::class)
         ->fillForm([
             'meter_id' => $meter->id,
-            'billing_period_id' => $billingPeriod->id,
             'current_reading' => 137.125,
             'read_at' => '2026-05-26',
         ])
@@ -341,7 +340,7 @@ test('client meter table can add a reading for the selected meter', function () 
         ]);
     closedBillingPeriodFor($organization, '202604');
 
-    $billingPeriod = billingPeriodFor($organization);
+    billingPeriodFor($organization);
 
     actingAsMeterTenant($organization);
 
@@ -351,7 +350,6 @@ test('client meter table can add a reading for the selected meter', function () 
     ])
         ->assertTableActionExists('addReading', null, $meter)
         ->callTableAction('addReading', $meter, data: [
-            'billing_period_id' => $billingPeriod->id,
             'current_reading' => 140.75,
             'read_at' => '2026-05-29',
             'note' => 'Показание из карточки абонента',

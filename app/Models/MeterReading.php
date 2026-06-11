@@ -159,7 +159,7 @@ class MeterReading extends Model
                 ) ?? 0;
             }
 
-            $meterReading->resolveBillingPeriodIdFromPeriodCode();
+            $meterReading->resolveBillingPeriodIdFromPeriodCode(useCurrentWhenMissing: true);
             $meterReading->ensureBillingPeriodIsEditable();
 
             $meterReading->consumption = (float) $meterReading->current_reading - (float) $meterReading->previous_reading;

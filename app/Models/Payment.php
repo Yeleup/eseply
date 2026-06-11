@@ -50,7 +50,7 @@ class Payment extends Model
     protected static function booted(): void
     {
         static::saving(function (Payment $payment): void {
-            $payment->resolveBillingPeriodIdFromPeriodCode();
+            $payment->resolveBillingPeriodIdFromPeriodCode(useCurrentWhenMissing: true);
             $payment->ensureBillingPeriodIsEditable();
         });
 

@@ -136,14 +136,13 @@ test('admin users can create and list payments for the current tenant', function
     $otherTenantPayment = Payment::factory()->for(Organization::factory())->create([
         'period' => '202605',
     ]);
-    $billingPeriod = billingPeriodFor($organization);
+    billingPeriodFor($organization);
 
     actingAsPaymentTenant($organization);
 
     Livewire::test(CreatePayment::class)
         ->fillForm([
             'client_id' => $client->id,
-            'billing_period_id' => $billingPeriod->id,
             'amount' => 2500,
             'paid_at' => '2026-05-26',
             'note' => 'Оплата через кассу',

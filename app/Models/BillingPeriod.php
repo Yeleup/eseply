@@ -96,6 +96,33 @@ class BillingPeriod extends Model
         return self::periodStart($period)->format('Ym');
     }
 
+    public static function currentEditableFor(Organization|int $organization): ?self
+    {
+        $organizationId = $organization instanceof Organization ? (int) $organization->getKey() : $organization;
+
+        return self::query()
+            ->forOrganization($organizationId)
+            ->whereIn('status', [
+                BillingPeriodStatus::Open->value,
+                BillingPeriodStatus::Failed->value,
+            ])
+            ->orderByDesc('starts_on')
+            ->first();
+    }
+
+    public static function requireCurrentEditableFor(Organization|int $organization): self
+    {
+        $billingPeriod = self::currentEditableFor($organization);
+
+        if (! $billingPeriod) {
+            throw ValidationException::withMessages([
+                'billing_period_id' => 'Нет открытого расчётного месяца. Откройте месяц в разделе «Расчётные месяцы».',
+            ]);
+        }
+
+        return $billingPeriod;
+    }
+
     public function organization(): BelongsTo
     {
         return $this->belongsTo(Organization::class);

@@ -22,7 +22,7 @@ class EditMeterReading extends EditRecord
 
         abort_unless(
             $record instanceof MeterReading
-                && OrganizationMemberAccess::canUpdateMeterReading($record),
+                && MeterReadingResource::canEdit($record),
             404,
         );
     }
@@ -45,7 +45,7 @@ class EditMeterReading extends EditRecord
 
         $data['previous_reading'] = MeterReading::previousReadingForBillingPeriod(
             $data['meter_id'] ?? null,
-            $data['billing_period_id'] ?? null,
+            $this->record instanceof MeterReading ? $this->record->billing_period_id : null,
         ) ?? 0;
 
         return $data;

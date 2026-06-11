@@ -115,14 +115,13 @@ test('admin users can create and list balance adjustments for the current tenant
     $otherTenantBalanceAdjustment = BalanceAdjustment::factory()->for(Organization::factory())->create([
         'period' => '202605',
     ]);
-    $billingPeriod = billingPeriodFor($organization);
+    billingPeriodFor($organization);
 
     actingAsBalanceAdjustmentTenant($organization);
 
     Livewire::test(CreateBalanceAdjustment::class)
         ->fillForm([
             'client_id' => $client->id,
-            'billing_period_id' => $billingPeriod->id,
             'type' => BalanceAdjustmentType::ManualAdjustment->value,
             'amount' => -500,
             'adjusted_at' => '2026-05-29',

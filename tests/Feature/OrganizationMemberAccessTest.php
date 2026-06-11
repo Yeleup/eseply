@@ -268,12 +268,11 @@ test('controller can create and edit meter readings only for assigned clients', 
         'created_at' => now(),
         'updated_at' => now(),
     ]);
-    $billingPeriod = billingPeriodFor($organization);
+    billingPeriodFor($organization);
 
     Livewire::test(CreateMeterReading::class)
         ->fillForm([
             'meter_id' => $assignedMeter->id,
-            'billing_period_id' => $billingPeriod->id,
             'current_reading' => 15,
         ])
         ->call('create')
@@ -290,7 +289,6 @@ test('controller can create and edit meter readings only for assigned clients', 
     Livewire::test(CreateMeterReading::class)
         ->fillForm([
             'meter_id' => $outsideMeter->id,
-            'billing_period_id' => $billingPeriod->id,
             'current_reading' => 30,
         ])
         ->call('create')
@@ -397,7 +395,7 @@ test('controller can add and edit readings from meter context without meter oper
         ]);
     closedBillingPeriodFor($organization, '202604');
 
-    $billingPeriod = billingPeriodFor($organization);
+    billingPeriodFor($organization);
 
     $user = actingAsOrganizationAccessTenant($organization, OrganizationMemberRole::Controller);
     DB::table('organization_user_regions')->insert([
@@ -419,7 +417,6 @@ test('controller can add and edit readings from meter context without meter oper
         ->assertTableActionHidden('delete', $meter)
         ->assertTableActionHidden('archive', $meter)
         ->callTableAction('addReading', $meter, data: [
-            'billing_period_id' => $billingPeriod->id,
             'current_reading' => 20,
         ])
         ->assertHasNoTableActionErrors()
@@ -438,7 +435,6 @@ test('controller can add and edit readings from meter context without meter oper
         ->assertTableActionVisible('edit', $currentReading)
         ->assertTableActionHidden('delete', $reading)
         ->callTableAction('edit', $currentReading, data: [
-            'billing_period_id' => $currentReading->billing_period_id,
             'previous_reading' => 15,
             'current_reading' => 21,
         ])

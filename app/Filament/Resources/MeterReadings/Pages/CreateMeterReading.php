@@ -4,6 +4,7 @@ namespace App\Filament\Resources\MeterReadings\Pages;
 
 use App\Filament\Resources\MeterReadings\MeterReadingResource;
 use App\Filament\Support\OrganizationMemberAccess;
+use App\Models\BillingPeriod;
 use App\Models\Meter;
 use App\Models\MeterReading;
 use App\Models\Organization;
@@ -23,9 +24,11 @@ class CreateMeterReading extends CreateRecord
     {
         $this->authorizeMeter($data['meter_id'] ?? null);
 
+        $billingPeriod = $this->currentBillingPeriod();
+        $data['billing_period_id'] = $billingPeriod->getKey();
         $data['previous_reading'] = MeterReading::previousReadingForBillingPeriod(
             $data['meter_id'] ?? null,
-            $data['billing_period_id'] ?? null,
+            $billingPeriod->getKey(),
         ) ?? 0;
 
         return $data;
@@ -44,5 +47,14 @@ class CreateMeterReading extends CreateRecord
                 && OrganizationMemberAccess::canCreateMeterReadingForMeter($meter),
             403,
         );
+    }
+
+    private function currentBillingPeriod(): BillingPeriod
+    {
+        $tenant = Filament::getTenant();
+
+        abort_unless($tenant instanceof Organization, 403);
+
+        return BillingPeriod::requireCurrentEditableFor($tenant);
     }
 }

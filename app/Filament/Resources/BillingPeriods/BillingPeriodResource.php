@@ -2,15 +2,12 @@
 
 namespace App\Filament\Resources\BillingPeriods;
 
-use App\Filament\Resources\BillingPeriods\Pages\CreateBillingPeriod;
 use App\Filament\Resources\BillingPeriods\Pages\ListBillingPeriods;
-use App\Filament\Resources\BillingPeriods\Schemas\BillingPeriodForm;
 use App\Filament\Resources\BillingPeriods\Tables\BillingPeriodsTable;
 use App\Filament\Support\OrganizationMemberAccess;
 use App\Models\BillingPeriod;
 use BackedEnum;
 use Filament\Resources\Resource;
-use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Model;
@@ -34,11 +31,6 @@ class BillingPeriodResource extends Resource
 
     protected static ?string $recordTitleAttribute = 'period';
 
-    public static function form(Schema $schema): Schema
-    {
-        return BillingPeriodForm::configure($schema);
-    }
-
     public static function table(Table $table): Table
     {
         return BillingPeriodsTable::configure($table);
@@ -55,7 +47,6 @@ class BillingPeriodResource extends Resource
     {
         return [
             'index' => ListBillingPeriods::route('/'),
-            'create' => CreateBillingPeriod::route('/create'),
         ];
     }
 

@@ -3,6 +3,7 @@
 use App\Actions\CloseBillingMonth;
 use App\BalanceAdjustmentType;
 use App\BillingPeriodStatus;
+use App\Filament\Resources\BillingPeriods\Pages\ListBillingPeriods;
 use App\Models\BalanceAdjustment;
 use App\Models\BillingPeriod;
 use App\Models\Client;
@@ -10,11 +11,28 @@ use App\Models\Meter;
 use App\Models\MeterReading;
 use App\Models\Organization;
 use App\Models\Payment;
+use App\Models\User;
 use App\Models\UtilityService;
+use Filament\Facades\Filament;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Validation\ValidationException;
+use Livewire\Livewire;
 
 uses(RefreshDatabase::class);
+
+function actingAsBillingPeriodTenant(Organization $organization): User
+{
+    $user = User::factory()->create();
+    $user->organizations()->attach($organization);
+
+    Livewire::actingAs($user);
+
+    Filament::setCurrentPanel('admin');
+    Filament::setTenant($organization);
+    Filament::bootCurrentPanel();
+
+    return $user;
+}
 
 test('closed billing period blocks mutable accounting records', function () {
     $organization = Organization::factory()->create();
@@ -100,6 +118,51 @@ test('new billing period must follow latest period without gaps', function () {
 
     expect(fn () => BillingPeriod::openFor($organization, '202607'))
         ->toThrow(ValidationException::class, 'Новый расчётный месяц должен идти сразу после последнего расчётного месяца.');
+});
+
+test('new billing period action opens next month after latest period is closed', function () {
+    $organization = Organization::factory()->create();
+    $user = actingAsBillingPeriodTenant($organization);
+
+    BillingPeriod::factory()
+        ->for($organization)
+        ->period('202605')
+        ->closed()
+        ->create();
+
+    Livewire::test(ListBillingPeriods::class)
+        ->assertOk()
+        ->assertActionExists('openNextBillingPeriod')
+        ->callAction('openNextBillingPeriod')
+        ->assertNotified();
+
+    $billingPeriod = BillingPeriod::query()
+        ->forOrganization($organization)
+        ->forCode('202606')
+        ->sole();
+
+    expect($billingPeriod->status)->toBe(BillingPeriodStatus::Open)
+        ->and($billingPeriod->opened_by_user_id)->toBe($user->id);
+});
+
+test('new billing period action does not open next month while latest period is not closed', function () {
+    $organization = Organization::factory()->create();
+    actingAsBillingPeriodTenant($organization);
+
+    BillingPeriod::factory()
+        ->for($organization)
+        ->period('202605')
+        ->create();
+
+    Livewire::test(ListBillingPeriods::class)
+        ->assertOk()
+        ->callAction('openNextBillingPeriod')
+        ->assertNotified();
+
+    expect(BillingPeriod::query()
+        ->forOrganization($organization)
+        ->forCode('202606')
+        ->exists())->toBeFalse();
 });
 
 test('failed billing period can be closed after data is fixed', function () {

@@ -123,6 +123,32 @@ class BillingPeriod extends Model
         return $billingPeriod;
     }
 
+    public static function openNextFor(Organization|int $organization, User|int|null $openedBy = null): self
+    {
+        $organizationId = $organization instanceof Organization ? (int) $organization->getKey() : $organization;
+
+        $latestBillingPeriod = self::query()
+            ->forOrganization($organizationId)
+            ->orderByDesc('starts_on')
+            ->first();
+
+        if (! $latestBillingPeriod) {
+            return self::openFor($organizationId, now()->format('Ym'), $openedBy);
+        }
+
+        if ($latestBillingPeriod->status !== BillingPeriodStatus::Closed) {
+            throw ValidationException::withMessages([
+                'period' => 'Предыдущий расчётный месяц должен быть закрыт перед открытием нового.',
+            ]);
+        }
+
+        $nextPeriod = self::periodStart($latestBillingPeriod->starts_on)
+            ->addMonth()
+            ->format('Ym');
+
+        return self::openFor($organizationId, $nextPeriod, $openedBy);
+    }
+
     public function organization(): BelongsTo
     {
         return $this->belongsTo(Organization::class);

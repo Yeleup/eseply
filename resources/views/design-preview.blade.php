@@ -458,11 +458,11 @@
                         <p class="text-sm text-zinc-500 dark:text-zinc-400">BillingPeriodResource</p>
                         <h2 class="text-base font-semibold">Расчётные месяцы</h2>
                         <p class="mt-2 max-w-2xl text-sm text-zinc-500 dark:text-zinc-400">
-                            Месяц открывается отдельно и строго по очереди: новый месяц доступен только после закрытия предыдущего.
+                            Новый месяц открывается автоматически следующим по очереди после закрытия текущего.
                         </p>
                     </div>
                     <button class="rounded-md bg-amber-600 px-3 py-2 text-sm font-medium text-white hover:bg-amber-700 dark:bg-amber-400 dark:text-zinc-950 dark:hover:bg-amber-300">
-                        Открыть месяц
+                        Новый расчётный месяц
                     </button>
                 </div>
 

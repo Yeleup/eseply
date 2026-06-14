@@ -81,8 +81,10 @@ class AdminPanelProvider extends PanelProvider
             ->authenticatedTenantRoutes(function (): void {
                 Route::get('/clients/{client}/card', ClientCardController::class)
                     ->name('clients.card');
-                Route::get('/receipts/{receipt}/print', ReceiptPrintController::class)
+                Route::get('/receipts/{receipt}/print', [ReceiptPrintController::class, 'single'])
                     ->name('receipts.print');
+                Route::get('/receipts/print-bulk', [ReceiptPrintController::class, 'bulk'])
+                    ->name('receipts.print-bulk');
             })
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\Filament\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\Filament\Pages')

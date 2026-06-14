@@ -4,7 +4,6 @@ use App\Actions\BuildReceiptMeterReadingLines;
 use App\Actions\CloseBillingMonth;
 use App\BalanceAdjustmentType;
 use App\Filament\Resources\Receipts\Pages\ListReceipts;
-use App\Filament\Resources\Receipts\Pages\ViewReceipt;
 use App\Models\Accrual;
 use App\Models\BalanceAdjustment;
 use App\Models\Client;
@@ -13,11 +12,16 @@ use App\Models\MeterReading;
 use App\Models\Organization;
 use App\Models\Payment;
 use App\Models\Receipt;
+use App\Models\Region;
+use App\Models\Street;
 use App\Models\Tariff;
 use App\Models\User;
 use App\Models\UtilityService;
+use App\OrganizationMemberRole;
 use Filament\Facades\Filament;
+use Filament\Support\Icons\Heroicon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 
 uses(RefreshDatabase::class);
@@ -52,10 +56,16 @@ function createReceiptFromMeterReading(
     $period = (string) ($readingAttributes['period'] ?? '202605');
     $previousReading = (float) ($readingAttributes['previous_reading'] ?? 100);
 
-    $utilityService = UtilityService::factory()->for($organization)->create(array_replace([
-        'name' => 'Водоснабжение',
-        'unit_of_measurement' => 'м3',
-    ], $utilityServiceAttributes));
+    $utilityService = $organization->utilityService()->first();
+
+    if ($utilityService) {
+        $utilityService->fill($utilityServiceAttributes)->save();
+    } else {
+        $utilityService = UtilityService::factory()->for($organization)->create(array_replace([
+            'name' => 'Водоснабжение',
+            'unit_of_measurement' => 'м3',
+        ], $utilityServiceAttributes));
+    }
 
     $client = Client::factory()
         ->for($organization)
@@ -487,45 +497,98 @@ test('billing month closure creates accruals without creating receipts', functio
         ->and(Receipt::query()->whereBelongsTo($client)->forPeriod('202605')->count())->toBe(0);
 });
 
-test('admin users can list receipts for the current tenant', function () {
+test('receipt resource list page is registered with a bulk print action', function () {
     $organization = Organization::factory()->create();
+    $region = Region::factory()->for($organization)->create([
+        'name' => 'Север',
+    ]);
+    $street = Street::factory()
+        ->for($organization)
+        ->for($region)
+        ->create([
+            'name' => 'Абая',
+        ]);
     $receipt = createReceiptFromMeterReading($organization, [
         'account_number' => '30001',
         'name' => 'Иванов Иван',
+        'region_id' => $region->getKey(),
+        'street_id' => $street->getKey(),
     ]);
-    $otherTenantReceipt = createReceiptFromMeterReading(Organization::factory()->create(), [
-        'account_number' => '90001',
+    $otherReceipt = createReceiptFromMeterReading($organization, [
+        'account_number' => '30002',
+        'name' => 'Петров Петр',
+    ]);
+    $controller = User::factory()->create([
+        'name' => 'Контроллер Север',
+        'email' => 'controller@example.com',
+    ]);
+    $controller->organizations()->attach($organization, [
+        'role' => OrganizationMemberRole::Controller->value,
+    ]);
+    DB::table('organization_user_regions')->insert([
+        'organization_id' => $organization->getKey(),
+        'user_id' => $controller->getKey(),
+        'region_id' => $region->getKey(),
+        'created_at' => now(),
+        'updated_at' => now(),
     ]);
 
-    actingAsReceiptTenant($organization);
+    $user = actingAsReceiptTenant($organization);
+    $this->actingAs($user);
+
+    $this->get('/admin/'.$organization->getKey().'/receipts')
+        ->assertSuccessful()
+        ->assertSeeText('Квитанции')
+        ->assertSeeText('30001')
+        ->assertSeeText('Иванов Иван');
+
+    $this->get('/admin/'.$organization->getKey().'/receipts/'.$receipt->getRouteKey())->assertNotFound();
 
     Livewire::test(ListReceipts::class)
-        ->assertOk()
+        ->assertCanSeeTableRecords([$receipt, $otherReceipt])
+        ->assertTableActionHidden('printFiltered')
+        ->filterTable('billing_period_id', $receipt->billing_period_id)
+        ->assertTableActionVisible('printFiltered')
+        ->assertTableActionHasUrl('printFiltered', route('filament.admin.receipts.print-bulk', [
+            'tenant' => $organization,
+            'billing_period_id' => $receipt->billing_period_id,
+        ]))
+        ->assertTableActionShouldOpenUrlInNewTab('printFiltered')
+        ->resetTableFilters()
+        ->filterTable('region_id', $region->getKey())
         ->assertCanSeeTableRecords([$receipt])
-        ->assertCanNotSeeTableRecords([$otherTenantReceipt]);
-});
-
-test('admin receipt view page has a print pdf action', function () {
-    $organization = Organization::factory()->create();
-    $receipt = createReceiptFromMeterReading($organization, [
-        'account_number' => '30001',
-        'name' => 'Иванов Иван',
-    ]);
-
-    actingAsReceiptTenant($organization);
-
-    $url = route('filament.admin.receipts.print', [
-        'tenant' => $organization,
-        'receipt' => $receipt,
-    ]);
-
-    Livewire::test(ViewReceipt::class, [
-        'record' => $receipt->getRouteKey(),
-    ])
-        ->assertActionExists('printPdf')
-        ->assertActionHasLabel('printPdf', 'Печатать PDF')
-        ->assertActionHasUrl('printPdf', $url)
-        ->assertActionShouldOpenUrlInNewTab('printPdf');
+        ->assertCanNotSeeTableRecords([$otherReceipt])
+        ->assertTableActionVisible('printFiltered')
+        ->assertTableActionHasUrl('printFiltered', route('filament.admin.receipts.print-bulk', [
+            'tenant' => $organization,
+            'region_id' => $region->getKey(),
+        ]))
+        ->resetTableFilters()
+        ->filterTable('street_id', $street->getKey())
+        ->assertCanSeeTableRecords([$receipt])
+        ->assertCanNotSeeTableRecords([$otherReceipt])
+        ->assertTableActionVisible('printFiltered')
+        ->assertTableActionHasUrl('printFiltered', route('filament.admin.receipts.print-bulk', [
+            'tenant' => $organization,
+            'street_id' => $street->getKey(),
+        ]))
+        ->resetTableFilters()
+        ->filterTable('controller_id', $controller->getKey())
+        ->assertCanSeeTableRecords([$receipt])
+        ->assertCanNotSeeTableRecords([$otherReceipt])
+        ->assertTableActionVisible('printFiltered')
+        ->assertTableActionHasUrl('printFiltered', route('filament.admin.receipts.print-bulk', [
+            'tenant' => $organization,
+            'controller_id' => $controller->getKey(),
+        ]))
+        ->assertTableActionHasUrl('print', route('filament.admin.receipts.print', [
+            'tenant' => $organization,
+            'receipt' => $receipt,
+        ]), $receipt)
+        ->assertTableActionShouldOpenUrlInNewTab('print', $receipt)
+        ->assertTableBulkActionExists('printSelected')
+        ->assertTableBulkActionHasLabel('printSelected', 'Печатать выбранные')
+        ->assertTableBulkActionHasIcon('printSelected', Heroicon::OutlinedPrinter);
 });
 
 test('admin users can open a current tenant receipt print view', function () {
@@ -580,6 +643,33 @@ test('admin users can open a current tenant receipt print view', function () {
             'clientAddress',
         ])
         ->assertSeeTextInOrder([
+            'Для организации',
+            'Квитанция на оплату коммунальной услуги',
+            'ТОО Водоканал',
+            'Номер',
+            '202605-100010',
+            'Лицевой счёт',
+            '100010',
+            'Иванов Иван',
+            'Водоснабжение',
+            'Счётчики',
+            '№ счётчика',
+            'MTR-100010',
+            '100.0000',
+            '120.0000',
+            '20.0000',
+            '90.00 KZT',
+            '1 800.00 KZT',
+            'Итого',
+            '20.0000',
+            '1 800.00 KZT',
+            'Долг',
+            '0.00 KZT',
+            'Оплачено',
+            '0.00 KZT',
+            'К оплате',
+            '1 800.00 KZT',
+            'Для абонента',
             'Квитанция на оплату коммунальной услуги',
             'ТОО Водоканал',
             'Номер',
@@ -607,9 +697,218 @@ test('admin users can open a current tenant receipt print view', function () {
             '1 800.00 KZT',
         ])
         ->assertDontSeeText('Расчёт')
-        ->assertDontSeeText('Начислено');
+        ->assertDontSeeText('Начислено')
+        ->assertDontSeeText('Подпись');
 
-    expect(str_starts_with($response->getContent(), '%PDF'))->toBeFalse();
+    $content = $response->getContent();
+
+    expect(str_starts_with($content, '%PDF'))->toBeFalse()
+        ->and(substr_count($content, 'data-receipt-copy='))->toBe(2)
+        ->and($content)->toContain('receipt-sheet');
+});
+
+test('admin users can open a current tenant bulk receipt print view for selected receipts', function () {
+    $organization = Organization::factory()->create([
+        'name' => 'ТОО Водоканал',
+    ]);
+    $firstReceipt = createReceiptFromMeterReading($organization, [
+        'account_number' => '100010',
+        'name' => 'Иванов Иван',
+    ]);
+    $secondReceipt = createReceiptFromMeterReading($organization, [
+        'account_number' => '100011',
+        'name' => 'Петров Петр',
+    ]);
+    createReceiptFromMeterReading(Organization::factory()->create(), [
+        'account_number' => '900010',
+        'name' => 'Чужой абонент',
+    ]);
+
+    $user = actingAsReceiptTenant($organization);
+    $this->actingAs($user);
+
+    $response = $this->get(route('filament.admin.receipts.print-bulk', [
+        'tenant' => $organization,
+        'receipt_ids' => [
+            $secondReceipt->getKey(),
+            $firstReceipt->getKey(),
+        ],
+    ]));
+
+    $response
+        ->assertSuccessful()
+        ->assertHeader('Content-Type', 'text/html; charset=UTF-8')
+        ->assertHeader('X-Content-Type-Options', 'nosniff')
+        ->assertViewIs('receipts.bulk-print')
+        ->assertViewHasAll([
+            'periodLabel',
+            'receiptPrintData',
+        ])
+        ->assertSeeTextInOrder([
+            'Массовая печать квитанций',
+            'Квитанций: 2',
+            '202605-100010',
+            'Иванов Иван',
+            '202605-100011',
+            'Петров Петр',
+        ])
+        ->assertDontSeeText('Чужой абонент');
+
+    $content = $response->getContent();
+
+    expect(substr_count($content, 'data-receipt-copy='))->toBe(4)
+        ->and(substr_count($content, 'receipt-sheet-bulk'))->toBeGreaterThanOrEqual(2)
+        ->and($secondReceipt->billing_period_id)->toBe($firstReceipt->billing_period_id);
+});
+
+test('admin users can open a current tenant bulk receipt print view for a billing period', function () {
+    $organization = Organization::factory()->create([
+        'name' => 'ТОО Водоканал',
+    ]);
+    $firstReceipt = createReceiptFromMeterReading($organization, [
+        'account_number' => '100010',
+        'name' => 'Иванов Иван',
+    ]);
+    createReceiptFromMeterReading($organization, [
+        'account_number' => '100011',
+        'name' => 'Петров Петр',
+    ]);
+
+    $user = actingAsReceiptTenant($organization);
+    $this->actingAs($user);
+
+    $this->get(route('filament.admin.receipts.print-bulk', [
+        'tenant' => $organization,
+        'billing_period_id' => $firstReceipt->billing_period_id,
+    ]))
+        ->assertSuccessful()
+        ->assertViewIs('receipts.bulk-print')
+        ->assertViewHasAll([
+            'periodLabel',
+            'receiptPrintData',
+        ])
+        ->assertSeeText('Квитанций: 2');
+});
+
+test('admin users can open a current tenant bulk receipt print view for address and controller filters', function () {
+    $organization = Organization::factory()->create([
+        'name' => 'ТОО Водоканал',
+    ]);
+    $assignedRegion = Region::factory()->for($organization)->create([
+        'name' => 'Север',
+    ]);
+    $assignedStreet = Street::factory()
+        ->for($organization)
+        ->for($assignedRegion)
+        ->create([
+            'name' => 'Абая',
+        ]);
+    $otherRegion = Region::factory()->for($organization)->create([
+        'name' => 'Юг',
+    ]);
+    $otherStreet = Street::factory()
+        ->for($organization)
+        ->for($otherRegion)
+        ->create([
+            'name' => 'Сатпаева',
+        ]);
+
+    createReceiptFromMeterReading($organization, [
+        'account_number' => '100010',
+        'name' => 'Иванов Иван',
+        'region_id' => $assignedRegion->getKey(),
+        'street_id' => $assignedStreet->getKey(),
+    ]);
+    createReceiptFromMeterReading($organization, [
+        'account_number' => '100011',
+        'name' => 'Петров Петр',
+        'region_id' => $otherRegion->getKey(),
+        'street_id' => $otherStreet->getKey(),
+    ]);
+
+    $controller = User::factory()->create();
+    $controller->organizations()->attach($organization, [
+        'role' => OrganizationMemberRole::Controller->value,
+    ]);
+    DB::table('organization_user_regions')->insert([
+        'organization_id' => $organization->getKey(),
+        'user_id' => $controller->getKey(),
+        'region_id' => $assignedRegion->getKey(),
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    $user = actingAsReceiptTenant($organization);
+    $this->actingAs($user);
+
+    $this->get(route('filament.admin.receipts.print-bulk', [
+        'tenant' => $organization,
+        'region_id' => $assignedRegion->getKey(),
+    ]))
+        ->assertSuccessful()
+        ->assertSeeText('Квитанций: 1')
+        ->assertSeeText('Иванов Иван')
+        ->assertDontSeeText('Петров Петр');
+
+    $this->get(route('filament.admin.receipts.print-bulk', [
+        'tenant' => $organization,
+        'street_id' => $assignedStreet->getKey(),
+    ]))
+        ->assertSuccessful()
+        ->assertSeeText('Квитанций: 1')
+        ->assertSeeText('Иванов Иван')
+        ->assertDontSeeText('Петров Петр');
+
+    $this->get(route('filament.admin.receipts.print-bulk', [
+        'tenant' => $organization,
+        'controller_id' => $controller->getKey(),
+    ]))
+        ->assertSuccessful()
+        ->assertSeeText('Квитанций: 1')
+        ->assertSeeText('Иванов Иван')
+        ->assertDontSeeText('Петров Петр');
+});
+
+test('admin users see an empty bulk receipt print view when a tenant period has no receipts', function () {
+    $organization = Organization::factory()->create();
+    $billingPeriod = $organization->billingPeriods()->create([
+        'starts_on' => '2026-05-01',
+        'status' => 'open',
+        'opened_at' => now(),
+    ]);
+
+    $user = actingAsReceiptTenant($organization);
+    $this->actingAs($user);
+
+    $this->get(route('filament.admin.receipts.print-bulk', [
+        'tenant' => $organization,
+        'billing_period_id' => $billingPeriod,
+    ]))
+        ->assertSuccessful()
+        ->assertViewIs('receipts.bulk-print')
+        ->assertSeeText('Нет квитанций для печати')
+        ->assertDontSee('window.print()');
+});
+
+test('admin users cannot open another tenant bulk receipt print view', function () {
+    $organization = Organization::factory()->create();
+    $otherOrganization = Organization::factory()->create();
+    $receipt = createReceiptFromMeterReading($otherOrganization, [
+        'account_number' => '90001',
+    ]);
+
+    $user = actingAsReceiptTenant($organization);
+    $this->actingAs($user);
+
+    $this->get(route('filament.admin.receipts.print-bulk', [
+        'tenant' => $organization,
+        'billing_period_id' => $receipt->billing_period_id,
+    ]))->assertNotFound();
+
+    $this->get(route('filament.admin.receipts.print-bulk', [
+        'tenant' => $organization,
+        'receipt_ids' => [$receipt->getKey()],
+    ]))->assertNotFound();
 });
 
 test('admin users cannot open another tenant receipt print view', function () {

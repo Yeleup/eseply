@@ -2,11 +2,11 @@
 
 namespace App\Filament\Resources\Clients\RelationManagers;
 
-use App\Filament\Resources\Receipts\ReceiptResource;
 use App\Filament\Support\BillingPeriodOptions;
 use App\Filament\Support\OrganizationMemberAccess;
 use App\Models\Receipt;
 use Filament\Actions\Action;
+use Filament\Facades\Filament;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
@@ -94,7 +94,10 @@ class ReceiptsRelationManager extends RelationManager
             ->recordActions([
                 Action::make('open')
                     ->label('Открыть')
-                    ->url(fn (Receipt $record): string => ReceiptResource::getUrl('view', ['record' => $record])),
+                    ->url(fn (Receipt $record): string => route('filament.admin.receipts.print', [
+                        'tenant' => Filament::getTenant(),
+                        'receipt' => $record,
+                    ])),
             ]);
     }
 }

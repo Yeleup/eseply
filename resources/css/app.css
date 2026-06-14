@@ -9,3 +9,49 @@
     --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
         'Segoe UI Symbol', 'Noto Color Emoji';
 }
+
+.receipt-sheet {
+    display: grid;
+    gap: 1rem;
+    margin-inline: auto;
+    max-width: 42rem;
+}
+
+.receipt-sheet-bulk + .receipt-sheet-bulk {
+    margin-top: 1.5rem;
+}
+
+@media screen {
+    .receipt-copy {
+        min-height: 20rem;
+    }
+}
+
+@media print {
+    @page {
+        size: A5 portrait;
+        margin: 4mm;
+    }
+
+    .receipt-sheet {
+        grid-template-rows: repeat(2, minmax(0, 1fr));
+        gap: 2mm;
+        height: calc(210mm - 8mm);
+        max-width: none;
+    }
+
+    .receipt-sheet-bulk {
+        break-after: page;
+        page-break-after: always;
+    }
+
+    .receipt-sheet-bulk:last-child {
+        break-after: auto;
+        page-break-after: auto;
+    }
+
+    .receipt-copy {
+        min-height: 0;
+        break-inside: avoid;
+    }
+}

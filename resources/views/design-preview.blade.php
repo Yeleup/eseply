@@ -469,9 +469,9 @@
                 <div class="flex flex-col gap-4 border-b border-zinc-200 p-6 dark:border-zinc-800 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                         <p class="text-sm font-semibold uppercase tracking-[0.22em] text-teal-800 dark:text-teal-300">ReceiptResource</p>
-                        <h2 class="mt-2 text-3xl font-semibold tracking-tight">Печатная квитанция</h2>
+                        <h2 class="mt-2 text-3xl font-semibold tracking-tight">Печать квитанций A5</h2>
                         <p class="mt-3 max-w-2xl text-sm text-zinc-600 dark:text-zinc-300">
-                            Preview страницы, открываемой действием «Печатать PDF» со страницы просмотра квитанции.
+                            Один лист A5 содержит два компактных экземпляра: для организации и для абонента. Bulk-печать в таблице квитанций использует тот же шаблон для выбранных строк.
                         </p>
                     </div>
 
@@ -480,84 +480,140 @@
                     </button>
                 </div>
 
-                <div class="grid grid-cols-1 gap-5 p-6 lg:grid-cols-[1fr_18rem]">
-                    <div class="rounded-2xl border border-zinc-900 p-5 dark:border-zinc-200">
-                        <p class="text-xs font-semibold uppercase tracking-[0.22em] text-zinc-500 dark:text-zinc-400">Квитанция на оплату коммунальной услуги</p>
-                        <h3 class="mt-2 text-2xl font-bold">ТОО Водоканал</h3>
-                        <p class="mt-2 text-sm text-zinc-500 dark:text-zinc-400">Алматы, Абая 10</p>
+                <div class="grid gap-4 border-b border-zinc-200 p-6 dark:border-zinc-800 lg:grid-cols-[minmax(0,1fr)_18rem]">
+                    <div class="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+                        <p class="text-xs font-semibold uppercase tracking-[0.22em] text-amber-700 dark:text-amber-300">Bulk action</p>
+                        <h3 class="mt-2 text-lg font-semibold tracking-tight">Печатать выбранные / по фильтру</h3>
+                        <p class="mt-2 text-sm leading-6 text-zinc-500 dark:text-zinc-400">
+                            Оператор фильтрует таблицу квитанций по периоду, региону, улице или контроллеру, печатает все строки текущего фильтра или выбирает конкретные строки для bulk-печати без перерасчёта.
+                        </p>
 
-                        <dl class="mt-5 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
-                            <div class="rounded-xl bg-zinc-50 px-4 py-3 dark:bg-zinc-950">
-                                <dt class="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Номер</dt>
-                                <dd class="mt-1 font-semibold">202605-100010</dd>
-                            </div>
-                            <div class="rounded-xl bg-zinc-50 px-4 py-3 dark:bg-zinc-950">
-                                <dt class="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Абонент</dt>
-                                <dd class="mt-1 font-semibold">Иванов Иван</dd>
-                            </div>
-                            <div class="rounded-xl bg-zinc-50 px-4 py-3 dark:bg-zinc-950">
-                                <dt class="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Лицевой счёт</dt>
-                                <dd class="mt-1 font-semibold">100010</dd>
-                            </div>
-                            <div class="rounded-xl bg-zinc-50 px-4 py-3 dark:bg-zinc-950">
-                                <dt class="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Период</dt>
-                                <dd class="mt-1 font-semibold">05.2026</dd>
-                            </div>
-                        </dl>
-
-                        <div class="mt-5">
-                            <h4 class="mb-3 text-base font-bold">Счётчики</h4>
-                            <div class="overflow-hidden rounded-2xl border border-zinc-900 dark:border-zinc-200">
-                                <table class="w-full text-left text-sm">
-                                    <thead class="bg-zinc-100 text-xs uppercase tracking-wide text-zinc-600 dark:bg-zinc-950 dark:text-zinc-400">
-                                        <tr>
-                                            <th class="border-b border-r border-zinc-900 px-4 py-3 dark:border-zinc-200">№ счётчика</th>
-                                            <th class="border-b border-r border-zinc-900 px-4 py-3 text-right dark:border-zinc-200">Предыдущее</th>
-                                            <th class="border-b border-r border-zinc-900 px-4 py-3 text-right dark:border-zinc-200">Текущее</th>
-                                            <th class="border-b border-r border-zinc-900 px-4 py-3 text-right dark:border-zinc-200">Расход</th>
-                                            <th class="border-b border-r border-zinc-900 px-4 py-3 text-right dark:border-zinc-200">Тариф</th>
-                                            <th class="border-b border-zinc-900 px-4 py-3 text-right dark:border-zinc-200">Сумма</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <tr>
-                                            <td class="border-r border-zinc-900 px-4 py-4 font-semibold dark:border-zinc-200">MTR-100010</td>
-                                            <td class="border-r border-zinc-900 px-4 py-4 text-right dark:border-zinc-200">100.0000</td>
-                                            <td class="border-r border-zinc-900 px-4 py-4 text-right dark:border-zinc-200">120.0000</td>
-                                            <td class="border-r border-zinc-900 px-4 py-4 text-right dark:border-zinc-200">20.0000</td>
-                                            <td class="border-r border-zinc-900 px-4 py-4 text-right dark:border-zinc-200">90.00 KZT</td>
-                                            <td class="px-4 py-4 text-right font-bold">1 800.00 KZT</td>
-                                        </tr>
-                                        <tr class="bg-zinc-50 font-bold dark:bg-zinc-950">
-                                            <td class="border-t border-r border-zinc-900 px-4 py-3 dark:border-zinc-200" colspan="3">Итого</td>
-                                            <td class="border-t border-r border-zinc-900 px-4 py-3 text-right dark:border-zinc-200">20.0000</td>
-                                            <td class="border-t border-r border-zinc-900 px-4 py-3 dark:border-zinc-200"></td>
-                                            <td class="border-t border-zinc-900 px-4 py-3 text-right dark:border-zinc-200">1 800.00 KZT</td>
-                                        </tr>
-                                    </tbody>
-                                </table>
+                        <div class="mt-5 grid gap-2">
+                            <label class="text-sm font-medium">Текущий фильтр</label>
+                            <div class="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm shadow-sm dark:border-zinc-700 dark:bg-zinc-950">
+                                05.2026 · Регион Север · ул. Абая · 24 квитанции
                             </div>
                         </div>
+
+                        <button class="mt-5 rounded-lg bg-zinc-950 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-white">
+                            Печатать по фильтру
+                        </button>
                     </div>
 
-                    <aside class="rounded-2xl border-2 border-zinc-950 bg-zinc-50 p-5 dark:border-zinc-100 dark:bg-zinc-950">
-                        <p class="text-sm font-semibold uppercase tracking-[0.2em] text-zinc-500 dark:text-zinc-400">К оплате</p>
-                        <p class="mt-3 text-3xl font-bold tracking-tight">1 800.00 KZT</p>
-                        <div class="mt-5 grid grid-cols-1 gap-3 text-sm">
-                            <div class="flex items-center justify-between gap-3 border-b border-zinc-200 pb-2 dark:border-zinc-800">
-                                <span class="text-zinc-500 dark:text-zinc-400">Начальное сальдо</span>
-                                <span class="font-semibold">0.00 KZT</span>
-                            </div>
-                            <div class="flex items-center justify-between gap-3 border-b border-zinc-200 pb-2 dark:border-zinc-800">
-                                <span class="text-zinc-500 dark:text-zinc-400">Оплачено</span>
-                                <span class="font-semibold">0.00 KZT</span>
-                            </div>
-                            <div class="flex items-center justify-between gap-3">
-                                <span class="text-zinc-500 dark:text-zinc-400">Конечное сальдо</span>
-                                <span class="font-semibold">1 800.00 KZT</span>
-                            </div>
-                        </div>
-                    </aside>
+                    <div class="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm leading-6 text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
+                        <h3 class="font-semibold">Состояния</h3>
+                        <ul class="mt-3 list-disc space-y-2 pl-5">
+                            <li>Выбран любой фильтр: появляется «Печатать по фильтру».</li>
+                            <li>Выбран контроллер: печатаются квитанции абонентов из его зоны ответственности.</li>
+                            <li>Выбраны квитанции: доступно «Печатать выбранные».</li>
+                            <li>Нет квитанций: показывается пустое состояние.</li>
+                            <li>Чужая квитанция: доступ закрыт tenant-проверкой.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="bg-stone-100 p-6 dark:bg-zinc-950">
+                    <div class="receipt-sheet">
+                        @foreach (['Для организации', 'Для абонента'] as $copyTitle)
+                            <article class="receipt-copy flex flex-col rounded-xl border border-zinc-900 bg-white p-4 text-[10px] leading-tight text-zinc-950 shadow-sm dark:border-zinc-200 dark:bg-white">
+                                <header class="grid grid-cols-[minmax(0,1fr)_10.5rem] gap-3 border-b border-zinc-900 pb-2">
+                                    <div>
+                                        <p class="text-[9px] font-bold uppercase tracking-[0.18em] text-zinc-500">{{ $copyTitle }}</p>
+                                        <p class="mt-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-zinc-500">Квитанция на оплату коммунальной услуги</p>
+                                        <h3 class="mt-1 text-base font-bold tracking-tight">ТОО Водоканал</h3>
+                                        <p class="mt-0.5 text-[10px] text-zinc-600">Алматы, Абая 10</p>
+                                    </div>
+
+                                    <dl class="grid grid-cols-[3.4rem_1fr] gap-x-1 gap-y-1 text-[10px]">
+                                        <dt class="text-zinc-500">Номер</dt>
+                                        <dd class="font-semibold">202605-100010</dd>
+                                        <dt class="text-zinc-500">Период</dt>
+                                        <dd class="font-semibold">05.2026</dd>
+                                        <dt class="text-zinc-500">Дата</dt>
+                                        <dd class="font-semibold">14.06.2026</dd>
+                                    </dl>
+                                </header>
+
+                                <div class="grid grid-cols-2 gap-3 border-b border-zinc-300 py-2">
+                                    <section>
+                                        <h4 class="text-[10px] font-bold uppercase tracking-wide">Абонент</h4>
+                                        <dl class="mt-1 grid grid-cols-[4.8rem_1fr] gap-x-1 gap-y-0.5 text-[9px]">
+                                            <dt class="text-zinc-500">Лицевой счёт</dt>
+                                            <dd class="font-semibold">100010</dd>
+                                            <dt class="text-zinc-500">Абонент</dt>
+                                            <dd class="font-semibold">Иванов Иван</dd>
+                                            <dt class="text-zinc-500">Адрес</dt>
+                                            <dd class="font-semibold">Алматы, Абая 10</dd>
+                                            <dt class="text-zinc-500">Услуга</dt>
+                                            <dd class="font-semibold">Водоснабжение</dd>
+                                        </dl>
+                                    </section>
+
+                                    <section>
+                                        <h4 class="text-[10px] font-bold uppercase tracking-wide">Реквизиты</h4>
+                                        <dl class="mt-1 grid grid-cols-[3.6rem_1fr] gap-x-1 gap-y-0.5 text-[9px]">
+                                            <dt class="text-zinc-500">БИН / ИИН</dt>
+                                            <dd class="font-semibold">123456789012</dd>
+                                            <dt class="text-zinc-500">Телефон</dt>
+                                            <dd class="font-semibold">+7 777 000 00 00</dd>
+                                            <dt class="text-zinc-500">IBAN</dt>
+                                            <dd class="font-semibold">KZ86125KZT5004100100</dd>
+                                        </dl>
+                                    </section>
+                                </div>
+
+                                <section class="mt-2">
+                                    <div class="flex items-center justify-between gap-2">
+                                        <h4 class="text-[10px] font-bold uppercase tracking-wide">Счётчики</h4>
+                                        <p class="text-[8px] text-zinc-500">Сформирована: 14.06.2026 10:00</p>
+                                    </div>
+
+                                    <div class="mt-1 overflow-hidden rounded-lg border border-zinc-900">
+                                        <table class="w-full text-left text-[9px]">
+                                            <thead class="bg-zinc-100 uppercase tracking-wide text-zinc-600">
+                                                <tr>
+                                                    <th class="border-b border-r border-zinc-900 px-2 py-1.5">№ счётчика</th>
+                                                    <th class="border-b border-r border-zinc-900 px-2 py-1.5 text-right">Предыдущее</th>
+                                                    <th class="border-b border-r border-zinc-900 px-2 py-1.5 text-right">Текущее</th>
+                                                    <th class="border-b border-r border-zinc-900 px-2 py-1.5 text-right">Расход</th>
+                                                    <th class="border-b border-r border-zinc-900 px-2 py-1.5 text-right">Тариф</th>
+                                                    <th class="border-b border-zinc-900 px-2 py-1.5 text-right">Сумма</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <tr>
+                                                    <td class="border-r border-zinc-900 px-2 py-1.5 font-semibold">MTR-100010</td>
+                                                    <td class="border-r border-zinc-900 px-2 py-1.5 text-right">100.0000</td>
+                                                    <td class="border-r border-zinc-900 px-2 py-1.5 text-right">120.0000</td>
+                                                    <td class="border-r border-zinc-900 px-2 py-1.5 text-right">20.0000</td>
+                                                    <td class="border-r border-zinc-900 px-2 py-1.5 text-right">90.00 KZT</td>
+                                                    <td class="px-2 py-1.5 text-right font-bold">1 800.00 KZT</td>
+                                                </tr>
+                                                <tr class="bg-zinc-50 font-bold">
+                                                    <td class="border-t border-r border-zinc-900 px-2 py-1.5" colspan="3">Итого</td>
+                                                    <td class="border-t border-r border-zinc-900 px-2 py-1.5 text-right">20.0000</td>
+                                                    <td class="border-t border-r border-zinc-900 px-2 py-1.5"></td>
+                                                    <td class="border-t border-zinc-900 px-2 py-1.5 text-right">1 800.00 KZT</td>
+                                                </tr>
+                                                <tr>
+                                                    <td class="border-t border-r border-zinc-900 px-2 py-1 font-semibold" colspan="5">Долг</td>
+                                                    <td class="border-t border-zinc-900 px-2 py-1 text-right font-semibold">0.00 KZT</td>
+                                                </tr>
+                                                <tr>
+                                                    <td class="border-t border-r border-zinc-900 px-2 py-1 font-semibold" colspan="5">Оплачено</td>
+                                                    <td class="border-t border-zinc-900 px-2 py-1 text-right font-semibold">0.00 KZT</td>
+                                                </tr>
+                                                <tr class="bg-zinc-50 font-bold">
+                                                    <td class="border-t border-r border-zinc-900 px-2 py-1.5" colspan="5">К оплате</td>
+                                                    <td class="border-t border-zinc-900 px-2 py-1.5 text-right">1 800.00 KZT</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </section>
+                            </article>
+                        @endforeach
+                    </div>
                 </div>
             </section>
 

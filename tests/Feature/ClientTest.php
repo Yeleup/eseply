@@ -952,7 +952,11 @@ test('client related tables list only the selected client records', function () 
     ])
         ->assertOk()
         ->assertCanSeeTableRecords([$receipt])
-        ->assertCanNotSeeTableRecords([$otherReceipt]);
+        ->assertCanNotSeeTableRecords([$otherReceipt])
+        ->assertTableActionHasUrl('open', route('filament.admin.receipts.print', [
+            'tenant' => $organization,
+            'receipt' => $receipt,
+        ]), $receipt);
 });
 
 test('client related tables can create meters, payments and balance adjustments for the selected client', function () {

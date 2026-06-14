@@ -4,7 +4,6 @@ namespace App\Filament\Resources\Receipts;
 
 use App\Actions\BuildReceiptMeterReadingLines;
 use App\Filament\Resources\Receipts\Pages\ListReceipts;
-use App\Filament\Resources\Receipts\Pages\ViewReceipt;
 use App\Filament\Resources\Receipts\Tables\ReceiptsTable;
 use App\Filament\Support\OrganizationMemberAccess;
 use App\Models\Receipt;
@@ -145,7 +144,6 @@ class ReceiptResource extends Resource
     {
         return [
             'index' => ListReceipts::route('/'),
-            'view' => ViewReceipt::route('/{record}'),
         ];
     }
 

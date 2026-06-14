@@ -78,6 +78,39 @@ test('account number can repeat across organizations', function () {
     expect($client)->toBeInstanceOf(Client::class);
 });
 
+test('iin and phone are unique inside an organization', function () {
+    $organization = Organization::factory()->create();
+
+    Client::factory()->for($organization)->create([
+        'iin' => '870101300123',
+        'phone' => '+7 777 111 22 33',
+    ]);
+
+    expect(fn () => Client::factory()->for($organization)->create([
+        'iin' => '870101300123',
+        'phone' => '+7 777 111 22 34',
+    ]))->toThrow(QueryException::class);
+
+    expect(fn () => Client::factory()->for($organization)->create([
+        'iin' => '870101300124',
+        'phone' => '+7 777 111 22 33',
+    ]))->toThrow(QueryException::class);
+});
+
+test('iin and phone can repeat across organizations', function () {
+    Client::factory()->for(Organization::factory())->create([
+        'iin' => '870101300123',
+        'phone' => '+7 777 111 22 33',
+    ]);
+
+    $client = Client::factory()->for(Organization::factory())->create([
+        'iin' => '870101300123',
+        'phone' => '+7 777 111 22 33',
+    ]);
+
+    expect($client)->toBeInstanceOf(Client::class);
+});
+
 test('account number is generated separately inside each organization', function () {
     $firstOrganization = Organization::factory()->create();
     $secondOrganization = Organization::factory()->create();
@@ -257,6 +290,123 @@ test('client iin contract and phone are required client data fields', function (
             'phone' => 'required',
             'contract' => 'required',
         ]);
+});
+
+test('client iin and phone must be unique inside the current tenant form', function () {
+    $organization = Organization::factory()->create();
+    UtilityService::factory()->for($organization)->create();
+    $region = Region::factory()->for($organization)->create();
+    $street = Street::factory()->for($region)->create();
+
+    Client::factory()->for($organization)->create([
+        'iin' => '870101300123',
+        'phone' => '+7 777 111 22 33',
+    ]);
+
+    actingAsTenant($organization);
+
+    Livewire::test(CreateClient::class)
+        ->fillForm([
+            'name' => 'Дубликат реквизитов',
+            'iin' => '870101300123',
+            'client_type' => ClientType::Individual->value,
+            'billing_type' => 'per_person',
+            'residents_count' => 1,
+            'fixed_amount' => 0,
+            'phone' => '+7 777 111 22 33',
+            'contract' => 'Договор №22',
+            'region_id' => $region->getKey(),
+            'street_id' => $street->getKey(),
+            'status' => 'active',
+        ])
+        ->call('create')
+        ->assertHasFormErrors([
+            'iin' => 'unique',
+            'phone' => 'unique',
+        ]);
+
+    expect(Client::query()
+        ->whereBelongsTo($organization)
+        ->where('name', 'Дубликат реквизитов')
+        ->exists())->toBeFalse();
+});
+
+test('client iin and phone can repeat in another tenant form', function () {
+    $organization = Organization::factory()->create();
+    $otherOrganization = Organization::factory()->create();
+    UtilityService::factory()->for($organization)->create();
+    $region = Region::factory()->for($organization)->create();
+    $street = Street::factory()->for($region)->create();
+
+    Client::factory()->for($otherOrganization)->create([
+        'iin' => '870101300123',
+        'phone' => '+7 777 111 22 33',
+    ]);
+
+    actingAsTenant($organization);
+
+    Livewire::test(CreateClient::class)
+        ->fillForm([
+            'name' => 'Повтор в другой организации',
+            'iin' => '870101300123',
+            'client_type' => ClientType::Individual->value,
+            'billing_type' => 'per_person',
+            'residents_count' => 1,
+            'fixed_amount' => 0,
+            'phone' => '+7 777 111 22 33',
+            'contract' => 'Договор №23',
+            'region_id' => $region->getKey(),
+            'street_id' => $street->getKey(),
+            'status' => 'active',
+        ])
+        ->call('create')
+        ->assertHasNoFormErrors()
+        ->assertNotified()
+        ->assertRedirect();
+
+    expect(Client::query()
+        ->whereBelongsTo($organization)
+        ->where('iin', '870101300123')
+        ->where('phone', '+7 777 111 22 33')
+        ->exists())->toBeTrue();
+});
+
+test('admin users can keep client iin and phone when editing', function () {
+    $organization = Organization::factory()->create();
+    UtilityService::factory()->for($organization)->create();
+    $region = Region::factory()->for($organization)->create();
+    $street = Street::factory()->for($region)->create();
+    $client = Client::factory()
+        ->for($organization)
+        ->for($region)
+        ->for($street)
+        ->create([
+            'iin' => '870101300123',
+            'phone' => '+7 777 111 22 33',
+            'contract' => 'Договор №24',
+        ]);
+
+    actingAsTenant($organization);
+
+    Livewire::test(EditClient::class, [
+        'record' => $client->getRouteKey(),
+    ])
+        ->fillForm([
+            'name' => $client->name,
+            'iin' => '870101300123',
+            'client_type' => ClientType::Individual->value,
+            'billing_type' => 'per_person',
+            'residents_count' => 1,
+            'fixed_amount' => 0,
+            'phone' => '+7 777 111 22 33',
+            'contract' => 'Договор №24',
+            'region_id' => $region->getKey(),
+            'street_id' => $street->getKey(),
+            'status' => 'active',
+        ])
+        ->call('save')
+        ->assertHasNoFormErrors()
+        ->assertNotified();
 });
 
 test('admin users cannot edit a client account number', function () {

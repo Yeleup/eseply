@@ -14,6 +14,7 @@ use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Unique;
 
 class ClientForm
 {
@@ -37,7 +38,15 @@ class ClientForm
                             ->maxLength(255),
                         TextInput::make('iin')
                             ->label('ИИН')
-                            ->required(),
+                            ->required()
+                            ->maxLength(12)
+                            ->unique(
+                                table: 'clients',
+                                column: 'iin',
+                                ignoreRecord: true,
+                                modifyRuleUsing: fn (Unique $rule): Unique => $rule
+                                    ->where('organization_id', Filament::getTenant()?->getKey()),
+                            ),
                         Select::make('client_type')
                             ->label('Тип клиента')
                             ->options(ClientType::class)
@@ -64,7 +73,14 @@ class ClientForm
                             ->label('Телефон')
                             ->tel()
                             ->required()
-                            ->maxLength(255),
+                            ->maxLength(255)
+                            ->unique(
+                                table: 'clients',
+                                column: 'phone',
+                                ignoreRecord: true,
+                                modifyRuleUsing: fn (Unique $rule): Unique => $rule
+                                    ->where('organization_id', Filament::getTenant()?->getKey()),
+                            ),
                         TextInput::make('contract')
                             ->label('Договор')
                             ->required(),

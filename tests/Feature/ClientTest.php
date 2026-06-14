@@ -166,6 +166,31 @@ test('admin users can list only current tenant clients', function () {
         ->assertCanNotSeeTableRecords([$otherTenantClient]);
 });
 
+test('client pages show missing billing period callout at page start', function () {
+    $organization = Organization::factory()->create();
+    $user = actingAsTenant($organization);
+    $client = Client::factory()->for($organization)->create();
+
+    $this->actingAs($user)
+        ->get("/admin/{$organization->getKey()}/clients/{$client->getRouteKey()}/edit")
+        ->assertSuccessful()
+        ->assertSee('Расчётный месяц не открыт')
+        ->assertSee('Откройте расчётный месяц в разделе «Расчётные месяцы», чтобы вводить оплаты, показания, корректировки и закрывать месяц.');
+});
+
+test('client pages do not show missing billing period callout when current period is open', function () {
+    $organization = Organization::factory()->create();
+    $user = actingAsTenant($organization);
+    $client = Client::factory()->for($organization)->create();
+
+    billingPeriodFor($organization);
+
+    $this->actingAs($user)
+        ->get("/admin/{$organization->getKey()}/clients/{$client->getRouteKey()}/edit")
+        ->assertSuccessful()
+        ->assertDontSee('Расчётный месяц не открыт');
+});
+
 test('admin users can create a client for the current tenant', function () {
     $organization = Organization::factory()->create();
     $utilityService = UtilityService::factory()->for($organization)->create([

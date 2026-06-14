@@ -165,3 +165,17 @@ test('admin users can create and list payments for the current tenant', function
         ->assertCanSeeTableRecords([$payment])
         ->assertCanNotSeeTableRecords([$otherTenantPayment]);
 });
+
+test('payment pages show billing period error and disable creation without an open month', function () {
+    $organization = Organization::factory()->create();
+    Client::factory()->for($organization)->create();
+    $user = actingAsPaymentTenant($organization);
+
+    $this->actingAs($user)
+        ->get("/admin/{$organization->getKey()}/payments/create")
+        ->assertSuccessful()
+        ->assertSee('Расчётный месяц не открыт');
+
+    Livewire::test(ListPayments::class)
+        ->assertActionDisabled('create');
+});

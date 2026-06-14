@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Clients\RelationManagers;
 
 use App\Filament\Resources\Meters\MeterResource;
+use App\Filament\Support\CurrentBillingPeriod;
 use App\Filament\Support\OrganizationMemberAccess;
 use App\Models\BillingPeriod;
 use App\Models\Client;
@@ -171,6 +172,8 @@ class MetersRelationManager extends RelationManager
                     ->schema(fn (Meter $record): array => $this->readingFormComponents($record))
                     ->fillForm(fn (Meter $record): array => $this->readingActionFormData($record))
                     ->visible(fn (Meter $record): bool => $this->canAddReadingForMeter($record))
+                    ->disabled(fn (Meter $record): bool => CurrentBillingPeriod::missing($record->organization))
+                    ->tooltip(fn (Meter $record): ?string => CurrentBillingPeriod::missingTooltip($record->organization))
                     ->action(function (Meter $record, array $data): void {
                         abort_unless($this->canAddReadingForMeter($record), 403);
 

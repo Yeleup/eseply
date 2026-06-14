@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Clients\RelationManagers;
 
 use App\Filament\Support\BillingPeriodOptions;
+use App\Filament\Support\CurrentBillingPeriod;
 use App\Filament\Support\OrganizationMemberAccess;
 use App\Models\Payment;
 use Filament\Actions\BulkActionGroup;
@@ -102,6 +103,8 @@ class PaymentsRelationManager extends RelationManager
             ])
             ->headerActions([
                 CreateAction::make()
+                    ->disabled(fn (): bool => CurrentBillingPeriod::missing($this->ownerRecord->organization))
+                    ->tooltip(fn (): ?string => CurrentBillingPeriod::missingTooltip($this->ownerRecord->organization))
                     ->mutateDataUsing(function (array $data): array {
                         $data['organization_id'] = $this->ownerRecord->organization_id;
 

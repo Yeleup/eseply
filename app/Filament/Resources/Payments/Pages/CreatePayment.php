@@ -3,6 +3,8 @@
 namespace App\Filament\Resources\Payments\Pages;
 
 use App\Filament\Resources\Payments\PaymentResource;
+use App\Filament\Support\CurrentBillingPeriod;
+use Filament\Actions\Action;
 use Filament\Facades\Filament;
 use Filament\Resources\Pages\CreateRecord;
 
@@ -19,5 +21,19 @@ class CreatePayment extends CreateRecord
         $data['organization_id'] = Filament::getTenant()?->getKey();
 
         return $data;
+    }
+
+    protected function getCreateFormAction(): Action
+    {
+        return parent::getCreateFormAction()
+            ->disabled(fn (): bool => CurrentBillingPeriod::missing())
+            ->tooltip(fn (): ?string => CurrentBillingPeriod::missingTooltip());
+    }
+
+    protected function getCreateAnotherFormAction(): Action
+    {
+        return parent::getCreateAnotherFormAction()
+            ->disabled(fn (): bool => CurrentBillingPeriod::missing())
+            ->tooltip(fn (): ?string => CurrentBillingPeriod::missingTooltip());
     }
 }

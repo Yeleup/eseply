@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\BalanceAdjustments\Pages;
 
 use App\Filament\Resources\BalanceAdjustments\BalanceAdjustmentResource;
+use App\Filament\Support\CurrentBillingPeriod;
 use App\Filament\Support\OrganizationMemberAccess;
 use Filament\Actions\CreateAction;
 use Filament\Resources\Pages\ListRecords;
@@ -21,7 +22,9 @@ class ListBalanceAdjustments extends ListRecords
     protected function getHeaderActions(): array
     {
         return [
-            CreateAction::make(),
+            CreateAction::make()
+                ->disabled(fn (): bool => CurrentBillingPeriod::missing())
+                ->tooltip(fn (): ?string => CurrentBillingPeriod::missingTooltip()),
         ];
     }
 }

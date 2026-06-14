@@ -3,12 +3,14 @@
 namespace App\Filament\Resources\MeterReadings\Pages;
 
 use App\Filament\Resources\MeterReadings\MeterReadingResource;
+use App\Filament\Support\CurrentBillingPeriod;
 use App\Filament\Support\OrganizationMemberAccess;
 use App\Models\BillingPeriod;
 use App\Models\Meter;
 use App\Models\MeterReading;
 use App\Models\Organization;
 use App\Models\User;
+use Filament\Actions\Action;
 use Filament\Facades\Filament;
 use Filament\Resources\Pages\CreateRecord;
 use Illuminate\Validation\ValidationException;
@@ -35,6 +37,20 @@ class CreateMeterReading extends CreateRecord
         ) ?? 0;
 
         return $data;
+    }
+
+    protected function getCreateFormAction(): Action
+    {
+        return parent::getCreateFormAction()
+            ->disabled(fn (): bool => CurrentBillingPeriod::missing())
+            ->tooltip(fn (): ?string => CurrentBillingPeriod::missingTooltip());
+    }
+
+    protected function getCreateAnotherFormAction(): Action
+    {
+        return parent::getCreateAnotherFormAction()
+            ->disabled(fn (): bool => CurrentBillingPeriod::missing())
+            ->tooltip(fn (): ?string => CurrentBillingPeriod::missingTooltip());
     }
 
     private function ensureReadingDoesNotAlreadyExist(mixed $meterId, int|string $billingPeriodId): void

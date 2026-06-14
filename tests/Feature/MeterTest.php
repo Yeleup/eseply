@@ -476,3 +476,40 @@ test('client meter table can add or update the current month reading for the sel
 test('meter resource shows readings as a related table', function () {
     expect(MeterResource::getRelations())->toContain(ReadingsRelationManager::class);
 });
+
+test('meter reading actions show billing period error and disable creation without an open month', function () {
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create();
+    $client = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'billing_type' => 'meter',
+        ]);
+    $meter = Meter::factory()
+        ->for($organization)
+        ->for($client)
+        ->for($utilityService)
+        ->create();
+    $user = actingAsMeterTenant($organization);
+
+    $this->actingAs($user)
+        ->get("/admin/{$organization->getKey()}/meter-readings/create")
+        ->assertSuccessful()
+        ->assertSee('Расчётный месяц не открыт');
+
+    Livewire::test(ListMeterReadings::class)
+        ->assertActionDisabled('create');
+
+    Livewire::test(MetersRelationManager::class, [
+        'ownerRecord' => $client,
+        'pageClass' => EditClient::class,
+    ])
+        ->assertTableActionDisabled('addReading', $meter);
+
+    Livewire::test(ReadingsRelationManager::class, [
+        'ownerRecord' => $meter,
+        'pageClass' => EditMeter::class,
+    ])
+        ->assertTableActionDisabled('create');
+});

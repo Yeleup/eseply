@@ -9,6 +9,12 @@
         @if (file_exists(public_path('build/manifest.json')) || file_exists(public_path('hot')))
             @vite(['resources/css/app.css', 'resources/js/app.js'])
         @endif
+
+        <style>
+            .billing-period-required-callout {
+                margin-top: 1rem;
+            }
+        </style>
     </head>
     <body class="bg-zinc-50 text-zinc-950 antialiased dark:bg-zinc-950 dark:text-zinc-50">
         <main class="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-8 px-4 py-6 sm:px-6 lg:px-8">
@@ -201,6 +207,13 @@
                     <span class="rounded-full bg-teal-100 px-2 py-1 text-xs font-medium text-teal-800 dark:bg-teal-900/40 dark:text-teal-200">
                         Лицевой счёт readonly
                     </span>
+                </div>
+
+                <div class="billing-period-required-callout rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-900/60 dark:bg-red-950/20">
+                    <p class="text-sm font-semibold text-red-900 dark:text-red-100">Расчётный месяц не открыт</p>
+                    <p class="mt-1 text-sm text-red-800 dark:text-red-200">
+                        Откройте расчётный месяц в разделе «Расчётные месяцы», чтобы вводить оплаты, показания, корректировки и закрывать месяц.
+                    </p>
                 </div>
 
                 <form class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">

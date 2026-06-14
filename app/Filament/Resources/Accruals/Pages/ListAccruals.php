@@ -4,6 +4,7 @@ namespace App\Filament\Resources\Accruals\Pages;
 
 use App\Actions\CloseBillingMonth as CloseBillingMonthAction;
 use App\Filament\Resources\Accruals\AccrualResource;
+use App\Filament\Support\CurrentBillingPeriod;
 use App\Filament\Support\OrganizationMemberAccess;
 use App\Models\BillingPeriod;
 use App\Models\Organization;
@@ -31,6 +32,8 @@ class ListAccruals extends ListRecords
             Action::make('closeBillingMonth')
                 ->label('Закрыть месяц')
                 ->icon(Heroicon::OutlinedCalculator)
+                ->disabled(fn (): bool => CurrentBillingPeriod::missing())
+                ->tooltip(fn (): ?string => CurrentBillingPeriod::missingTooltip())
                 ->action(fn (): null => $this->closeCurrentBillingMonth()),
         ];
     }

@@ -145,3 +145,17 @@ test('admin users can create and list balance adjustments for the current tenant
         ->assertCanSeeTableRecords([$balanceAdjustment])
         ->assertCanNotSeeTableRecords([$otherTenantBalanceAdjustment]);
 });
+
+test('balance adjustment pages show billing period error and disable creation without an open month', function () {
+    $organization = Organization::factory()->create();
+    Client::factory()->for($organization)->create();
+    $user = actingAsBalanceAdjustmentTenant($organization);
+
+    $this->actingAs($user)
+        ->get("/admin/{$organization->getKey()}/balance-adjustments/create")
+        ->assertSuccessful()
+        ->assertSee('Расчётный месяц не открыт');
+
+    Livewire::test(ListBalanceAdjustments::class)
+        ->assertActionDisabled('create');
+});

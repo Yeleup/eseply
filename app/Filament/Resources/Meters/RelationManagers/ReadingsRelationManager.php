@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Meters\RelationManagers;
 
+use App\Filament\Support\CurrentBillingPeriod;
 use App\Filament\Support\OrganizationMemberAccess;
 use App\Models\BillingPeriod;
 use App\Models\Meter;
@@ -109,6 +110,8 @@ class ReadingsRelationManager extends RelationManager
             ->headerActions([
                 CreateAction::make()
                     ->visible(fn (): bool => $this->canCreateReadingForOwner())
+                    ->disabled(fn (): bool => CurrentBillingPeriod::missing($this->ownerRecord->organization))
+                    ->tooltip(fn (): ?string => CurrentBillingPeriod::missingTooltip($this->ownerRecord->organization))
                     ->mutateDataUsing(function (array $data): array {
                         abort_unless($this->canCreateReadingForOwner(), 403);
 

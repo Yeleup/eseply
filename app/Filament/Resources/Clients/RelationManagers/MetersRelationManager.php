@@ -28,7 +28,7 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Validation\ValidationException;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class MetersRelationManager extends RelationManager
 {
@@ -76,9 +76,18 @@ class MetersRelationManager extends RelationManager
         return $table
             ->recordTitleAttribute('number')
             ->modifyQueryUsing(function (Builder $query): Builder {
+                $currentBillingPeriodId = $this->currentBillingPeriodId();
+
                 $query
                     ->with('utilityService')
                     ->orderBy('number');
+
+                if ($currentBillingPeriodId !== null) {
+                    $query->with([
+                        'readings' => fn (HasMany $query): HasMany => $query
+                            ->where('billing_period_id', $currentBillingPeriodId),
+                    ]);
+                }
 
                 if ($this->canAccessOwnerRecord()) {
                     return $query;
@@ -151,26 +160,42 @@ class MetersRelationManager extends RelationManager
                     ->label('Открыть')
                     ->url(fn (Meter $record): string => MeterResource::getUrl('edit', ['record' => $record])),
                 Action::make('addReading')
-                    ->label('Добавить показание')
-                    ->icon(Heroicon::PlusCircle)
-                    ->color('success')
-                    ->modalHeading(fn (Meter $record): string => "Добавить показание: {$record->number}")
-                    ->modalSubmitActionLabel('Добавить')
-                    ->successNotificationTitle('Показание добавлено')
+                    ->label(fn (Meter $record): string => $this->readingActionLabel($record))
+                    ->icon(fn (Meter $record): Heroicon => $this->currentReadingForMeter($record) instanceof MeterReading
+                        ? Heroicon::PencilSquare
+                        : Heroicon::PlusCircle)
+                    ->color(fn (Meter $record): string => $this->currentReadingForMeter($record) instanceof MeterReading ? 'warning' : 'success')
+                    ->modalHeading(fn (Meter $record): string => "{$this->readingActionLabel($record)}: {$record->number}")
+                    ->modalSubmitActionLabel(fn (Meter $record): string => $this->currentReadingForMeter($record) instanceof MeterReading ? 'Сохранить' : 'Добавить')
+                    ->successNotificationTitle('Показание сохранено')
                     ->schema(fn (Meter $record): array => $this->readingFormComponents($record))
+                    ->fillForm(fn (Meter $record): array => $this->readingActionFormData($record))
                     ->visible(fn (Meter $record): bool => $this->canAddReadingForMeter($record))
                     ->action(function (Meter $record, array $data): void {
                         abort_unless($this->canAddReadingForMeter($record), 403);
 
                         $billingPeriod = $this->currentBillingPeriod();
-                        $this->ensureReadingDoesNotAlreadyExist($record, $billingPeriod->getKey());
+                        $meterReading = $this->currentReadingForMeter($record, $billingPeriod->getKey());
 
-                        $record->readings()->create([
-                            'billing_period_id' => $billingPeriod->getKey(),
-                            'previous_reading' => $this->previousReadingForMeterAndPeriod($record, $billingPeriod->getKey()),
+                        $readingData = [
+                            'previous_reading' => $meterReading?->previous_reading
+                                ?? $this->previousReadingForMeterAndPeriod($record, $billingPeriod->getKey()),
                             'current_reading' => $data['current_reading'],
                             'read_at' => $data['read_at'] ?? null,
                             'note' => $data['note'] ?? null,
+                        ];
+
+                        if ($meterReading instanceof MeterReading) {
+                            abort_unless($this->canEditReading($meterReading), 403);
+
+                            $meterReading->update($readingData);
+
+                            return;
+                        }
+
+                        $record->readings()->create([
+                            'billing_period_id' => $billingPeriod->getKey(),
+                            ...$readingData,
                         ]);
                     }),
                 Action::make('archive')
@@ -250,23 +275,54 @@ class MetersRelationManager extends RelationManager
         return MeterReading::previousReadingForBillingPeriod($meter->getKey(), $billingPeriodId) ?? 0;
     }
 
-    private function ensureReadingDoesNotAlreadyExist(Meter $meter, int|string $billingPeriodId): void
+    private function readingActionLabel(Meter $meter): string
     {
-        if (! MeterReading::existsForMeterBillingPeriod($meter->getKey(), $billingPeriodId)) {
-            return;
-        }
-
-        throw ValidationException::withMessages([
-            $this->mountedActionFieldErrorKey('current_reading') => MeterReading::DUPLICATE_BILLING_PERIOD_MESSAGE,
-        ]);
+        return $this->currentReadingForMeter($meter) instanceof MeterReading
+            ? 'Изменить показание'
+            : 'Добавить показание';
     }
 
-    private function mountedActionFieldErrorKey(string $field): string
+    /**
+     * @return array{previous_reading: float, current_reading?: float|null, read_at?: string|null, note?: string|null}
+     */
+    private function readingActionFormData(Meter $meter): array
     {
-        $schemaName = $this->getMountedActionSchemaName();
-        $statePath = $schemaName ? $this->{$schemaName}->getStatePath() : null;
+        $billingPeriodId = $this->currentBillingPeriodId();
+        $meterReading = $this->currentReadingForMeter($meter, $billingPeriodId);
 
-        return filled($statePath) ? "{$statePath}.{$field}" : $field;
+        if ($meterReading instanceof MeterReading) {
+            return [
+                'previous_reading' => (float) $meterReading->previous_reading,
+                'current_reading' => (float) $meterReading->current_reading,
+                'read_at' => $meterReading->read_at?->toDateString(),
+                'note' => $meterReading->note,
+            ];
+        }
+
+        return [
+            'previous_reading' => $this->previousReadingForMeterAndPeriod($meter, $billingPeriodId),
+        ];
+    }
+
+    private function currentReadingForMeter(Meter $meter, int|string|null $billingPeriodId = null): ?MeterReading
+    {
+        $billingPeriodId ??= $this->currentBillingPeriodId();
+
+        if ($billingPeriodId === null || $billingPeriodId === '') {
+            return null;
+        }
+
+        if ($meter->relationLoaded('readings')) {
+            $meterReading = $meter->readings
+                ->first(fn (MeterReading $meterReading): bool => (int) $meterReading->billing_period_id === (int) $billingPeriodId);
+
+            return $meterReading instanceof MeterReading ? $meterReading : null;
+        }
+
+        return MeterReading::query()
+            ->where('meter_id', $meter->getKey())
+            ->where('billing_period_id', $billingPeriodId)
+            ->first();
     }
 
     private function currentBillingPeriod(): BillingPeriod
@@ -304,5 +360,11 @@ class MetersRelationManager extends RelationManager
     private function canAddReadingForMeter(Meter $meter): bool
     {
         return OrganizationMemberAccess::canCreateMeterReadingForMeter($meter);
+    }
+
+    private function canEditReading(MeterReading $meterReading): bool
+    {
+        return ($meterReading->billingPeriod?->isEditable() ?? false)
+            && OrganizationMemberAccess::canUpdateMeterReading($meterReading);
     }
 }

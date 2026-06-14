@@ -350,7 +350,7 @@ test('admin users can create and list meter readings for the current tenant', fu
         ->assertCanNotSeeTableRecords([$otherTenantReading]);
 });
 
-test('client meter table can add a reading for the selected meter', function () {
+test('client meter table can add or update the current month reading for the selected meter', function () {
     $organization = Organization::factory()->create();
     $utilityService = UtilityService::factory()->for($organization)->create();
     $client = Client::factory()
@@ -410,10 +410,67 @@ test('client meter table can add a reading for the selected meter', function () 
         'ownerRecord' => $client,
         'pageClass' => EditClient::class,
     ])
+        ->mountTableAction('addReading', $meter)
+        ->assertTableActionDataSet([
+            'previous_reading' => 125.0,
+            'current_reading' => 140.75,
+            'read_at' => '2026-05-29',
+            'note' => 'Показание из карточки абонента',
+        ]);
+
+    Livewire::test(MetersRelationManager::class, [
+        'ownerRecord' => $client,
+        'pageClass' => EditClient::class,
+    ])
         ->callTableAction('addReading', $meter, data: [
             'current_reading' => 150,
+            'read_at' => '2026-05-30',
+            'note' => 'Исправленное показание',
         ])
-        ->assertHasTableActionErrors(['current_reading']);
+        ->assertHasNoTableActionErrors()
+        ->assertNotified();
+
+    expect($reading->refresh()->previous_reading)->toBe('125.0000')
+        ->and($reading->current_reading)->toBe('150.0000')
+        ->and($reading->consumption)->toBe('25.0000')
+        ->and($reading->read_at?->toDateString())->toBe('2026-05-30')
+        ->and($reading->note)->toBe('Исправленное показание')
+        ->and(MeterReading::query()->whereBelongsTo($meter)->forPeriod('202605')->count())->toBe(1);
+
+    closedBillingPeriodFor($organization, '202605');
+    billingPeriodFor($organization, '202606');
+
+    Livewire::test(MetersRelationManager::class, [
+        'ownerRecord' => $client,
+        'pageClass' => EditClient::class,
+    ])
+        ->mountTableAction('addReading', $meter)
+        ->assertTableActionDataSet([
+            'previous_reading' => 150.0,
+        ]);
+
+    Livewire::test(MetersRelationManager::class, [
+        'ownerRecord' => $client,
+        'pageClass' => EditClient::class,
+    ])
+        ->callTableAction('addReading', $meter, data: [
+            'current_reading' => 175.25,
+            'read_at' => '2026-06-29',
+        ])
+        ->assertHasNoTableActionErrors()
+        ->assertNotified();
+
+    $nextReading = MeterReading::query()
+        ->whereBelongsTo($organization)
+        ->whereBelongsTo($client)
+        ->whereBelongsTo($meter)
+        ->forPeriod('202606')
+        ->sole();
+
+    expect($nextReading->previous_reading)->toBe('150.0000')
+        ->and($nextReading->current_reading)->toBe('175.2500')
+        ->and($nextReading->consumption)->toBe('25.2500')
+        ->and($nextReading->read_at?->toDateString())->toBe('2026-06-29');
 });
 
 test('meter resource shows readings as a related table', function () {

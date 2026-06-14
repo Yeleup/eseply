@@ -64,7 +64,7 @@ class ReceiptsRelationManager extends RelationManager
                     ->searchable()
                     ->placeholder('-'),
                 TextColumn::make('amount')
-                    ->label('Начислено')
+                    ->label('Сумма')
                     ->money('KZT')
                     ->sortable(),
                 TextColumn::make('paid_amount')

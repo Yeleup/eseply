@@ -8,6 +8,10 @@ use Illuminate\Support\Carbon;
 
 class BuildReceiptPrintViewData
 {
+    public function __construct(
+        private readonly BuildReceiptMeterReadingLines $buildReceiptMeterReadingLines,
+    ) {}
+
     /**
      * @return array{
      *     receipt: Receipt,
@@ -15,6 +19,7 @@ class BuildReceiptPrintViewData
      *     organizationDetails: list<array{label: string, value: string}>,
      *     clientDetails: list<array{label: string, value: string}>,
      *     calculationDetails: list<array{label: string, value: string}>,
+     *     meterReadingLines: list<array{meter_number:string, previous_reading:string, current_reading:string, consumption:string, tariff_price:string, amount:string}>,
      *     balanceDetails: list<array{label: string, value: string}>,
      *     paymentDue: string,
      *     clientAddress: string
@@ -46,19 +51,20 @@ class BuildReceiptPrintViewData
                 'Адрес' => $this->clientAddress($receipt),
                 'Период' => $receipt->billingPeriod?->label ?? $receipt->period,
                 'Услуга' => $receipt->utility_service_name,
-                'Тип начисления' => $this->billingTypeLabel($receipt->billing_type),
+                'Тип расчёта' => $this->billingTypeLabel($receipt->billing_type),
             ]),
             'calculationDetails' => $this->details([
                 'Объём' => $this->decimal($receipt->volume),
                 'Единица измерения' => $receipt->organization?->utilityService?->unit_of_measurement,
                 'Тариф' => $this->money($receipt->tariff_price),
-                'Начислено' => $this->money($receipt->amount),
+                'Сумма' => $this->money($receipt->amount),
                 'Оплачено' => $this->money($receipt->paid_amount),
                 'Корректировка' => $this->money($receipt->adjustment_amount),
             ]),
+            'meterReadingLines' => $this->buildReceiptMeterReadingLines->handle($receipt),
             'balanceDetails' => $this->details([
                 'Начальное сальдо' => $this->money($receipt->opening_balance),
-                'Начислено' => $this->money($receipt->amount),
+                'Сумма' => $this->money($receipt->amount),
                 'Оплачено' => $this->money($receipt->paid_amount),
                 'Корректировка' => $this->money($receipt->adjustment_amount),
                 'Конечное сальдо' => $this->money($receipt->closing_balance),

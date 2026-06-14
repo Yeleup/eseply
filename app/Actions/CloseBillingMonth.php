@@ -8,7 +8,6 @@ use App\Models\Accrual;
 use App\Models\BillingPeriod;
 use App\Models\Client;
 use App\Models\Organization;
-use App\Models\Receipt;
 use App\Models\Tariff;
 use App\Models\UtilityService;
 use App\Support\BillingClosureIssue;
@@ -79,14 +78,6 @@ class CloseBillingMonth
                 return $summary;
             }
 
-            foreach ($clients as $client) {
-                $existingAccrual = $this->existingAccrual($organization, $client, $billingPeriod);
-
-                if ($existingAccrual) {
-                    Receipt::fromAccrual($existingAccrual);
-                }
-            }
-
             foreach ($pendingAccruals as $pendingAccrual) {
                 /** @var Client $client */
                 $client = $pendingAccrual['client'];
@@ -98,7 +89,7 @@ class CloseBillingMonth
                 $adjustmentAmount = $this->adjustmentAmount($client, $billingPeriod);
                 $closingBalance = $openingBalance + $calculation['amount'] - $paidAmount + $adjustmentAmount;
 
-                $accrual = Accrual::create([
+                Accrual::create([
                     'organization_id' => $organization->id,
                     'client_id' => $client->id,
                     'utility_service_id' => $organization->utilityService?->id,
@@ -116,8 +107,6 @@ class CloseBillingMonth
                     'closing_balance' => $closingBalance,
                     'closed_at' => now(),
                 ]);
-
-                Receipt::fromAccrual($accrual);
 
                 $summary['created']++;
             }

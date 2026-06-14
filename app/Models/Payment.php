@@ -57,5 +57,31 @@ class Payment extends Model
         static::deleting(function (Payment $payment): void {
             $payment->ensureBillingPeriodIsEditable();
         });
+
+        static::saved(function (Payment $payment): void {
+            Receipt::refreshPaymentTotalsFor(
+                $payment->organization_id,
+                $payment->client_id,
+                $payment->billing_period_id,
+            );
+
+            if (! $payment->wasChanged(['organization_id', 'client_id', 'billing_period_id'])) {
+                return;
+            }
+
+            Receipt::refreshPaymentTotalsFor(
+                $payment->getOriginal('organization_id'),
+                $payment->getOriginal('client_id'),
+                $payment->getOriginal('billing_period_id'),
+            );
+        });
+
+        static::deleted(function (Payment $payment): void {
+            Receipt::refreshPaymentTotalsFor(
+                $payment->organization_id,
+                $payment->client_id,
+                $payment->billing_period_id,
+            );
+        });
     }
 }

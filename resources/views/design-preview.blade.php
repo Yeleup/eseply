@@ -505,25 +505,38 @@
                             </div>
                         </dl>
 
-                        <div class="mt-5 overflow-hidden rounded-2xl border border-zinc-900 dark:border-zinc-200">
-                            <table class="w-full text-left text-sm">
-                                <thead class="bg-zinc-100 text-xs uppercase tracking-wide text-zinc-600 dark:bg-zinc-950 dark:text-zinc-400">
-                                    <tr>
-                                        <th class="border-b border-r border-zinc-900 px-4 py-3 dark:border-zinc-200">Услуга</th>
-                                        <th class="border-b border-r border-zinc-900 px-4 py-3 text-right dark:border-zinc-200">Объём</th>
-                                        <th class="border-b border-r border-zinc-900 px-4 py-3 text-right dark:border-zinc-200">Тариф</th>
-                                        <th class="border-b border-zinc-900 px-4 py-3 text-right dark:border-zinc-200">Сумма</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr>
-                                        <td class="border-r border-zinc-900 px-4 py-4 font-semibold dark:border-zinc-200">Водоснабжение</td>
-                                        <td class="border-r border-zinc-900 px-4 py-4 text-right dark:border-zinc-200">20.0000</td>
-                                        <td class="border-r border-zinc-900 px-4 py-4 text-right dark:border-zinc-200">90.00 KZT</td>
-                                        <td class="px-4 py-4 text-right font-bold">1 800.00 KZT</td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                        <div class="mt-5">
+                            <h4 class="mb-3 text-base font-bold">Счётчики</h4>
+                            <div class="overflow-hidden rounded-2xl border border-zinc-900 dark:border-zinc-200">
+                                <table class="w-full text-left text-sm">
+                                    <thead class="bg-zinc-100 text-xs uppercase tracking-wide text-zinc-600 dark:bg-zinc-950 dark:text-zinc-400">
+                                        <tr>
+                                            <th class="border-b border-r border-zinc-900 px-4 py-3 dark:border-zinc-200">№ счётчика</th>
+                                            <th class="border-b border-r border-zinc-900 px-4 py-3 text-right dark:border-zinc-200">Предыдущее</th>
+                                            <th class="border-b border-r border-zinc-900 px-4 py-3 text-right dark:border-zinc-200">Текущее</th>
+                                            <th class="border-b border-r border-zinc-900 px-4 py-3 text-right dark:border-zinc-200">Расход</th>
+                                            <th class="border-b border-r border-zinc-900 px-4 py-3 text-right dark:border-zinc-200">Тариф</th>
+                                            <th class="border-b border-zinc-900 px-4 py-3 text-right dark:border-zinc-200">Сумма</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td class="border-r border-zinc-900 px-4 py-4 font-semibold dark:border-zinc-200">MTR-100010</td>
+                                            <td class="border-r border-zinc-900 px-4 py-4 text-right dark:border-zinc-200">100.0000</td>
+                                            <td class="border-r border-zinc-900 px-4 py-4 text-right dark:border-zinc-200">120.0000</td>
+                                            <td class="border-r border-zinc-900 px-4 py-4 text-right dark:border-zinc-200">20.0000</td>
+                                            <td class="border-r border-zinc-900 px-4 py-4 text-right dark:border-zinc-200">90.00 KZT</td>
+                                            <td class="px-4 py-4 text-right font-bold">1 800.00 KZT</td>
+                                        </tr>
+                                        <tr class="bg-zinc-50 font-bold dark:bg-zinc-950">
+                                            <td class="border-t border-r border-zinc-900 px-4 py-3 dark:border-zinc-200" colspan="3">Итого</td>
+                                            <td class="border-t border-r border-zinc-900 px-4 py-3 text-right dark:border-zinc-200">20.0000</td>
+                                            <td class="border-t border-r border-zinc-900 px-4 py-3 dark:border-zinc-200"></td>
+                                            <td class="border-t border-zinc-900 px-4 py-3 text-right dark:border-zinc-200">1 800.00 KZT</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
 

@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\BuildReceiptMeterReadingLines;
 use App\Actions\CloseBillingMonth;
 use App\BalanceAdjustmentType;
 use App\Filament\Resources\Receipts\Pages\ListReceipts;
@@ -7,8 +8,12 @@ use App\Filament\Resources\Receipts\Pages\ViewReceipt;
 use App\Models\Accrual;
 use App\Models\BalanceAdjustment;
 use App\Models\Client;
+use App\Models\Meter;
+use App\Models\MeterReading;
 use App\Models\Organization;
+use App\Models\Payment;
 use App\Models\Receipt;
+use App\Models\Tariff;
 use App\Models\User;
 use App\Models\UtilityService;
 use Filament\Facades\Filament;
@@ -31,7 +36,69 @@ function actingAsReceiptTenant(Organization $organization): User
     return $user;
 }
 
-test('receipts are snapshots built from saved accruals', function () {
+/**
+ * @param  array<string, mixed>  $clientAttributes
+ * @param  array<string, mixed>  $readingAttributes
+ * @param  array<string, mixed>  $utilityServiceAttributes
+ * @param  array<string, mixed>  $meterAttributes
+ */
+function createReceiptFromMeterReading(
+    Organization $organization,
+    array $clientAttributes = [],
+    array $readingAttributes = [],
+    array $utilityServiceAttributes = [],
+    array $meterAttributes = [],
+): Receipt {
+    $period = (string) ($readingAttributes['period'] ?? '202605');
+    $previousReading = (float) ($readingAttributes['previous_reading'] ?? 100);
+
+    $utilityService = UtilityService::factory()->for($organization)->create(array_replace([
+        'name' => 'Водоснабжение',
+        'unit_of_measurement' => 'м3',
+    ], $utilityServiceAttributes));
+
+    $client = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create(array_replace([
+            'account_number' => fake()->unique()->numerify('######'),
+            'billing_type' => 'meter',
+        ], $clientAttributes));
+
+    Tariff::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'client_type' => 'individual',
+            'unit_price' => 90,
+            'starts_on' => '2026-05-01',
+            'status' => 'active',
+        ]);
+
+    $meter = Meter::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->for($client)
+        ->create(array_replace([
+            'initial_reading' => $previousReading,
+        ], $meterAttributes));
+
+    MeterReading::factory()
+        ->for($meter)
+        ->create(array_replace([
+            'period' => $period,
+            'previous_reading' => $previousReading,
+            'current_reading' => $previousReading + 20,
+        ], $readingAttributes));
+
+    return Receipt::query()
+        ->whereBelongsTo($organization)
+        ->whereBelongsTo($client)
+        ->forPeriod($period)
+        ->sole();
+}
+
+test('meter reading creates a receipt for the client billing period without accrual source', function () {
     $organization = Organization::factory()->create();
     $utilityService = UtilityService::factory()->for($organization)->create([
         'name' => 'Водоснабжение',
@@ -41,49 +108,337 @@ test('receipts are snapshots built from saved accruals', function () {
         ->for($utilityService)
         ->create([
             'account_number' => '10001',
-            'name' => 'Исходное имя',
+            'name' => 'Иванов Иван',
+            'billing_type' => 'meter',
+        ]);
+    $meter = Meter::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->for($client)
+        ->create([
+            'initial_reading' => 100,
         ]);
 
-    $accrual = Accrual::factory()
+    Tariff::factory()
         ->for($organization)
-        ->for($client)
         ->for($utilityService)
         ->create([
-            'period' => '202605',
-            'account_number' => '10001',
-            'client_name' => 'Сохранённый абонент',
-            'utility_service_name' => 'Сохранённая услуга',
-            'billing_type' => 'fixed',
-            'amount' => 5000,
-            'paid_amount' => 1200,
-            'adjustment_amount' => 300,
-            'opening_balance' => 300,
-            'closing_balance' => 4400,
+            'client_type' => 'individual',
+            'unit_price' => 90,
+            'starts_on' => '2026-05-01',
+            'status' => 'active',
         ]);
 
-    $client->update([
-        'name' => 'Изменённое имя',
-        'fixed_amount' => 9000,
-    ]);
+    Payment::factory()
+        ->for($organization)
+        ->for($client)
+        ->create([
+            'period' => '202605',
+            'amount' => 300,
+        ]);
 
-    $receipt = Receipt::fromAccrual($accrual);
+    BalanceAdjustment::factory()
+        ->for($organization)
+        ->for($client)
+        ->create([
+            'period' => '202605',
+            'type' => BalanceAdjustmentType::ManualAdjustment->value,
+            'amount' => 50,
+        ]);
+
+    MeterReading::factory()
+        ->for($meter)
+        ->create([
+            'period' => '202605',
+            'previous_reading' => 100,
+            'current_reading' => 120,
+        ]);
+
+    $receipt = Receipt::query()
+        ->whereBelongsTo($organization)
+        ->whereBelongsTo($client)
+        ->forPeriod('202605')
+        ->sole();
 
     expect($receipt->organization->is($organization))->toBeTrue()
         ->and($receipt->client->is($client))->toBeTrue()
-        ->and($receipt->accrual->is($accrual))->toBeTrue()
+        ->and($receipt->accrual_id)->toBeNull()
         ->and($receipt->receipt_number)->toBe('202605-10001')
         ->and($receipt->period)->toBe('202605')
         ->and($receipt->account_number)->toBe('10001')
-        ->and($receipt->client_name)->toBe('Сохранённый абонент')
-        ->and($receipt->utility_service_name)->toBe('Сохранённая услуга')
-        ->and($receipt->amount)->toBe('5000.00')
-        ->and($receipt->paid_amount)->toBe('1200.00')
-        ->and($receipt->adjustment_amount)->toBe('300.00')
-        ->and($receipt->opening_balance)->toBe('300.00')
-        ->and($receipt->closing_balance)->toBe('4400.00');
+        ->and($receipt->client_name)->toBe('Иванов Иван')
+        ->and($receipt->utility_service_name)->toBe('Водоснабжение')
+        ->and($receipt->billing_type)->toBe('meter')
+        ->and($receipt->volume)->toBe('20.0000')
+        ->and($receipt->tariff_price)->toBe('90.00')
+        ->and($receipt->amount)->toBe('1800.00')
+        ->and($receipt->paid_amount)->toBe('300.00')
+        ->and($receipt->adjustment_amount)->toBe('50.00')
+        ->and($receipt->opening_balance)->toBe('0.00')
+        ->and($receipt->closing_balance)->toBe('1550.00');
 });
 
-test('billing month closure creates receipts from created accruals without duplicates', function () {
+test('updating a meter reading updates the same receipt', function () {
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create();
+    $client = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'account_number' => '10002',
+            'billing_type' => 'meter',
+        ]);
+    $meter = Meter::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->for($client)
+        ->create([
+            'initial_reading' => 100,
+        ]);
+
+    Tariff::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'client_type' => 'individual',
+            'unit_price' => 90,
+            'starts_on' => '2026-05-01',
+            'status' => 'active',
+        ]);
+
+    $reading = MeterReading::factory()
+        ->for($meter)
+        ->create([
+            'period' => '202605',
+            'previous_reading' => 100,
+            'current_reading' => 120,
+        ]);
+
+    $receipt = Receipt::query()
+        ->whereBelongsTo($client)
+        ->forPeriod('202605')
+        ->sole();
+
+    $reading->update([
+        'current_reading' => 130,
+    ]);
+
+    $updatedReceipt = Receipt::query()
+        ->whereBelongsTo($client)
+        ->forPeriod('202605')
+        ->sole();
+
+    expect($updatedReceipt->is($receipt))->toBeTrue()
+        ->and($updatedReceipt->volume)->toBe('30.0000')
+        ->and($updatedReceipt->amount)->toBe('2700.00')
+        ->and($updatedReceipt->closing_balance)->toBe('2700.00')
+        ->and(Receipt::query()->whereBelongsTo($client)->forPeriod('202605')->count())->toBe(1);
+});
+
+test('payment changes refresh an existing current period receipt', function () {
+    $organization = Organization::factory()->create();
+    $receipt = createReceiptFromMeterReading(
+        $organization,
+        [
+            'account_number' => '10005',
+        ],
+        [
+            'period' => '202605',
+            'previous_reading' => 100,
+            'current_reading' => 120,
+        ],
+    );
+    $client = $receipt->client;
+
+    $firstPayment = Payment::factory()
+        ->for($organization)
+        ->for($client)
+        ->create([
+            'period' => '202605',
+            'amount' => 300,
+        ]);
+
+    $receipt->refresh();
+
+    expect($receipt->paid_amount)->toBe('300.00')
+        ->and($receipt->closing_balance)->toBe('1500.00');
+
+    $secondPayment = Payment::factory()
+        ->for($organization)
+        ->for($client)
+        ->create([
+            'period' => '202605',
+            'amount' => 200,
+        ]);
+
+    $receipt->refresh();
+
+    expect($receipt->paid_amount)->toBe('500.00')
+        ->and($receipt->closing_balance)->toBe('1300.00');
+
+    $firstPayment->update([
+        'amount' => 450,
+    ]);
+
+    $receipt->refresh();
+
+    expect($receipt->paid_amount)->toBe('650.00')
+        ->and($receipt->closing_balance)->toBe('1150.00');
+
+    $secondPayment->delete();
+
+    $receipt->refresh();
+
+    expect($receipt->paid_amount)->toBe('450.00')
+        ->and($receipt->closing_balance)->toBe('1350.00');
+});
+
+test('multiple meter readings for the same client period update one receipt', function () {
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create();
+    $client = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'account_number' => '10003',
+            'billing_type' => 'meter',
+        ]);
+    $firstMeter = Meter::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->for($client)
+        ->create([
+            'initial_reading' => 100,
+        ]);
+    $secondMeter = Meter::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->for($client)
+        ->create([
+            'initial_reading' => 50,
+        ]);
+
+    Tariff::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'client_type' => 'individual',
+            'unit_price' => 90,
+            'starts_on' => '2026-05-01',
+            'status' => 'active',
+        ]);
+
+    MeterReading::factory()
+        ->for($firstMeter)
+        ->create([
+            'period' => '202605',
+            'previous_reading' => 100,
+            'current_reading' => 120,
+        ]);
+
+    $receipt = Receipt::query()
+        ->whereBelongsTo($client)
+        ->forPeriod('202605')
+        ->sole();
+
+    MeterReading::factory()
+        ->for($secondMeter)
+        ->create([
+            'period' => '202605',
+            'previous_reading' => 50,
+            'current_reading' => 55,
+        ]);
+
+    $updatedReceipt = Receipt::query()
+        ->whereBelongsTo($client)
+        ->forPeriod('202605')
+        ->sole();
+
+    expect($updatedReceipt->is($receipt))->toBeTrue()
+        ->and($updatedReceipt->volume)->toBe('25.0000')
+        ->and($updatedReceipt->amount)->toBe('2250.00')
+        ->and(Receipt::query()->whereBelongsTo($client)->forPeriod('202605')->count())->toBe(1);
+});
+
+test('receipt meter lines include each meter reading for the period', function () {
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create();
+    $client = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'account_number' => '10004',
+            'billing_type' => 'meter',
+        ]);
+    $firstMeter = Meter::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->for($client)
+        ->create([
+            'number' => 'MTR-10004-A',
+            'initial_reading' => 100,
+        ]);
+    $secondMeter = Meter::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->for($client)
+        ->create([
+            'number' => 'MTR-10004-B',
+            'initial_reading' => 50,
+        ]);
+
+    Tariff::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'client_type' => 'individual',
+            'unit_price' => 90,
+            'starts_on' => '2026-05-01',
+            'status' => 'active',
+        ]);
+
+    MeterReading::factory()
+        ->for($firstMeter)
+        ->create([
+            'period' => '202605',
+            'previous_reading' => 100,
+            'current_reading' => 120,
+        ]);
+    MeterReading::factory()
+        ->for($secondMeter)
+        ->create([
+            'period' => '202605',
+            'previous_reading' => 50,
+            'current_reading' => 55,
+        ]);
+
+    $receipt = Receipt::query()
+        ->whereBelongsTo($client)
+        ->forPeriod('202605')
+        ->sole();
+
+    $lines = app(BuildReceiptMeterReadingLines::class)->handle($receipt);
+
+    expect($lines)->toHaveCount(2)
+        ->and($lines[0])->toMatchArray([
+            'meter_number' => 'MTR-10004-A',
+            'previous_reading' => '100.0000',
+            'current_reading' => '120.0000',
+            'consumption' => '20.0000',
+            'tariff_price' => '90.00 KZT',
+            'amount' => '1 800.00 KZT',
+        ])
+        ->and($lines[1])->toMatchArray([
+            'meter_number' => 'MTR-10004-B',
+            'previous_reading' => '50.0000',
+            'current_reading' => '55.0000',
+            'consumption' => '5.0000',
+            'tariff_price' => '90.00 KZT',
+            'amount' => '450.00 KZT',
+        ]);
+});
+
+test('billing month closure creates accruals without creating receipts', function () {
     $organization = Organization::factory()->create();
     $utilityService = UtilityService::factory()->for($organization)->create([
         'name' => 'Вывоз мусора',
@@ -118,38 +473,29 @@ test('billing month closure creates receipts from created accruals without dupli
         ->forPeriod('202605')
         ->sole();
 
-    $receipt = Receipt::query()
-        ->whereBelongsTo($organization)
-        ->whereBelongsTo($client)
-        ->forPeriod('202605')
-        ->sole();
-
     expect($firstSummary)->toMatchArray([
         'created' => 1,
         'skipped' => 0,
         'failed' => 0,
     ])
-        ->and($receipt->accrual->is($accrual))->toBeTrue()
-        ->and($receipt->receipt_number)->toBe('202605-20001')
-        ->and($receipt->client_name)->toBe('ТОО Дала')
-        ->and($receipt->utility_service_name)->toBe('Вывоз мусора')
-        ->and($receipt->amount)->toBe($accrual->amount)
-        ->and($receipt->adjustment_amount)->toBe($accrual->adjustment_amount)
-        ->and($receipt->closing_balance)->toBe($accrual->closing_balance)
-        ->and(Receipt::query()->whereBelongsTo($client)->forPeriod('202605')->count())->toBe(1);
+        ->and($accrual->account_number)->toBe('20001')
+        ->and($accrual->client_name)->toBe('ТОО Дала')
+        ->and($accrual->utility_service_name)->toBe('Вывоз мусора')
+        ->and($accrual->amount)->toBe('7500.00')
+        ->and($accrual->adjustment_amount)->toBe('500.00')
+        ->and($accrual->closing_balance)->toBe('8000.00')
+        ->and(Receipt::query()->whereBelongsTo($client)->forPeriod('202605')->count())->toBe(0);
 });
 
 test('admin users can list receipts for the current tenant', function () {
     $organization = Organization::factory()->create();
-    $receipt = Receipt::fromAccrual(Accrual::factory()->for($organization)->create([
-        'period' => '202605',
+    $receipt = createReceiptFromMeterReading($organization, [
         'account_number' => '30001',
-        'client_name' => 'Иванов Иван',
-    ]));
-    $otherTenantReceipt = Receipt::fromAccrual(Accrual::factory()->for(Organization::factory())->create([
-        'period' => '202605',
+        'name' => 'Иванов Иван',
+    ]);
+    $otherTenantReceipt = createReceiptFromMeterReading(Organization::factory()->create(), [
         'account_number' => '90001',
-    ]));
+    ]);
 
     actingAsReceiptTenant($organization);
 
@@ -161,11 +507,10 @@ test('admin users can list receipts for the current tenant', function () {
 
 test('admin receipt view page has a print pdf action', function () {
     $organization = Organization::factory()->create();
-    $receipt = Receipt::fromAccrual(Accrual::factory()->for($organization)->create([
-        'period' => '202605',
+    $receipt = createReceiptFromMeterReading($organization, [
         'account_number' => '30001',
-        'client_name' => 'Иванов Иван',
-    ]));
+        'name' => 'Иванов Иван',
+    ]);
 
     actingAsReceiptTenant($organization);
 
@@ -189,35 +534,25 @@ test('admin users can open a current tenant receipt print view', function () {
         'bin_iin' => '123456789012',
         'address' => 'Алматы, Абая 10',
     ]);
-    $utilityService = UtilityService::factory()->for($organization)->create([
-        'name' => 'Водоснабжение',
-        'unit_of_measurement' => 'м3',
-    ]);
-    $client = Client::factory()
-        ->for($organization)
-        ->for($utilityService)
-        ->create([
+    $receipt = createReceiptFromMeterReading(
+        $organization,
+        [
             'account_number' => '100010',
             'name' => 'Иванов Иван',
-        ]);
-    $receipt = Receipt::fromAccrual(Accrual::factory()
-        ->for($organization)
-        ->for($client)
-        ->for($utilityService)
-        ->create([
+        ],
+        [
             'period' => '202605',
-            'account_number' => '100010',
-            'client_name' => 'Иванов Иван',
-            'utility_service_name' => 'Водоснабжение',
-            'billing_type' => 'meter',
-            'volume' => 20,
-            'tariff_price' => 90,
-            'amount' => 1800,
-            'paid_amount' => 0,
-            'adjustment_amount' => 0,
-            'opening_balance' => 0,
-            'closing_balance' => 1800,
-        ]));
+            'previous_reading' => 100,
+            'current_reading' => 120,
+        ],
+        [
+            'name' => 'Водоснабжение',
+            'unit_of_measurement' => 'м3',
+        ],
+        [
+            'number' => 'MTR-100010',
+        ],
+    );
 
     $user = actingAsReceiptTenant($organization);
     $this->actingAs($user);
@@ -239,6 +574,7 @@ test('admin users can open a current tenant receipt print view', function () {
             'organizationDetails',
             'clientDetails',
             'calculationDetails',
+            'meterReadingLines',
             'balanceDetails',
             'paymentDue',
             'clientAddress',
@@ -252,12 +588,26 @@ test('admin users can open a current tenant receipt print view', function () {
             '100010',
             'Иванов Иван',
             'Водоснабжение',
+            'Счётчики',
+            '№ счётчика',
+            'MTR-100010',
+            '100.0000',
+            '120.0000',
             '20.0000',
             '90.00 KZT',
             '1 800.00 KZT',
+            'Итого',
+            '20.0000',
+            '1 800.00 KZT',
+            'Долг',
+            '0.00 KZT',
+            'Оплачено',
+            '0.00 KZT',
             'К оплате',
             '1 800.00 KZT',
-        ]);
+        ])
+        ->assertDontSeeText('Расчёт')
+        ->assertDontSeeText('Начислено');
 
     expect(str_starts_with($response->getContent(), '%PDF'))->toBeFalse();
 });
@@ -265,10 +615,9 @@ test('admin users can open a current tenant receipt print view', function () {
 test('admin users cannot open another tenant receipt print view', function () {
     $organization = Organization::factory()->create();
     $otherOrganization = Organization::factory()->create();
-    $receipt = Receipt::fromAccrual(Accrual::factory()->for($otherOrganization)->create([
-        'period' => '202605',
+    $receipt = createReceiptFromMeterReading($otherOrganization, [
         'account_number' => '90001',
-    ]));
+    ]);
 
     $user = actingAsReceiptTenant($organization);
     $this->actingAs($user);

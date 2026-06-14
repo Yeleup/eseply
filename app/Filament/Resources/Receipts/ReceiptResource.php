@@ -2,12 +2,15 @@
 
 namespace App\Filament\Resources\Receipts;
 
+use App\Actions\BuildReceiptMeterReadingLines;
 use App\Filament\Resources\Receipts\Pages\ListReceipts;
 use App\Filament\Resources\Receipts\Pages\ViewReceipt;
 use App\Filament\Resources\Receipts\Tables\ReceiptsTable;
 use App\Filament\Support\OrganizationMemberAccess;
 use App\Models\Receipt;
 use BackedEnum;
+use Filament\Infolists\Components\RepeatableEntry;
+use Filament\Infolists\Components\RepeatableEntry\TableColumn;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
@@ -64,7 +67,7 @@ class ReceiptResource extends Resource
                             ->label('Услуга')
                             ->placeholder('-'),
                         TextEntry::make('billing_type')
-                            ->label('Тип начисления')
+                            ->label('Тип расчёта')
                             ->badge()
                             ->formatStateUsing(fn (string $state): string => match ($state) {
                                 'fixed' => 'Фиксированная сумма',
@@ -81,14 +84,37 @@ class ReceiptResource extends Resource
                             ->money('KZT')
                             ->placeholder('-'),
                     ]),
-                Section::make('Сальдо')
+                Section::make('Счётчики')
+                    ->schema([
+                        RepeatableEntry::make('meter_reading_lines')
+                            ->hiddenLabel()
+                            ->state(fn (Receipt $record): array => app(BuildReceiptMeterReadingLines::class)->handle($record))
+                            ->table([
+                                TableColumn::make('№ счётчика'),
+                                TableColumn::make('Предыдущее'),
+                                TableColumn::make('Текущее'),
+                                TableColumn::make('Расход'),
+                                TableColumn::make('Тариф'),
+                                TableColumn::make('Сумма'),
+                            ])
+                            ->schema([
+                                TextEntry::make('meter_number'),
+                                TextEntry::make('previous_reading'),
+                                TextEntry::make('current_reading'),
+                                TextEntry::make('consumption'),
+                                TextEntry::make('tariff_price'),
+                                TextEntry::make('amount'),
+                            ])
+                            ->contained(false),
+                    ]),
+                Section::make('Расчёт')
                     ->columns(5)
                     ->schema([
                         TextEntry::make('opening_balance')
                             ->label('Начальное сальдо')
                             ->money('KZT'),
                         TextEntry::make('amount')
-                            ->label('Начислено')
+                            ->label('Сумма')
                             ->money('KZT'),
                         TextEntry::make('paid_amount')
                             ->label('Оплачено')

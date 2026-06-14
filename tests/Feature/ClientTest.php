@@ -891,8 +891,26 @@ test('client related tables list only the selected client records', function () 
             'utility_service_name' => 'Водоснабжение',
         ]);
 
-    $receipt = Receipt::fromAccrual($accrual);
-    $otherReceipt = Receipt::fromAccrual($otherAccrual);
+    $receipt = Receipt::factory()
+        ->for($organization)
+        ->for($client)
+        ->create([
+            'period' => '202605',
+            'receipt_number' => '202605-30001',
+            'account_number' => '30001',
+            'client_name' => 'Основной абонент',
+            'utility_service_name' => 'Водоснабжение',
+        ]);
+    $otherReceipt = Receipt::factory()
+        ->for($organization)
+        ->for($otherClient)
+        ->create([
+            'period' => '202605',
+            'receipt_number' => '202605-30002',
+            'account_number' => '30002',
+            'client_name' => 'Другой абонент',
+            'utility_service_name' => 'Водоснабжение',
+        ]);
 
     actingAsTenant($organization);
 

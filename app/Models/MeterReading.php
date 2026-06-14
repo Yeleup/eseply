@@ -192,6 +192,10 @@ class MeterReading extends Model
         static::deleting(function (MeterReading $meterReading): void {
             $meterReading->ensureBillingPeriodIsEditable();
         });
+
+        static::saved(function (MeterReading $meterReading): void {
+            Receipt::fromMeterReading($meterReading);
+        });
     }
 
     private function ensureUniqueForBillingPeriod(): void

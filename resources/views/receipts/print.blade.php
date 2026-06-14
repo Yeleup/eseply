@@ -82,12 +82,15 @@
                 </div>
 
                 <section class="px-6 pb-5 print:px-0 print:pb-4">
+                    <h3 class="mb-3 text-base font-bold print:text-sm">Счётчики</h3>
                     <div class="overflow-hidden rounded-2xl border border-zinc-900 print:rounded-none">
                         <table class="w-full text-left text-sm print:text-xs">
                             <thead class="bg-zinc-100 text-xs uppercase tracking-wide text-zinc-600 print:bg-white print:text-[10px]">
                                 <tr>
-                                    <th class="border-b border-r border-zinc-900 px-4 py-3 print:px-2 print:py-2">Услуга</th>
-                                    <th class="border-b border-r border-zinc-900 px-4 py-3 text-right print:px-2 print:py-2">Объём</th>
+                                    <th class="border-b border-r border-zinc-900 px-4 py-3 print:px-2 print:py-2">№ счётчика</th>
+                                    <th class="border-b border-r border-zinc-900 px-4 py-3 text-right print:px-2 print:py-2">Предыдущее</th>
+                                    <th class="border-b border-r border-zinc-900 px-4 py-3 text-right print:px-2 print:py-2">Текущее</th>
+                                    <th class="border-b border-r border-zinc-900 px-4 py-3 text-right print:px-2 print:py-2">Расход</th>
                                     <th class="border-b border-r border-zinc-900 px-4 py-3 text-right print:px-2 print:py-2">Тариф</th>
                                     <th class="border-b border-zinc-900 px-4 py-3 text-right print:px-2 print:py-2">Сумма</th>
                                 </tr>
@@ -95,53 +98,80 @@
                             <tbody>
                                 @php
                                     $volume = collect($calculationDetails)->firstWhere('label', 'Объём')['value'] ?? '-';
-                                    $tariff = collect($calculationDetails)->firstWhere('label', 'Тариф')['value'] ?? '-';
-                                    $amount = collect($calculationDetails)->firstWhere('label', 'Начислено')['value'] ?? '-';
+                                    $amount = collect($calculationDetails)->firstWhere('label', 'Сумма')['value'] ?? '-';
+                                    $balanceDetailsByLabel = collect($balanceDetails);
+                                    $debt = $balanceDetailsByLabel->firstWhere('label', 'Начальное сальдо')['value'] ?? '-';
+                                    $paid = $balanceDetailsByLabel->firstWhere('label', 'Оплачено')['value'] ?? '-';
                                 @endphp
 
-                                <tr>
-                                    <td class="border-r border-zinc-900 px-4 py-4 font-semibold print:px-2 print:py-2">
-                                        {{ $receipt->utility_service_name ?? '-' }}
+                                @forelse ($meterReadingLines as $line)
+                                    <tr>
+                                        <td class="border-r border-zinc-900 px-4 py-4 font-semibold print:px-2 print:py-2">
+                                            {{ $line['meter_number'] }}
+                                        </td>
+                                        <td class="border-r border-zinc-900 px-4 py-4 text-right print:px-2 print:py-2">
+                                            {{ $line['previous_reading'] }}
+                                        </td>
+                                        <td class="border-r border-zinc-900 px-4 py-4 text-right print:px-2 print:py-2">
+                                            {{ $line['current_reading'] }}
+                                        </td>
+                                        <td class="border-r border-zinc-900 px-4 py-4 text-right print:px-2 print:py-2">
+                                            {{ $line['consumption'] }}
+                                        </td>
+                                        <td class="border-r border-zinc-900 px-4 py-4 text-right print:px-2 print:py-2">
+                                            {{ $line['tariff_price'] }}
+                                        </td>
+                                        <td class="px-4 py-4 text-right font-bold print:px-2 print:py-2">
+                                            {{ $line['amount'] }}
+                                        </td>
+                                    </tr>
+                                @empty
+                                    <tr>
+                                        <td class="px-4 py-4 text-center text-zinc-500 print:px-2 print:py-2" colspan="6">
+                                            Нет показаний счётчиков
+                                        </td>
+                                    </tr>
+                                @endforelse
+
+                                <tr class="bg-zinc-50 font-bold print:bg-white">
+                                    <td class="border-t border-r border-zinc-900 px-4 py-3 print:px-2 print:py-2" colspan="3">
+                                        Итого
                                     </td>
-                                    <td class="border-r border-zinc-900 px-4 py-4 text-right print:px-2 print:py-2">
+                                    <td class="border-t border-r border-zinc-900 px-4 py-3 text-right print:px-2 print:py-2">
                                         {{ $volume }}
                                     </td>
-                                    <td class="border-r border-zinc-900 px-4 py-4 text-right print:px-2 print:py-2">
-                                        {{ $tariff }}
-                                    </td>
-                                    <td class="px-4 py-4 text-right font-bold print:px-2 print:py-2">
+                                    <td class="border-t border-r border-zinc-900 px-4 py-3 print:px-2 print:py-2"></td>
+                                    <td class="border-t border-zinc-900 px-4 py-3 text-right print:px-2 print:py-2">
                                         {{ $amount }}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="border-t border-r border-zinc-900 px-4 py-3 font-semibold print:px-2 print:py-2" colspan="5">
+                                        Долг
+                                    </td>
+                                    <td class="border-t border-zinc-900 px-4 py-3 text-right font-semibold print:px-2 print:py-2">
+                                        {{ $debt }}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="border-t border-r border-zinc-900 px-4 py-3 font-semibold print:px-2 print:py-2" colspan="5">
+                                        Оплачено
+                                    </td>
+                                    <td class="border-t border-zinc-900 px-4 py-3 text-right font-semibold print:px-2 print:py-2">
+                                        {{ $paid }}
+                                    </td>
+                                </tr>
+                                <tr class="bg-zinc-50 font-bold print:bg-white">
+                                    <td class="border-t border-r border-zinc-900 px-4 py-3 print:px-2 print:py-2" colspan="5">
+                                        К оплате
+                                    </td>
+                                    <td class="border-t border-zinc-900 px-4 py-3 text-right print:px-2 print:py-2">
+                                        {{ $paymentDue }}
                                     </td>
                                 </tr>
                             </tbody>
                         </table>
                     </div>
-                </section>
-
-                <section class="grid grid-cols-1 gap-5 px-6 pb-6 lg:grid-cols-[1fr_22rem] print:grid-cols-[1fr_18rem] print:px-0 print:pb-0">
-                    <div class="break-inside-avoid-page rounded-2xl border border-zinc-200 p-5 print:rounded-none print:border-zinc-300 print:p-3">
-                        <h3 class="text-base font-bold print:text-sm">Расчёт</h3>
-                        <dl class="mt-4 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 print:mt-3 print:gap-2 print:text-xs">
-                            @foreach ($balanceDetails as $detail)
-                                <div class="flex items-center justify-between gap-3 border-b border-zinc-200 pb-2 print:border-zinc-300">
-                                    <dt class="text-zinc-500">{{ $detail['label'] }}</dt>
-                                    <dd class="font-semibold">{{ $detail['value'] }}</dd>
-                                </div>
-                            @endforeach
-                        </dl>
-                    </div>
-
-                    <aside class="break-inside-avoid-page rounded-2xl border-2 border-zinc-950 bg-zinc-50 p-5 print:rounded-none print:bg-white print:p-3">
-                        <p class="text-sm font-semibold uppercase tracking-[0.2em] text-zinc-500 print:text-[10px]">
-                            К оплате
-                        </p>
-                        <p class="mt-3 text-3xl font-bold tracking-tight print:text-xl">
-                            {{ $paymentDue }}
-                        </p>
-                        <p class="mt-4 text-xs text-zinc-500 print:text-[10px]">
-                            Сформирована: {{ $generatedAt->format('d.m.Y H:i') }}
-                        </p>
-                    </aside>
                 </section>
             </article>
         </main>

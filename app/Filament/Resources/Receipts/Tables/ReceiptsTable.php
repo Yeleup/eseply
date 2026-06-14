@@ -16,7 +16,6 @@ class ReceiptsTable
         return $table
             ->modifyQueryUsing(fn (Builder $query): Builder => $query
                 ->with([
-                    'accrual',
                     'billingPeriod',
                     'client',
                 ])
@@ -43,7 +42,7 @@ class ReceiptsTable
                     ->searchable()
                     ->placeholder('-'),
                 TextColumn::make('amount')
-                    ->label('Начислено')
+                    ->label('Сумма')
                     ->money('KZT')
                     ->sortable(),
                 TextColumn::make('paid_amount')

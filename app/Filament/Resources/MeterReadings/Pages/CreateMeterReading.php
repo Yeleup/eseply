@@ -11,6 +11,7 @@ use App\Models\Organization;
 use App\Models\User;
 use Filament\Facades\Filament;
 use Filament\Resources\Pages\CreateRecord;
+use Illuminate\Validation\ValidationException;
 
 class CreateMeterReading extends CreateRecord
 {
@@ -25,6 +26,8 @@ class CreateMeterReading extends CreateRecord
         $this->authorizeMeter($data['meter_id'] ?? null);
 
         $billingPeriod = $this->currentBillingPeriod();
+        $this->ensureReadingDoesNotAlreadyExist($data['meter_id'] ?? null, $billingPeriod->getKey());
+
         $data['billing_period_id'] = $billingPeriod->getKey();
         $data['previous_reading'] = MeterReading::previousReadingForBillingPeriod(
             $data['meter_id'] ?? null,
@@ -32,6 +35,17 @@ class CreateMeterReading extends CreateRecord
         ) ?? 0;
 
         return $data;
+    }
+
+    private function ensureReadingDoesNotAlreadyExist(mixed $meterId, int|string $billingPeriodId): void
+    {
+        if (! MeterReading::existsForMeterBillingPeriod($meterId, $billingPeriodId)) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'data.current_reading' => MeterReading::DUPLICATE_BILLING_PERIOD_MESSAGE,
+        ]);
     }
 
     private function authorizeMeter(mixed $meterId): void

@@ -23,6 +23,7 @@ use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Validation\ValidationException;
 
 class ReadingsRelationManager extends RelationManager
 {
@@ -112,6 +113,8 @@ class ReadingsRelationManager extends RelationManager
                         abort_unless($this->canCreateReadingForOwner(), 403);
 
                         $billingPeriod = $this->currentBillingPeriod();
+                        $this->ensureReadingDoesNotAlreadyExist($this->ownerRecord->getKey(), $billingPeriod->getKey());
+
                         $data['billing_period_id'] = $billingPeriod->getKey();
                         $data['previous_reading'] = $this->previousReadingForPeriod($billingPeriod->getKey());
 
@@ -138,6 +141,25 @@ class ReadingsRelationManager extends RelationManager
             $this->ownerRecord->getKey(),
             $billingPeriodId,
         ) ?? 0;
+    }
+
+    private function ensureReadingDoesNotAlreadyExist(mixed $meterId, int|string $billingPeriodId): void
+    {
+        if (! MeterReading::existsForMeterBillingPeriod($meterId, $billingPeriodId)) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            $this->mountedActionFieldErrorKey('current_reading') => MeterReading::DUPLICATE_BILLING_PERIOD_MESSAGE,
+        ]);
+    }
+
+    private function mountedActionFieldErrorKey(string $field): string
+    {
+        $schemaName = $this->getMountedActionSchemaName();
+        $statePath = $schemaName ? $this->{$schemaName}->getStatePath() : null;
+
+        return filled($statePath) ? "{$statePath}.{$field}" : $field;
     }
 
     private function currentBillingPeriod(): BillingPeriod

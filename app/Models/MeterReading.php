@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Validation\ValidationException;
 
 #[Fillable([
     'organization_id',
@@ -28,6 +29,8 @@ class MeterReading extends Model
 
     /** @use HasFactory<MeterReadingFactory> */
     use HasFactory;
+
+    public const DUPLICATE_BILLING_PERIOD_MESSAGE = 'За текущий расчётный месяц уже есть показание по этому счётчику. Измените существующее показание вместо создания нового.';
 
     /**
      * @var array<string, mixed>
@@ -124,6 +127,26 @@ class MeterReading extends Model
         return self::previousReadingFor($meterId, $billingPeriod?->code);
     }
 
+    public static function existsForMeterBillingPeriod(
+        int|string|null $meterId,
+        int|string|null $billingPeriodId,
+        int|string|null $exceptReadingId = null,
+    ): bool {
+        if ($meterId === null || $meterId === '' || $billingPeriodId === null || $billingPeriodId === '') {
+            return false;
+        }
+
+        $query = self::query()
+            ->where('meter_id', (int) $meterId)
+            ->where('billing_period_id', (int) $billingPeriodId);
+
+        if ($exceptReadingId !== null && $exceptReadingId !== '') {
+            $query->whereKeyNot((int) $exceptReadingId);
+        }
+
+        return $query->exists();
+    }
+
     /**
      * Get the attributes that should be cast.
      *
@@ -161,6 +184,7 @@ class MeterReading extends Model
 
             $meterReading->resolveBillingPeriodIdFromPeriodCode(useCurrentWhenMissing: true);
             $meterReading->ensureBillingPeriodIsEditable();
+            $meterReading->ensureUniqueForBillingPeriod();
 
             $meterReading->consumption = (float) $meterReading->current_reading - (float) $meterReading->previous_reading;
         });
@@ -168,6 +192,21 @@ class MeterReading extends Model
         static::deleting(function (MeterReading $meterReading): void {
             $meterReading->ensureBillingPeriodIsEditable();
         });
+    }
+
+    private function ensureUniqueForBillingPeriod(): void
+    {
+        if (! $this->meter_id || ! $this->billing_period_id) {
+            return;
+        }
+
+        if (! self::existsForMeterBillingPeriod($this->meter_id, $this->billing_period_id, $this->getKey())) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'current_reading' => self::DUPLICATE_BILLING_PERIOD_MESSAGE,
+        ]);
     }
 
     private static function organizationId(Organization|int|string|null $organization): ?int

@@ -18,6 +18,7 @@ use App\Models\UtilityService;
 use Filament\Facades\Filament;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Validation\ValidationException;
 use Livewire\Livewire;
 
 uses(RefreshDatabase::class);
@@ -183,7 +184,10 @@ test('one meter reading is allowed per meter and period', function () {
 
     expect(fn () => MeterReading::factory()->for($meter)->create([
         'period' => '202605',
-    ]))->toThrow(QueryException::class);
+    ]))->toThrow(
+        ValidationException::class,
+        'За текущий расчётный месяц уже есть показание по этому счётчику. Измените существующее показание вместо создания нового.',
+    );
 });
 
 test('the same period can be used for different meters', function () {
@@ -332,6 +336,14 @@ test('admin users can create and list meter readings for the current tenant', fu
     expect($reading->previous_reading)->toBe('100.0000')
         ->and($reading->consumption)->toBe('37.1250');
 
+    Livewire::test(CreateMeterReading::class)
+        ->fillForm([
+            'meter_id' => $meter->id,
+            'current_reading' => 150,
+        ])
+        ->call('create')
+        ->assertHasFormErrors(['current_reading']);
+
     Livewire::test(ListMeterReadings::class)
         ->assertOk()
         ->assertCanSeeTableRecords([$reading])
@@ -393,6 +405,15 @@ test('client meter table can add a reading for the selected meter', function () 
         ->and($reading->current_reading)->toBe('140.7500')
         ->and($reading->consumption)->toBe('15.7500')
         ->and($reading->read_at?->toDateString())->toBe('2026-05-29');
+
+    Livewire::test(MetersRelationManager::class, [
+        'ownerRecord' => $client,
+        'pageClass' => EditClient::class,
+    ])
+        ->callTableAction('addReading', $meter, data: [
+            'current_reading' => 150,
+        ])
+        ->assertHasTableActionErrors(['current_reading']);
 });
 
 test('meter resource shows readings as a related table', function () {

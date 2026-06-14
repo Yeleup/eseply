@@ -28,6 +28,7 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Validation\ValidationException;
 
 class MetersRelationManager extends RelationManager
 {
@@ -162,6 +163,7 @@ class MetersRelationManager extends RelationManager
                         abort_unless($this->canAddReadingForMeter($record), 403);
 
                         $billingPeriod = $this->currentBillingPeriod();
+                        $this->ensureReadingDoesNotAlreadyExist($record, $billingPeriod->getKey());
 
                         $record->readings()->create([
                             'billing_period_id' => $billingPeriod->getKey(),
@@ -246,6 +248,25 @@ class MetersRelationManager extends RelationManager
     protected function previousReadingForMeterAndPeriod(Meter $meter, mixed $billingPeriodId): float
     {
         return MeterReading::previousReadingForBillingPeriod($meter->getKey(), $billingPeriodId) ?? 0;
+    }
+
+    private function ensureReadingDoesNotAlreadyExist(Meter $meter, int|string $billingPeriodId): void
+    {
+        if (! MeterReading::existsForMeterBillingPeriod($meter->getKey(), $billingPeriodId)) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            $this->mountedActionFieldErrorKey('current_reading') => MeterReading::DUPLICATE_BILLING_PERIOD_MESSAGE,
+        ]);
+    }
+
+    private function mountedActionFieldErrorKey(string $field): string
+    {
+        $schemaName = $this->getMountedActionSchemaName();
+        $statePath = $schemaName ? $this->{$schemaName}->getStatePath() : null;
+
+        return filled($statePath) ? "{$statePath}.{$field}" : $field;
     }
 
     private function currentBillingPeriod(): BillingPeriod

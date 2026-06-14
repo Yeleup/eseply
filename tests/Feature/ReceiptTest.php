@@ -581,6 +581,7 @@ test('receipt resource list page is registered with a bulk print action', functi
             'tenant' => $organization,
             'controller_id' => $controller->getKey(),
         ]))
+        ->assertTableActionDoesNotExist('view')
         ->assertTableActionHasUrl('print', route('filament.admin.receipts.print', [
             'tenant' => $organization,
             'receipt' => $receipt,

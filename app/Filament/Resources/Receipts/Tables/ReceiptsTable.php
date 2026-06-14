@@ -11,7 +11,6 @@ use App\Models\User;
 use App\OrganizationMemberRole;
 use Filament\Actions\Action;
 use Filament\Actions\BulkAction;
-use Filament\Actions\ViewAction;
 use Filament\Facades\Filament;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
@@ -128,8 +127,7 @@ class ReceiptsTable
                     ->visible(fn (HasTable $livewire): bool => self::hasPrintableFilter($livewire)),
             ])
             ->recordActions([
-                ViewAction::make(),
-                ViewAction::make('print')
+                Action::make('print')
                     ->label('Печать')
                     ->icon(Heroicon::OutlinedPrinter)
                     ->url(fn (Receipt $record): string => route('filament.admin.receipts.print', [

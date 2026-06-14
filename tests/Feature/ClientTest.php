@@ -816,7 +816,7 @@ test('client resource shows accounting records as related tables', function () {
         ->and(MeterResource::shouldRegisterNavigation())->toBeFalse()
         ->and(PaymentResource::shouldRegisterNavigation())->toBeFalse()
         ->and(BalanceAdjustmentResource::shouldRegisterNavigation())->toBeFalse()
-        ->and(ReceiptResource::shouldRegisterNavigation())->toBeFalse();
+        ->and(ReceiptResource::shouldRegisterNavigation())->toBeTrue();
 });
 
 test('client related tables list only the selected client records', function () {

@@ -15,6 +15,7 @@ use App\Filament\Resources\Payments\Pages\CreatePayment;
 use App\Filament\Resources\Payments\Pages\ListPayments;
 use App\Filament\Support\CurrentBillingPeriod;
 use App\Http\Controllers\ClientCardController;
+use App\Http\Controllers\ReceiptPrintController;
 use App\Models\Organization;
 use Filament\Facades\Filament;
 use Filament\Http\Middleware\Authenticate;
@@ -80,6 +81,8 @@ class AdminPanelProvider extends PanelProvider
             ->authenticatedTenantRoutes(function (): void {
                 Route::get('/clients/{client}/card', ClientCardController::class)
                     ->name('clients.card');
+                Route::get('/receipts/{receipt}/print', ReceiptPrintController::class)
+                    ->name('receipts.print');
             })
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\Filament\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\Filament\Pages')

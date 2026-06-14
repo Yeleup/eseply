@@ -3,6 +3,7 @@
 use App\Actions\CloseBillingMonth;
 use App\BalanceAdjustmentType;
 use App\Filament\Resources\Receipts\Pages\ListReceipts;
+use App\Filament\Resources\Receipts\Pages\ViewReceipt;
 use App\Models\Accrual;
 use App\Models\BalanceAdjustment;
 use App\Models\Client;
@@ -156,4 +157,124 @@ test('admin users can list receipts for the current tenant', function () {
         ->assertOk()
         ->assertCanSeeTableRecords([$receipt])
         ->assertCanNotSeeTableRecords([$otherTenantReceipt]);
+});
+
+test('admin receipt view page has a print pdf action', function () {
+    $organization = Organization::factory()->create();
+    $receipt = Receipt::fromAccrual(Accrual::factory()->for($organization)->create([
+        'period' => '202605',
+        'account_number' => '30001',
+        'client_name' => 'Иванов Иван',
+    ]));
+
+    actingAsReceiptTenant($organization);
+
+    $url = route('filament.admin.receipts.print', [
+        'tenant' => $organization,
+        'receipt' => $receipt,
+    ]);
+
+    Livewire::test(ViewReceipt::class, [
+        'record' => $receipt->getRouteKey(),
+    ])
+        ->assertActionExists('printPdf')
+        ->assertActionHasLabel('printPdf', 'Печатать PDF')
+        ->assertActionHasUrl('printPdf', $url)
+        ->assertActionShouldOpenUrlInNewTab('printPdf');
+});
+
+test('admin users can open a current tenant receipt print view', function () {
+    $organization = Organization::factory()->create([
+        'name' => 'ТОО Водоканал',
+        'bin_iin' => '123456789012',
+        'address' => 'Алматы, Абая 10',
+    ]);
+    $utilityService = UtilityService::factory()->for($organization)->create([
+        'name' => 'Водоснабжение',
+        'unit_of_measurement' => 'м3',
+    ]);
+    $client = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'account_number' => '100010',
+            'name' => 'Иванов Иван',
+        ]);
+    $receipt = Receipt::fromAccrual(Accrual::factory()
+        ->for($organization)
+        ->for($client)
+        ->for($utilityService)
+        ->create([
+            'period' => '202605',
+            'account_number' => '100010',
+            'client_name' => 'Иванов Иван',
+            'utility_service_name' => 'Водоснабжение',
+            'billing_type' => 'meter',
+            'volume' => 20,
+            'tariff_price' => 90,
+            'amount' => 1800,
+            'paid_amount' => 0,
+            'adjustment_amount' => 0,
+            'opening_balance' => 0,
+            'closing_balance' => 1800,
+        ]));
+
+    $user = actingAsReceiptTenant($organization);
+    $this->actingAs($user);
+
+    $response = $this->get(route('filament.admin.receipts.print', [
+        'tenant' => $organization,
+        'receipt' => $receipt,
+    ]));
+
+    $response
+        ->assertSuccessful()
+        ->assertHeader('Content-Type', 'text/html; charset=UTF-8')
+        ->assertHeader('X-Content-Type-Options', 'nosniff')
+        ->assertHeaderMissing('Content-Disposition')
+        ->assertViewIs('receipts.print')
+        ->assertViewHasAll([
+            'receipt',
+            'generatedAt',
+            'organizationDetails',
+            'clientDetails',
+            'calculationDetails',
+            'balanceDetails',
+            'paymentDue',
+            'clientAddress',
+        ])
+        ->assertSeeTextInOrder([
+            'Квитанция на оплату коммунальной услуги',
+            'ТОО Водоканал',
+            'Номер',
+            '202605-100010',
+            'Лицевой счёт',
+            '100010',
+            'Иванов Иван',
+            'Водоснабжение',
+            '20.0000',
+            '90.00 KZT',
+            '1 800.00 KZT',
+            'К оплате',
+            '1 800.00 KZT',
+        ]);
+
+    expect(str_starts_with($response->getContent(), '%PDF'))->toBeFalse();
+});
+
+test('admin users cannot open another tenant receipt print view', function () {
+    $organization = Organization::factory()->create();
+    $otherOrganization = Organization::factory()->create();
+    $receipt = Receipt::fromAccrual(Accrual::factory()->for($otherOrganization)->create([
+        'period' => '202605',
+        'account_number' => '90001',
+    ]));
+
+    $user = actingAsReceiptTenant($organization);
+    $this->actingAs($user);
+
+    $this->get(route('filament.admin.receipts.print', [
+        'tenant' => $organization,
+        'receipt' => $receipt,
+    ]))->assertNotFound();
 });

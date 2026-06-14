@@ -465,6 +465,89 @@
                 </div>
             </section>
 
+            <section class="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+                <div class="flex flex-col gap-4 border-b border-zinc-200 p-6 dark:border-zinc-800 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                        <p class="text-sm font-semibold uppercase tracking-[0.22em] text-teal-800 dark:text-teal-300">ReceiptResource</p>
+                        <h2 class="mt-2 text-3xl font-semibold tracking-tight">Печатная квитанция</h2>
+                        <p class="mt-3 max-w-2xl text-sm text-zinc-600 dark:text-zinc-300">
+                            Preview страницы, открываемой действием «Печатать PDF» со страницы просмотра квитанции.
+                        </p>
+                    </div>
+
+                    <button class="rounded-md bg-zinc-950 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-white">
+                        Печатать PDF
+                    </button>
+                </div>
+
+                <div class="grid grid-cols-1 gap-5 p-6 lg:grid-cols-[1fr_18rem]">
+                    <div class="rounded-2xl border border-zinc-900 p-5 dark:border-zinc-200">
+                        <p class="text-xs font-semibold uppercase tracking-[0.22em] text-zinc-500 dark:text-zinc-400">Квитанция на оплату коммунальной услуги</p>
+                        <h3 class="mt-2 text-2xl font-bold">ТОО Водоканал</h3>
+                        <p class="mt-2 text-sm text-zinc-500 dark:text-zinc-400">Алматы, Абая 10</p>
+
+                        <dl class="mt-5 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+                            <div class="rounded-xl bg-zinc-50 px-4 py-3 dark:bg-zinc-950">
+                                <dt class="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Номер</dt>
+                                <dd class="mt-1 font-semibold">202605-100010</dd>
+                            </div>
+                            <div class="rounded-xl bg-zinc-50 px-4 py-3 dark:bg-zinc-950">
+                                <dt class="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Абонент</dt>
+                                <dd class="mt-1 font-semibold">Иванов Иван</dd>
+                            </div>
+                            <div class="rounded-xl bg-zinc-50 px-4 py-3 dark:bg-zinc-950">
+                                <dt class="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Лицевой счёт</dt>
+                                <dd class="mt-1 font-semibold">100010</dd>
+                            </div>
+                            <div class="rounded-xl bg-zinc-50 px-4 py-3 dark:bg-zinc-950">
+                                <dt class="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Период</dt>
+                                <dd class="mt-1 font-semibold">05.2026</dd>
+                            </div>
+                        </dl>
+
+                        <div class="mt-5 overflow-hidden rounded-2xl border border-zinc-900 dark:border-zinc-200">
+                            <table class="w-full text-left text-sm">
+                                <thead class="bg-zinc-100 text-xs uppercase tracking-wide text-zinc-600 dark:bg-zinc-950 dark:text-zinc-400">
+                                    <tr>
+                                        <th class="border-b border-r border-zinc-900 px-4 py-3 dark:border-zinc-200">Услуга</th>
+                                        <th class="border-b border-r border-zinc-900 px-4 py-3 text-right dark:border-zinc-200">Объём</th>
+                                        <th class="border-b border-r border-zinc-900 px-4 py-3 text-right dark:border-zinc-200">Тариф</th>
+                                        <th class="border-b border-zinc-900 px-4 py-3 text-right dark:border-zinc-200">Сумма</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td class="border-r border-zinc-900 px-4 py-4 font-semibold dark:border-zinc-200">Водоснабжение</td>
+                                        <td class="border-r border-zinc-900 px-4 py-4 text-right dark:border-zinc-200">20.0000</td>
+                                        <td class="border-r border-zinc-900 px-4 py-4 text-right dark:border-zinc-200">90.00 KZT</td>
+                                        <td class="px-4 py-4 text-right font-bold">1 800.00 KZT</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <aside class="rounded-2xl border-2 border-zinc-950 bg-zinc-50 p-5 dark:border-zinc-100 dark:bg-zinc-950">
+                        <p class="text-sm font-semibold uppercase tracking-[0.2em] text-zinc-500 dark:text-zinc-400">К оплате</p>
+                        <p class="mt-3 text-3xl font-bold tracking-tight">1 800.00 KZT</p>
+                        <div class="mt-5 grid grid-cols-1 gap-3 text-sm">
+                            <div class="flex items-center justify-between gap-3 border-b border-zinc-200 pb-2 dark:border-zinc-800">
+                                <span class="text-zinc-500 dark:text-zinc-400">Начальное сальдо</span>
+                                <span class="font-semibold">0.00 KZT</span>
+                            </div>
+                            <div class="flex items-center justify-between gap-3 border-b border-zinc-200 pb-2 dark:border-zinc-800">
+                                <span class="text-zinc-500 dark:text-zinc-400">Оплачено</span>
+                                <span class="font-semibold">0.00 KZT</span>
+                            </div>
+                            <div class="flex items-center justify-between gap-3">
+                                <span class="text-zinc-500 dark:text-zinc-400">Конечное сальдо</span>
+                                <span class="font-semibold">1 800.00 KZT</span>
+                            </div>
+                        </div>
+                    </aside>
+                </div>
+            </section>
+
             <section class="overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
                 <div class="flex flex-col gap-3 border-b border-zinc-200 p-4 dark:border-zinc-800 sm:flex-row sm:items-center sm:justify-between">
                     <div>

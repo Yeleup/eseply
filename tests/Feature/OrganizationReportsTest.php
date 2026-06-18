@@ -1,5 +1,6 @@
 <?php
 
+use App\ClientType;
 use App\Filament\Pages\Reports\ListReports;
 use App\Filament\Pages\Reports\ViewReport;
 use App\Models\Client;
@@ -164,7 +165,8 @@ test('meter reading sheet report keeps client meters together and scopes records
         ->assertOk()
         ->assertSee('Ведомость снятия показаний')
         ->assertSee('Список не снятых показаний')
-        ->assertSee('Процент снятия по контроллерам');
+        ->assertSee('Процент снятия по контроллерам')
+        ->assertSee('Новые лицевые счета');
 
     Livewire::test(ViewReport::class, ['report' => 'meter-reading-sheet'])
         ->assertOk()
@@ -633,4 +635,143 @@ test('controller meter reading progress report calculates percentages for assign
     expect(collect($rows)->flatten()->contains('CTRL-INACTIVE'))->toBeFalse();
     expect(collect($rows)->flatten()->contains('CTRL-PER-PERSON'))->toBeFalse();
     expect(collect($rows)->flatten()->contains('CTRL-REMOVED'))->toBeFalse();
+});
+
+test('new client accounts report lists clients created in current billing period', function () {
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create();
+    $region = Region::factory()->for($organization)->create(['name' => 'Наурызбайский']);
+    $street = Street::factory()->for($region)->create(['name' => 'Жандосова']);
+
+    billingPeriodFor($organization, '202606');
+
+    $firstClient = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'account_number' => '400001',
+            'name' => 'Новый абонент',
+            'client_type' => 'individual',
+            'billing_type' => 'per_person',
+            'residents_count' => 4,
+            'phone' => '+7 701 000 00 01',
+            'region_id' => $region->id,
+            'street_id' => $street->id,
+            'house' => '7',
+            'apartment' => '21',
+            'status' => 'active',
+            'created_at' => '2026-06-05 09:15:00',
+            'updated_at' => '2026-06-05 09:15:00',
+        ]);
+    $secondClient = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'account_number' => '400002',
+            'name' => 'Закрытый новый счёт',
+            'client_type' => 'commercial',
+            'billing_type' => 'fixed',
+            'residents_count' => 1,
+            'phone' => null,
+            'status' => 'inactive',
+            'created_at' => '2026-06-16 18:30:00',
+            'updated_at' => '2026-06-16 18:30:00',
+        ]);
+    $previousPeriodClient = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'account_number' => '399999',
+            'name' => 'Майский абонент',
+            'created_at' => '2026-05-31 23:59:59',
+            'updated_at' => '2026-05-31 23:59:59',
+        ]);
+    $nextPeriodClient = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'account_number' => '400003',
+            'name' => 'Июльский абонент',
+            'created_at' => '2026-07-01 00:00:00',
+            'updated_at' => '2026-07-01 00:00:00',
+        ]);
+    $otherOrganization = Organization::factory()->create();
+    $otherUtilityService = UtilityService::factory()->for($otherOrganization)->create();
+    $otherTenantClient = Client::factory()
+        ->for($otherOrganization)
+        ->for($otherUtilityService)
+        ->create([
+            'account_number' => '400004',
+            'name' => 'Чужой абонент',
+            'created_at' => '2026-06-10 10:00:00',
+            'updated_at' => '2026-06-10 10:00:00',
+        ]);
+
+    actingAsReportsTenant($organization);
+
+    Livewire::test(ViewReport::class, ['report' => 'new-client-accounts'])
+        ->assertOk()
+        ->assertCanSeeTableRecords([$firstClient, $secondClient], inOrder: true)
+        ->assertCanNotSeeTableRecords([$previousPeriodClient, $nextPeriodClient, $otherTenantClient])
+        ->assertTableColumnStateSet('account_number', '400001', $firstClient)
+        ->assertTableColumnStateSet('name', 'Новый абонент', $firstClient)
+        ->assertTableColumnStateSet('client_address', 'Наурызбайский, Жандосова, д. 7, кв. 21', $firstClient)
+        ->assertTableColumnStateSet('client_type', ClientType::Individual, $firstClient)
+        ->assertTableColumnStateSet('billing_type', 'per_person', $firstClient)
+        ->assertTableColumnStateSet('status', 'active', $firstClient)
+        ->assertTableColumnStateSet('residents_count', 4, $firstClient)
+        ->assertTableColumnStateSet('current_billing_period_for_report', '06.2026', $firstClient)
+        ->assertTableColumnStateSet('billing_type', 'fixed', $secondClient)
+        ->assertTableColumnStateSet('status', 'inactive', $secondClient);
+
+    $download = Livewire::test(ViewReport::class, ['report' => 'new-client-accounts'])
+        ->assertOk()
+        ->assertActionExists('downloadExcel')
+        ->callAction('downloadExcel')
+        ->assertFileDownloaded(
+            'new-client-accounts-'.$organization->getKey().'-202606-'.today()->format('Y-m-d').'.xlsx',
+            contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        );
+
+    $rows = downloadedXlsxRows($download->effects['download']);
+
+    expect($rows[0])->toBe([
+        'Лицевой счёт',
+        'ФИО / Наименование',
+        'Адрес',
+        'Тип',
+        'Тип начисления',
+        'Статус',
+        'Кол. проживающих',
+        'Телефон',
+        'Период',
+        'Создан',
+    ]);
+    expect($rows[1])->toEqual([
+        '400001',
+        'Новый абонент',
+        'Наурызбайский, Жандосова, д. 7, кв. 21',
+        'Физ. лицо',
+        'На одного человека',
+        'Активный',
+        4,
+        '+7 701 000 00 01',
+        '06.2026',
+        '05.06.2026 09:15',
+    ]);
+    expect($rows[2])->toEqual([
+        '400002',
+        'Закрытый новый счёт',
+        '-',
+        'Коммерческие объекты',
+        'Фиксированная сумма',
+        'Неактивный',
+        1,
+        '',
+        '06.2026',
+        '16.06.2026 18:30',
+    ]);
+    expect(collect($rows)->flatten()->contains('Майский абонент'))->toBeFalse();
+    expect(collect($rows)->flatten()->contains('Июльский абонент'))->toBeFalse();
+    expect(collect($rows)->flatten()->contains('Чужой абонент'))->toBeFalse();
 });

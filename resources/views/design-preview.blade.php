@@ -292,7 +292,7 @@
                         <p class="text-sm text-zinc-500 dark:text-zinc-400">Reports / XLSX export</p>
                         <h2 class="text-base font-semibold">Отчёты по показаниям</h2>
                         <p class="mt-2 max-w-2xl text-sm text-zinc-500 dark:text-zinc-400">
-                            Список отчётов показывает ведомость снятия, не снятые показания и процент снятия по контроллерам. На странице отчёта доступны возврат к списку и скачивание Excel-файла.
+                            Список отчётов показывает ведомость снятия, не снятые показания, процент снятия по контроллерам и новые лицевые счета. На странице отчёта доступны возврат к списку и скачивание Excel-файла.
                         </p>
                     </div>
 
@@ -306,7 +306,7 @@
                     </div>
                 </div>
 
-                <div class="grid grid-cols-1 gap-3 border-b border-zinc-200 p-4 dark:border-zinc-800 md:grid-cols-3">
+                <div class="grid grid-cols-1 gap-3 border-b border-zinc-200 p-4 dark:border-zinc-800 md:grid-cols-2 xl:grid-cols-4">
                     <div class="rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-950">
                         <p class="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Отчёт</p>
                         <h3 class="mt-2 font-semibold">Ведомость снятия показаний</h3>
@@ -323,6 +323,12 @@
                         <p class="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">Новый отчёт</p>
                         <h3 class="mt-2 font-semibold">Процент снятия по контроллерам</h3>
                         <p class="mt-1 text-sm text-emerald-800/80 dark:text-emerald-200/80">Снято, не снято и процент по зонам ответственности.</p>
+                    </div>
+
+                    <div class="rounded-lg border border-sky-200 bg-sky-50 p-4 dark:border-sky-900/60 dark:bg-sky-950/30">
+                        <p class="text-xs font-semibold uppercase tracking-wide text-sky-700 dark:text-sky-300">Новый отчёт</p>
+                        <h3 class="mt-2 font-semibold">Новые лицевые счета</h3>
+                        <p class="mt-1 text-sm text-sky-800/80 dark:text-sky-200/80">Абоненты, созданные в текущем расчётном месяце.</p>
                     </div>
                 </div>
 
@@ -404,6 +410,56 @@
                                 <td class="px-4 py-3">1</td>
                                 <td class="px-4 py-3">0</td>
                                 <td class="px-4 py-3"><span class="rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200">100.00%</span></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="border-t border-zinc-200 p-4 dark:border-zinc-800">
+                    <h3 class="text-sm font-semibold">Новые лицевые счета</h3>
+                    <p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Таблица показывает абонентов, созданных в текущем расчётном месяце, и использует тот же XLSX-набор колонок.</p>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full min-w-260 text-left text-sm">
+                        <thead class="bg-zinc-100 text-xs font-semibold uppercase text-zinc-500 dark:bg-zinc-950 dark:text-zinc-400">
+                            <tr>
+                                <th class="px-4 py-3">Лицевой счёт</th>
+                                <th class="px-4 py-3">ФИО</th>
+                                <th class="px-4 py-3">Адрес</th>
+                                <th class="px-4 py-3">Тип</th>
+                                <th class="px-4 py-3">Начисление</th>
+                                <th class="px-4 py-3">Статус</th>
+                                <th class="px-4 py-3">Прож.</th>
+                                <th class="px-4 py-3">Телефон</th>
+                                <th class="px-4 py-3">Период</th>
+                                <th class="px-4 py-3">Создан</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-zinc-200 dark:divide-zinc-800">
+                            <tr>
+                                <td class="px-4 py-3 font-medium">400001</td>
+                                <td class="px-4 py-3">Новый абонент</td>
+                                <td class="px-4 py-3 text-zinc-500 dark:text-zinc-400">Наурызбайский, Жандосова, д. 7, кв. 21</td>
+                                <td class="px-4 py-3">Физ. лицо</td>
+                                <td class="px-4 py-3">На одного человека</td>
+                                <td class="px-4 py-3"><span class="rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200">Активный</span></td>
+                                <td class="px-4 py-3">4</td>
+                                <td class="px-4 py-3 text-zinc-500 dark:text-zinc-400">+7 701 000 00 01</td>
+                                <td class="px-4 py-3">06.2026</td>
+                                <td class="px-4 py-3">05.06.2026 09:15</td>
+                            </tr>
+                            <tr>
+                                <td class="px-4 py-3 font-medium">400002</td>
+                                <td class="px-4 py-3">Закрытый новый счёт</td>
+                                <td class="px-4 py-3 text-zinc-500 dark:text-zinc-400">-</td>
+                                <td class="px-4 py-3">Коммерческие объекты</td>
+                                <td class="px-4 py-3">Фиксированная сумма</td>
+                                <td class="px-4 py-3"><span class="rounded-full bg-zinc-200 px-2 py-1 text-xs font-semibold text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">Неактивный</span></td>
+                                <td class="px-4 py-3">1</td>
+                                <td class="px-4 py-3 text-zinc-500 dark:text-zinc-400">-</td>
+                                <td class="px-4 py-3">06.2026</td>
+                                <td class="px-4 py-3">16.06.2026 18:30</td>
                             </tr>
                         </tbody>
                     </table>

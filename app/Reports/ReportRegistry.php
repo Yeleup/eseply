@@ -13,6 +13,7 @@ class ReportRegistry
         MeterReadingSheetReport::class,
         MissingMeterReadingsReport::class,
         ControllerMeterReadingProgressReport::class,
+        NewClientAccountsReport::class,
     ];
 
     /**

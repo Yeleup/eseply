@@ -7,6 +7,8 @@ use App\Models\Client;
 use App\Models\Meter;
 use App\Models\MeterReading;
 use App\Models\Organization;
+use App\Models\Payment;
+use App\Models\Receipt;
 use App\Models\Region;
 use App\Models\Street;
 use App\Models\User;
@@ -166,7 +168,12 @@ test('meter reading sheet report keeps client meters together and scopes records
         ->assertSee('Ведомость снятия показаний')
         ->assertSee('Список не снятых показаний')
         ->assertSee('Процент снятия по контроллерам')
-        ->assertSee('Новые лицевые счета');
+        ->assertSee('Новые лицевые счета')
+        ->assertSee('Отчёт по оплатам')
+        ->assertSee('Отчёт по неоплаченным')
+        ->assertSee('Замена/установка счётчика')
+        ->assertSee('Отчёт по долгам')
+        ->assertSee('Отчёт по потреблениям');
 
     Livewire::test(ViewReport::class, ['report' => 'meter-reading-sheet'])
         ->assertOk()
@@ -774,4 +781,469 @@ test('new client accounts report lists clients created in current billing period
     expect(collect($rows)->flatten()->contains('Майский абонент'))->toBeFalse();
     expect(collect($rows)->flatten()->contains('Июльский абонент'))->toBeFalse();
     expect(collect($rows)->flatten()->contains('Чужой абонент'))->toBeFalse();
+});
+
+test('payments report lists payments for current billing period', function () {
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create();
+    $region = Region::factory()->for($organization)->create(['name' => 'Алатауский']);
+    $street = Street::factory()->for($region)->create(['name' => 'Момышулы']);
+
+    billingPeriodFor($organization, '202606');
+
+    $client = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'account_number' => '500001',
+            'name' => 'Плательщик',
+            'region_id' => $region->id,
+            'street_id' => $street->id,
+            'house' => '8',
+            'apartment' => '14',
+        ]);
+    $payment = Payment::factory()
+        ->for($organization)
+        ->for($client)
+        ->create([
+            'period' => '202606',
+            'amount' => 3500,
+            'paid_at' => '2026-06-09',
+            'note' => 'Kaspi',
+        ]);
+
+    $otherOrganization = Organization::factory()->create();
+    $otherUtilityService = UtilityService::factory()->for($otherOrganization)->create();
+    $otherClient = Client::factory()
+        ->for($otherOrganization)
+        ->for($otherUtilityService)
+        ->create(['account_number' => '500002', 'name' => 'Чужой плательщик']);
+    $otherPayment = Payment::factory()
+        ->for($otherOrganization)
+        ->for($otherClient)
+        ->create(['period' => '202606', 'amount' => 9000]);
+
+    actingAsReportsTenant($organization);
+
+    Livewire::test(ViewReport::class, ['report' => 'payments'])
+        ->assertOk()
+        ->assertCanSeeTableRecords([$payment])
+        ->assertCanNotSeeTableRecords([$otherPayment])
+        ->assertTableColumnStateSet('client.account_number', '500001', $payment)
+        ->assertTableColumnStateSet('client.name', 'Плательщик', $payment)
+        ->assertTableColumnStateSet('client_address', 'Алатауский, Момышулы, д. 8, кв. 14', $payment)
+        ->assertTableColumnStateSet('payment_period_for_report', '06.2026', $payment);
+
+    $download = Livewire::test(ViewReport::class, ['report' => 'payments'])
+        ->assertOk()
+        ->callAction('downloadExcel')
+        ->assertFileDownloaded(
+            'payments-'.$organization->getKey().'-202606-'.today()->format('Y-m-d').'.xlsx',
+            contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        );
+
+    $rows = downloadedXlsxRows($download->effects['download']);
+
+    expect($rows[0])->toBe([
+        'Лицевой счёт',
+        'Абонент',
+        'Адрес',
+        'Период',
+        'Дата оплаты',
+        'Сумма',
+        'Примечание',
+    ]);
+    expect($rows[1])->toEqual([
+        '500001',
+        'Плательщик',
+        'Алатауский, Момышулы, д. 8, кв. 14',
+        '06.2026',
+        '09.06.2026',
+        3500.0,
+        'Kaspi',
+    ]);
+    expect(collect($rows)->flatten()->contains('Чужой плательщик'))->toBeFalse();
+});
+
+test('unpaid receipts and debts reports use receipt payment and balance totals', function () {
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create();
+    $region = Region::factory()->for($organization)->create(['name' => 'Есильский']);
+    $street = Street::factory()->for($region)->create(['name' => 'Кабанбай батыр']);
+
+    billingPeriodFor($organization, '202606');
+
+    $unpaidClient = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'account_number' => '510001',
+            'name' => 'Неоплаченный абонент',
+            'region_id' => $region->id,
+            'street_id' => $street->id,
+            'house' => '11',
+            'apartment' => '2',
+        ]);
+    $debtOnlyClient = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create(['account_number' => '510002', 'name' => 'Абонент с долгом']);
+    $settledClient = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create(['account_number' => '510003', 'name' => 'Оплаченный абонент']);
+
+    $unpaidReceipt = Receipt::factory()
+        ->for($organization)
+        ->for($unpaidClient)
+        ->create([
+            'period' => '202606',
+            'receipt_number' => '202606-510001',
+            'account_number' => '510001',
+            'client_name' => 'Неоплаченный абонент',
+            'billing_type' => 'fixed',
+            'amount' => 6000,
+            'paid_amount' => 2000,
+            'adjustment_amount' => 0,
+            'opening_balance' => 0,
+            'closing_balance' => 4000,
+            'issued_at' => '2026-06-20 10:00:00',
+        ]);
+    $debtOnlyReceipt = Receipt::factory()
+        ->for($organization)
+        ->for($debtOnlyClient)
+        ->create([
+            'period' => '202606',
+            'receipt_number' => '202606-510002',
+            'account_number' => '510002',
+            'client_name' => 'Абонент с долгом',
+            'billing_type' => 'fixed',
+            'amount' => 1000,
+            'paid_amount' => 1000,
+            'adjustment_amount' => 0,
+            'opening_balance' => 2500,
+            'closing_balance' => 2500,
+            'issued_at' => '2026-06-20 11:00:00',
+        ]);
+    $settledReceipt = Receipt::factory()
+        ->for($organization)
+        ->for($settledClient)
+        ->create([
+            'period' => '202606',
+            'receipt_number' => '202606-510003',
+            'account_number' => '510003',
+            'client_name' => 'Оплаченный абонент',
+            'billing_type' => 'fixed',
+            'amount' => 2000,
+            'paid_amount' => 2000,
+            'adjustment_amount' => 0,
+            'opening_balance' => 0,
+            'closing_balance' => 0,
+            'issued_at' => '2026-06-20 12:00:00',
+        ]);
+
+    actingAsReportsTenant($organization);
+
+    Livewire::test(ViewReport::class, ['report' => 'unpaid-receipts'])
+        ->assertOk()
+        ->assertCanSeeTableRecords([$unpaidReceipt])
+        ->assertCanNotSeeTableRecords([$debtOnlyReceipt, $settledReceipt])
+        ->assertTableColumnStateSet('account_number', '510001', $unpaidReceipt)
+        ->assertTableColumnStateSet('client_name', 'Неоплаченный абонент', $unpaidReceipt)
+        ->assertTableColumnStateSet('client_address', 'Есильский, Кабанбай батыр, д. 11, кв. 2', $unpaidReceipt)
+        ->assertTableColumnStateSet('receipt_period_for_report', '06.2026', $unpaidReceipt)
+        ->assertTableColumnStateSet('unpaid_amount_for_report', 4000.0, $unpaidReceipt);
+
+    $unpaidDownload = Livewire::test(ViewReport::class, ['report' => 'unpaid-receipts'])
+        ->assertOk()
+        ->callAction('downloadExcel')
+        ->assertFileDownloaded(
+            'unpaid-receipts-'.$organization->getKey().'-202606-'.today()->format('Y-m-d').'.xlsx',
+            contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        );
+
+    $unpaidRows = downloadedXlsxRows($unpaidDownload->effects['download']);
+
+    expect($unpaidRows[0])->toBe([
+        'Лицевой счёт',
+        'Абонент',
+        'Адрес',
+        'Период',
+        'Начислено',
+        'Оплачено',
+        'Не оплачено',
+        'Квитанция сформирована',
+    ]);
+    expect($unpaidRows[1])->toEqual([
+        '510001',
+        'Неоплаченный абонент',
+        'Есильский, Кабанбай батыр, д. 11, кв. 2',
+        '06.2026',
+        6000.0,
+        2000.0,
+        4000.0,
+        '20.06.2026 10:00',
+    ]);
+    expect(collect($unpaidRows)->flatten()->contains('Абонент с долгом'))->toBeFalse();
+
+    Livewire::test(ViewReport::class, ['report' => 'debts'])
+        ->assertOk()
+        ->assertCanSeeTableRecords([$unpaidReceipt, $debtOnlyReceipt], inOrder: true)
+        ->assertCanNotSeeTableRecords([$settledReceipt])
+        ->assertTableColumnStateSet('debt_period_for_report', '06.2026', $unpaidReceipt)
+        ->assertTableColumnStateSet('closing_balance', '4000.00', $unpaidReceipt)
+        ->assertTableColumnStateSet('closing_balance', '2500.00', $debtOnlyReceipt);
+
+    $debtsDownload = Livewire::test(ViewReport::class, ['report' => 'debts'])
+        ->assertOk()
+        ->callAction('downloadExcel')
+        ->assertFileDownloaded(
+            'debts-'.$organization->getKey().'-202606-'.today()->format('Y-m-d').'.xlsx',
+            contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        );
+
+    $debtRows = downloadedXlsxRows($debtsDownload->effects['download']);
+
+    expect($debtRows[0])->toBe([
+        'Лицевой счёт',
+        'Абонент',
+        'Адрес',
+        'Период',
+        'Начальное сальдо',
+        'Начислено',
+        'Оплачено',
+        'Корректировка',
+        'Долг',
+    ]);
+    expect($debtRows[1])->toEqual([
+        '510001',
+        'Неоплаченный абонент',
+        'Есильский, Кабанбай батыр, д. 11, кв. 2',
+        '06.2026',
+        0.0,
+        6000.0,
+        2000.0,
+        0.0,
+        4000.0,
+    ]);
+    expect($debtRows[2])->toEqual([
+        '510002',
+        'Абонент с долгом',
+        '-',
+        '06.2026',
+        2500.0,
+        1000.0,
+        1000.0,
+        0.0,
+        2500.0,
+    ]);
+    expect(collect($debtRows)->flatten()->contains('Оплаченный абонент'))->toBeFalse();
+});
+
+test('meter installation replacement report lists installed and removed meters in current billing period', function () {
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create();
+    $region = Region::factory()->for($organization)->create(['name' => 'Медеуский']);
+    $street = Street::factory()->for($region)->create(['name' => 'Достык']);
+
+    billingPeriodFor($organization, '202606');
+
+    $client = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'account_number' => '520001',
+            'name' => 'Абонент со счётчиком',
+            'billing_type' => 'meter',
+            'region_id' => $region->id,
+            'street_id' => $street->id,
+            'house' => '19',
+        ]);
+    $installedMeter = Meter::factory()
+        ->for($organization)
+        ->for($client)
+        ->for($utilityService)
+        ->create([
+            'number' => 'MTR-INSTALL',
+            'installed_on' => '2026-06-03',
+            'initial_reading' => 12.5,
+            'note' => 'Новый счётчик',
+        ]);
+    $removedMeter = Meter::factory()
+        ->for($organization)
+        ->for($client)
+        ->for($utilityService)
+        ->create([
+            'number' => 'MTR-REMOVED',
+            'installed_on' => '2025-01-10',
+            'initial_reading' => 30,
+            'note' => 'Замена',
+        ]);
+    $removedMeter->forceFill([
+        'removed_on' => '2026-06-12',
+        'status' => 'removed',
+    ])->save();
+    $oldMeter = Meter::factory()
+        ->for($organization)
+        ->for($client)
+        ->for($utilityService)
+        ->create(['number' => 'MTR-OLD', 'installed_on' => '2026-05-31']);
+
+    actingAsReportsTenant($organization);
+
+    Livewire::test(ViewReport::class, ['report' => 'meter-installation-replacement'])
+        ->assertOk()
+        ->assertCanSeeTableRecords([$installedMeter, $removedMeter], inOrder: true)
+        ->assertCanNotSeeTableRecords([$oldMeter])
+        ->assertTableColumnStateSet('client.account_number', '520001', $installedMeter)
+        ->assertTableColumnStateSet('client.name', 'Абонент со счётчиком', $installedMeter)
+        ->assertTableColumnStateSet('client_address', 'Медеуский, Достык, д. 19', $installedMeter)
+        ->assertTableColumnStateSet('meter_operation_for_report', 'Установка', $installedMeter)
+        ->assertTableColumnStateSet('meter_operation_for_report', 'Замена / снятие', $removedMeter)
+        ->assertTableColumnStateSet('meter_status_for_report', 'Снят', $removedMeter);
+
+    $download = Livewire::test(ViewReport::class, ['report' => 'meter-installation-replacement'])
+        ->assertOk()
+        ->callAction('downloadExcel')
+        ->assertFileDownloaded(
+            'meter-installation-replacement-'.$organization->getKey().'-202606-'.today()->format('Y-m-d').'.xlsx',
+            contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        );
+
+    $rows = downloadedXlsxRows($download->effects['download']);
+
+    expect($rows[0])->toBe([
+        'Лицевой счёт',
+        'Абонент',
+        'Адрес',
+        'Счётчик',
+        'Операция',
+        'Установлен',
+        'Снят',
+        'Начальное показание',
+        'Статус',
+        'Примечание',
+    ]);
+    expect($rows[1])->toEqual([
+        '520001',
+        'Абонент со счётчиком',
+        'Медеуский, Достык, д. 19',
+        'MTR-INSTALL',
+        'Установка',
+        '03.06.2026',
+        '',
+        12.5,
+        'Активный',
+        'Новый счётчик',
+    ]);
+    expect($rows[2])->toEqual([
+        '520001',
+        'Абонент со счётчиком',
+        'Медеуский, Достык, д. 19',
+        'MTR-REMOVED',
+        'Замена / снятие',
+        '10.01.2025',
+        '12.06.2026',
+        30.0,
+        'Снят',
+        'Замена',
+    ]);
+    expect(collect($rows)->flatten()->contains('MTR-OLD'))->toBeFalse();
+});
+
+test('consumption report lists meter readings for current billing period', function () {
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create();
+    $region = Region::factory()->for($organization)->create(['name' => 'Бостандыкский']);
+    $street = Street::factory()->for($region)->create(['name' => 'Тимирязева']);
+
+    billingPeriodFor($organization, '202606');
+
+    $client = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'account_number' => '530001',
+            'name' => 'Потребитель',
+            'billing_type' => 'meter',
+            'region_id' => $region->id,
+            'street_id' => $street->id,
+            'house' => '40',
+            'apartment' => '7',
+        ]);
+    $meter = Meter::factory()
+        ->for($organization)
+        ->for($client)
+        ->for($utilityService)
+        ->create(['number' => 'MTR-CONSUME', 'initial_reading' => 10]);
+    $meterReading = MeterReading::factory()
+        ->for($meter)
+        ->create([
+            'period' => '202606',
+            'previous_reading' => 10,
+            'current_reading' => 25.75,
+            'read_at' => '2026-06-08',
+        ]);
+
+    $otherOrganization = Organization::factory()->create();
+    $otherUtilityService = UtilityService::factory()->for($otherOrganization)->create();
+    $otherClient = Client::factory()
+        ->for($otherOrganization)
+        ->for($otherUtilityService)
+        ->create(['billing_type' => 'meter']);
+    $otherMeter = Meter::factory()
+        ->for($otherOrganization)
+        ->for($otherClient)
+        ->for($otherUtilityService)
+        ->create(['number' => 'MTR-OTHER-CONSUME']);
+    $otherReading = MeterReading::factory()
+        ->for($otherMeter)
+        ->create(['period' => '202606']);
+
+    actingAsReportsTenant($organization);
+
+    Livewire::test(ViewReport::class, ['report' => 'consumption'])
+        ->assertOk()
+        ->assertCanSeeTableRecords([$meterReading])
+        ->assertCanNotSeeTableRecords([$otherReading])
+        ->assertTableColumnStateSet('client.account_number', '530001', $meterReading)
+        ->assertTableColumnStateSet('client.name', 'Потребитель', $meterReading)
+        ->assertTableColumnStateSet('client_address', 'Бостандыкский, Тимирязева, д. 40, кв. 7', $meterReading)
+        ->assertTableColumnStateSet('meter.number', 'MTR-CONSUME', $meterReading)
+        ->assertTableColumnStateSet('consumption_period_for_report', '06.2026', $meterReading)
+        ->assertTableColumnStateSet('consumption', '15.7500', $meterReading);
+
+    $download = Livewire::test(ViewReport::class, ['report' => 'consumption'])
+        ->assertOk()
+        ->callAction('downloadExcel')
+        ->assertFileDownloaded(
+            'consumption-'.$organization->getKey().'-202606-'.today()->format('Y-m-d').'.xlsx',
+            contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        );
+
+    $rows = downloadedXlsxRows($download->effects['download']);
+
+    expect($rows[0])->toBe([
+        'Лицевой счёт',
+        'Абонент',
+        'Адрес',
+        'Счётчик',
+        'Период',
+        'Предыдущее',
+        'Текущее',
+        'Потребление',
+        'Дата снятия',
+    ]);
+    expect($rows[1])->toEqual([
+        '530001',
+        'Потребитель',
+        'Бостандыкский, Тимирязева, д. 40, кв. 7',
+        'MTR-CONSUME',
+        '06.2026',
+        10.0,
+        25.75,
+        15.75,
+        '08.06.2026',
+    ]);
+    expect(collect($rows)->flatten()->contains('MTR-OTHER-CONSUME'))->toBeFalse();
 });

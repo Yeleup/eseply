@@ -290,9 +290,9 @@
                 <div class="flex flex-col gap-4 border-b border-zinc-200 p-4 dark:border-zinc-800 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                         <p class="text-sm text-zinc-500 dark:text-zinc-400">Reports / XLSX export</p>
-                        <h2 class="text-base font-semibold">Отчёты по показаниям</h2>
+                        <h2 class="text-base font-semibold">Отчёты учёта</h2>
                         <p class="mt-2 max-w-2xl text-sm text-zinc-500 dark:text-zinc-400">
-                            Список отчётов показывает ведомость снятия, не снятые показания, процент снятия по контроллерам и новые лицевые счета. На странице отчёта доступны возврат к списку и скачивание Excel-файла.
+                            Список отчётов показывает показания, оплаты, неоплаченные квитанции, установку/замену счётчиков, долги, потребления и новые лицевые счета. На странице отчёта доступны возврат к списку и скачивание Excel-файла.
                         </p>
                     </div>
 
@@ -329,6 +329,36 @@
                         <p class="text-xs font-semibold uppercase tracking-wide text-sky-700 dark:text-sky-300">Новый отчёт</p>
                         <h3 class="mt-2 font-semibold">Новые лицевые счета</h3>
                         <p class="mt-1 text-sm text-sky-800/80 dark:text-sky-200/80">Абоненты, созданные в текущем расчётном месяце.</p>
+                    </div>
+
+                    <div class="rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-900/60 dark:bg-blue-950/30">
+                        <p class="text-xs font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-300">Новый отчёт</p>
+                        <h3 class="mt-2 font-semibold">Отчёт по оплатам</h3>
+                        <p class="mt-1 text-sm text-blue-800/80 dark:text-blue-200/80">Оплаты за текущий расчётный месяц.</p>
+                    </div>
+
+                    <div class="rounded-lg border border-rose-200 bg-rose-50 p-4 dark:border-rose-900/60 dark:bg-rose-950/30">
+                        <p class="text-xs font-semibold uppercase tracking-wide text-rose-700 dark:text-rose-300">Новый отчёт</p>
+                        <h3 class="mt-2 font-semibold">Отчёт по неоплаченным</h3>
+                        <p class="mt-1 text-sm text-rose-800/80 dark:text-rose-200/80">Квитанции, где начислено больше оплаченного.</p>
+                    </div>
+
+                    <div class="rounded-lg border border-cyan-200 bg-cyan-50 p-4 dark:border-cyan-900/60 dark:bg-cyan-950/30">
+                        <p class="text-xs font-semibold uppercase tracking-wide text-cyan-700 dark:text-cyan-300">Новый отчёт</p>
+                        <h3 class="mt-2 font-semibold">Замена/установка счётчика</h3>
+                        <p class="mt-1 text-sm text-cyan-800/80 dark:text-cyan-200/80">Установленные и снятые счётчики периода.</p>
+                    </div>
+
+                    <div class="rounded-lg border border-orange-200 bg-orange-50 p-4 dark:border-orange-900/60 dark:bg-orange-950/30">
+                        <p class="text-xs font-semibold uppercase tracking-wide text-orange-700 dark:text-orange-300">Новый отчёт</p>
+                        <h3 class="mt-2 font-semibold">Отчёт по долгам</h3>
+                        <p class="mt-1 text-sm text-orange-800/80 dark:text-orange-200/80">Положительное конечное сальдо по квитанциям.</p>
+                    </div>
+
+                    <div class="rounded-lg border border-lime-200 bg-lime-50 p-4 dark:border-lime-900/60 dark:bg-lime-950/30">
+                        <p class="text-xs font-semibold uppercase tracking-wide text-lime-700 dark:text-lime-300">Новый отчёт</p>
+                        <h3 class="mt-2 font-semibold">Отчёт по потреблениям</h3>
+                        <p class="mt-1 text-sm text-lime-800/80 dark:text-lime-200/80">Потребление по показаниям счётчиков.</p>
                     </div>
                 </div>
 
@@ -460,6 +490,97 @@
                                 <td class="px-4 py-3 text-zinc-500 dark:text-zinc-400">-</td>
                                 <td class="px-4 py-3">06.2026</td>
                                 <td class="px-4 py-3">16.06.2026 18:30</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="border-t border-zinc-200 p-4 dark:border-zinc-800">
+                    <h3 class="text-sm font-semibold">Финансовые отчёты</h3>
+                    <p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Отчёты по оплатам, неоплаченным квитанциям и долгам используют текущий расчётный месяц и один XLSX-паттерн.</p>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full min-w-240 text-left text-sm">
+                        <thead class="bg-zinc-100 text-xs font-semibold uppercase text-zinc-500 dark:bg-zinc-950 dark:text-zinc-400">
+                            <tr>
+                                <th class="px-4 py-3">Отчёт</th>
+                                <th class="px-4 py-3">Лицевой счёт</th>
+                                <th class="px-4 py-3">Абонент</th>
+                                <th class="px-4 py-3">Период</th>
+                                <th class="px-4 py-3">Начислено</th>
+                                <th class="px-4 py-3">Оплачено</th>
+                                <th class="px-4 py-3">Остаток</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-zinc-200 dark:divide-zinc-800">
+                            <tr>
+                                <td class="px-4 py-3 font-medium">Оплаты</td>
+                                <td class="px-4 py-3">500001</td>
+                                <td class="px-4 py-3">Плательщик</td>
+                                <td class="px-4 py-3">06.2026</td>
+                                <td class="px-4 py-3 text-zinc-400">-</td>
+                                <td class="px-4 py-3 font-semibold text-emerald-700 dark:text-emerald-300">3 500.00 KZT</td>
+                                <td class="px-4 py-3 text-zinc-400">-</td>
+                            </tr>
+                            <tr>
+                                <td class="px-4 py-3 font-medium">Неоплаченные</td>
+                                <td class="px-4 py-3">510001</td>
+                                <td class="px-4 py-3">Неоплаченный абонент</td>
+                                <td class="px-4 py-3">06.2026</td>
+                                <td class="px-4 py-3">6 000.00 KZT</td>
+                                <td class="px-4 py-3">2 000.00 KZT</td>
+                                <td class="px-4 py-3 font-semibold text-rose-700 dark:text-rose-300">4 000.00 KZT</td>
+                            </tr>
+                            <tr>
+                                <td class="px-4 py-3 font-medium">Долги</td>
+                                <td class="px-4 py-3">510002</td>
+                                <td class="px-4 py-3">Абонент с долгом</td>
+                                <td class="px-4 py-3">06.2026</td>
+                                <td class="px-4 py-3">1 000.00 KZT</td>
+                                <td class="px-4 py-3">1 000.00 KZT</td>
+                                <td class="px-4 py-3 font-semibold text-orange-700 dark:text-orange-300">2 500.00 KZT</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="border-t border-zinc-200 p-4 dark:border-zinc-800">
+                    <h3 class="text-sm font-semibold">Счётчики и потребления</h3>
+                    <p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Операционный блок показывает установку/снятие счётчиков и потребление по введённым показаниям.</p>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full min-w-240 text-left text-sm">
+                        <thead class="bg-zinc-100 text-xs font-semibold uppercase text-zinc-500 dark:bg-zinc-950 dark:text-zinc-400">
+                            <tr>
+                                <th class="px-4 py-3">Отчёт</th>
+                                <th class="px-4 py-3">Лицевой счёт</th>
+                                <th class="px-4 py-3">Счётчик</th>
+                                <th class="px-4 py-3">Операция / период</th>
+                                <th class="px-4 py-3">Предыдущее</th>
+                                <th class="px-4 py-3">Текущее</th>
+                                <th class="px-4 py-3">Потребление</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-zinc-200 dark:divide-zinc-800">
+                            <tr>
+                                <td class="px-4 py-3 font-medium">Замена/установка</td>
+                                <td class="px-4 py-3">520001</td>
+                                <td class="px-4 py-3 font-medium">MTR-INSTALL</td>
+                                <td class="px-4 py-3"><span class="rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200">Установка</span></td>
+                                <td class="px-4 py-3 text-zinc-400">-</td>
+                                <td class="px-4 py-3 text-zinc-400">-</td>
+                                <td class="px-4 py-3 text-zinc-400">-</td>
+                            </tr>
+                            <tr>
+                                <td class="px-4 py-3 font-medium">Потребления</td>
+                                <td class="px-4 py-3">530001</td>
+                                <td class="px-4 py-3 font-medium">MTR-CONSUME</td>
+                                <td class="px-4 py-3">06.2026</td>
+                                <td class="px-4 py-3">10.0000</td>
+                                <td class="px-4 py-3">25.7500</td>
+                                <td class="px-4 py-3 font-semibold text-lime-700 dark:text-lime-300">15.7500</td>
                             </tr>
                         </tbody>
                     </table>

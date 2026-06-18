@@ -14,6 +14,11 @@ class ReportRegistry
         MissingMeterReadingsReport::class,
         ControllerMeterReadingProgressReport::class,
         NewClientAccountsReport::class,
+        PaymentsReport::class,
+        UnpaidReceiptsReport::class,
+        MeterInstallationReplacementReport::class,
+        DebtsReport::class,
+        ConsumptionReport::class,
     ];
 
     /**

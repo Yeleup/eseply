@@ -160,7 +160,8 @@ test('meter reading sheet report keeps client meters together and scopes records
 
     Livewire::test(ListReports::class)
         ->assertOk()
-        ->assertSee('Ведомость снятия показаний');
+        ->assertSee('Ведомость снятия показаний')
+        ->assertSee('Список не снятых показаний');
 
     Livewire::test(ViewReport::class, ['report' => 'meter-reading-sheet'])
         ->assertOk()
@@ -222,4 +223,185 @@ test('meter reading sheet report keeps client meters together and scopes records
         'MTR-003',
     ]);
     expect(collect($rows)->flatten()->contains('MTR-OTHER'))->toBeFalse();
+});
+
+test('missing meter readings report lists active meter clients without current period readings', function () {
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create();
+    $region = Region::factory()->for($organization)->create(['name' => 'Бостандыкский']);
+    $street = Street::factory()->for($region)->create(['name' => 'Тимирязева']);
+
+    $missingClient = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'account_number' => '200001',
+            'name' => 'Сидоров Сидор',
+            'billing_type' => 'meter',
+            'residents_count' => 2,
+            'region_id' => $region->id,
+            'street_id' => $street->id,
+            'house' => '25',
+            'apartment' => '12',
+            'status' => 'active',
+        ]);
+    $recordedClient = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'account_number' => '200002',
+            'name' => 'Абонент с показанием',
+            'billing_type' => 'meter',
+            'status' => 'active',
+        ]);
+    $inactiveClient = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'account_number' => '200003',
+            'name' => 'Неактивный абонент',
+            'billing_type' => 'meter',
+            'status' => 'inactive',
+        ]);
+    $perPersonClient = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'account_number' => '200004',
+            'name' => 'Без счётчикового начисления',
+            'billing_type' => 'per_person',
+            'status' => 'active',
+        ]);
+
+    $missingMeter = Meter::factory()
+        ->for($organization)
+        ->for($missingClient)
+        ->for($utilityService)
+        ->create([
+            'number' => 'MISS-001',
+            'installed_on' => '2024-02-01',
+            'initial_reading' => 5,
+            'status' => 'active',
+        ]);
+    $initialOnlyMissingMeter = Meter::factory()
+        ->for($organization)
+        ->for($missingClient)
+        ->for($utilityService)
+        ->create([
+            'number' => 'MISS-002',
+            'installed_on' => null,
+            'initial_reading' => 17.5,
+            'status' => 'active',
+        ]);
+    $recordedMeter = Meter::factory()
+        ->for($organization)
+        ->for($recordedClient)
+        ->for($utilityService)
+        ->create([
+            'number' => 'READ-001',
+            'initial_reading' => 30,
+            'status' => 'active',
+        ]);
+    $inactiveClientMeter = Meter::factory()
+        ->for($organization)
+        ->for($inactiveClient)
+        ->for($utilityService)
+        ->create(['number' => 'INACTIVE-001', 'status' => 'active']);
+    $perPersonMeter = Meter::factory()
+        ->for($organization)
+        ->for($perPersonClient)
+        ->for($utilityService)
+        ->create(['number' => 'PER-001', 'status' => 'active']);
+    $removedMeter = Meter::factory()
+        ->for($organization)
+        ->for($missingClient)
+        ->for($utilityService)
+        ->create(['number' => 'REMOVED-001', 'status' => 'removed']);
+    $otherTenantMeter = Meter::factory()
+        ->for(Organization::factory())
+        ->create(['number' => 'OTHER-001', 'status' => 'active']);
+
+    MeterReading::factory()
+        ->for($missingMeter)
+        ->create([
+            'period' => '202605',
+            'previous_reading' => 5,
+            'current_reading' => 9.25,
+        ]);
+    closedBillingPeriodFor($organization, '202605');
+
+    billingPeriodFor($organization, '202606');
+
+    MeterReading::factory()
+        ->for($recordedMeter)
+        ->create([
+            'period' => '202606',
+            'previous_reading' => 30,
+            'current_reading' => 35,
+        ]);
+
+    actingAsReportsTenant($organization);
+
+    Livewire::test(ViewReport::class, ['report' => 'missing-meter-readings'])
+        ->assertOk()
+        ->assertCanSeeTableRecords([$missingMeter, $initialOnlyMissingMeter], inOrder: true)
+        ->assertCanNotSeeTableRecords([
+            $recordedMeter,
+            $inactiveClientMeter,
+            $perPersonMeter,
+            $removedMeter,
+            $otherTenantMeter,
+        ])
+        ->assertTableColumnStateSet('client.account_number', '200001', $missingMeter)
+        ->assertTableColumnStateSet('client.name', 'Сидоров Сидор', $missingMeter)
+        ->assertTableColumnStateSet('client_address', 'Бостандыкский, Тимирязева, д. 25, кв. 12', $missingMeter)
+        ->assertTableColumnStateSet('client.residents_count', 2, $missingMeter)
+        ->assertTableColumnStateSet('number', 'MISS-001', $missingMeter)
+        ->assertTableColumnStateSet('missing_period', '06.2026', $missingMeter)
+        ->assertTableColumnStateSet('previous_reading_for_report', '9.2500', $missingMeter)
+        ->assertTableColumnStateSet('previous_reading_for_report', '17.5000', $initialOnlyMissingMeter);
+
+    $download = Livewire::test(ViewReport::class, ['report' => 'missing-meter-readings'])
+        ->assertOk()
+        ->assertActionExists('downloadExcel')
+        ->callAction('downloadExcel')
+        ->assertFileDownloaded(
+            'missing-meter-readings-'.$organization->getKey().'-202606-'.today()->format('Y-m-d').'.xlsx',
+            contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        );
+
+    $rows = downloadedXlsxRows($download->effects['download']);
+
+    expect($rows[0])->toBe([
+        'Лицевой счёт',
+        'ФИО',
+        'Адрес',
+        'Кол. проживающих',
+        'Счётчик',
+        'Дата установки',
+        'Период',
+        'Предыдущее показание',
+    ]);
+    expect($rows[1])->toEqual([
+        '200001',
+        'Сидоров Сидор',
+        'Бостандыкский, Тимирязева, д. 25, кв. 12',
+        2,
+        'MISS-001',
+        '01.02.2024',
+        '06.2026',
+        9.25,
+    ]);
+    expect($rows[2])->toEqual([
+        '200001',
+        'Сидоров Сидор',
+        'Бостандыкский, Тимирязева, д. 25, кв. 12',
+        2,
+        'MISS-002',
+        '',
+        '06.2026',
+        17.5,
+    ]);
+    expect(collect($rows)->flatten()->contains('READ-001'))->toBeFalse();
+    expect(collect($rows)->flatten()->contains('OTHER-001'))->toBeFalse();
 });

@@ -290,9 +290,9 @@
                 <div class="flex flex-col gap-4 border-b border-zinc-200 p-4 dark:border-zinc-800 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                         <p class="text-sm text-zinc-500 dark:text-zinc-400">Reports / XLSX export</p>
-                        <h2 class="text-base font-semibold">Ведомость снятия показаний</h2>
+                        <h2 class="text-base font-semibold">Отчёты по показаниям</h2>
                         <p class="mt-2 max-w-2xl text-sm text-zinc-500 dark:text-zinc-400">
-                            Header actions страницы отчёта: возврат к списку и скачивание Excel-файла.
+                            Список отчётов показывает ведомость снятия и отчёт по не снятым показаниям. На странице отчёта доступны возврат к списку и скачивание Excel-файла.
                         </p>
                     </div>
 
@@ -306,6 +306,20 @@
                     </div>
                 </div>
 
+                <div class="grid grid-cols-1 gap-3 border-b border-zinc-200 p-4 dark:border-zinc-800 md:grid-cols-2">
+                    <div class="rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-950">
+                        <p class="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Отчёт</p>
+                        <h3 class="mt-2 font-semibold">Ведомость снятия показаний</h3>
+                        <p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Форма обхода по активным счётчикам.</p>
+                    </div>
+
+                    <div class="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/60 dark:bg-amber-950/30">
+                        <p class="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">Новый отчёт</p>
+                        <h3 class="mt-2 font-semibold">Список не снятых показаний</h3>
+                        <p class="mt-1 text-sm text-amber-800/80 dark:text-amber-200/80">Счётчики без показания за текущий расчётный месяц.</p>
+                    </div>
+                </div>
+
                 <div class="overflow-x-auto">
                     <table class="w-full min-w-240 text-left text-sm">
                         <thead class="bg-zinc-100 text-xs font-semibold uppercase text-zinc-500 dark:bg-zinc-950 dark:text-zinc-400">
@@ -316,8 +330,8 @@
                                 <th class="px-4 py-3">Прож.</th>
                                 <th class="px-4 py-3">Счётчик</th>
                                 <th class="px-4 py-3">Дата установки</th>
+                                <th class="px-4 py-3">Период</th>
                                 <th class="px-4 py-3">Предыдущее</th>
-                                <th class="px-4 py-3">Показание</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-zinc-200 dark:divide-zinc-800">
@@ -328,8 +342,18 @@
                                 <td class="px-4 py-3">3</td>
                                 <td class="px-4 py-3 font-medium">MTR-001</td>
                                 <td class="px-4 py-3 text-zinc-500 dark:text-zinc-400">15.01.2024</td>
+                                <td class="px-4 py-3">06.2026</td>
                                 <td class="px-4 py-3 font-medium">21.7500</td>
-                                <td class="px-4 py-3 text-zinc-400 dark:text-zinc-600">пусто</td>
+                            </tr>
+                            <tr>
+                                <td class="px-4 py-3 font-medium">100001</td>
+                                <td class="px-4 py-3">Иванов Иван</td>
+                                <td class="px-4 py-3 text-zinc-500 dark:text-zinc-400">Алмалинский, Абая, д. 10, кв. 5</td>
+                                <td class="px-4 py-3">3</td>
+                                <td class="px-4 py-3 font-medium">MTR-002</td>
+                                <td class="px-4 py-3 text-zinc-500 dark:text-zinc-400">-</td>
+                                <td class="px-4 py-3">06.2026</td>
+                                <td class="px-4 py-3 font-medium">20.0000</td>
                             </tr>
                         </tbody>
                     </table>

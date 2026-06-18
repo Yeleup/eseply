@@ -11,6 +11,7 @@ class ReportRegistry
      */
     private const REPORTS = [
         MeterReadingSheetReport::class,
+        MissingMeterReadingsReport::class,
     ];
 
     /**

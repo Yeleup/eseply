@@ -10,8 +10,10 @@ use App\Models\Region;
 use App\Models\Street;
 use App\Models\User;
 use App\Models\UtilityService;
+use App\OrganizationMemberRole;
 use Filament\Facades\Filament;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 use OpenSpout\Common\Entity\Cell;
 use OpenSpout\Reader\XLSX\Reader;
@@ -161,7 +163,8 @@ test('meter reading sheet report keeps client meters together and scopes records
     Livewire::test(ListReports::class)
         ->assertOk()
         ->assertSee('Ведомость снятия показаний')
-        ->assertSee('Список не снятых показаний');
+        ->assertSee('Список не снятых показаний')
+        ->assertSee('Процент снятия по контроллерам');
 
     Livewire::test(ViewReport::class, ['report' => 'meter-reading-sheet'])
         ->assertOk()
@@ -404,4 +407,230 @@ test('missing meter readings report lists active meter clients without current p
     ]);
     expect(collect($rows)->flatten()->contains('READ-001'))->toBeFalse();
     expect(collect($rows)->flatten()->contains('OTHER-001'))->toBeFalse();
+});
+
+test('controller meter reading progress report calculates percentages for assigned zones', function () {
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create();
+    $firstRegion = Region::factory()->for($organization)->create(['name' => 'Алмалинский']);
+    $secondRegion = Region::factory()->for($organization)->create(['name' => 'Медеуский']);
+    $firstStreet = Street::factory()->for($firstRegion)->create(['name' => 'Абая']);
+    $secondStreet = Street::factory()->for($secondRegion)->create(['name' => 'Достык']);
+
+    $firstController = User::factory()->create([
+        'name' => 'Controller A',
+        'email' => 'controller-a@example.test',
+    ]);
+    $secondController = User::factory()->create([
+        'name' => 'Controller B',
+        'email' => 'controller-b@example.test',
+    ]);
+    $controllerWithoutZone = User::factory()->create([
+        'name' => 'Controller C',
+        'email' => 'controller-c@example.test',
+    ]);
+    $operator = User::factory()->create(['name' => 'Operator']);
+    $otherTenantController = User::factory()->create(['name' => 'Other Controller']);
+
+    $organization->users()->attach($firstController, ['role' => OrganizationMemberRole::Controller->value]);
+    $organization->users()->attach($secondController, ['role' => OrganizationMemberRole::Controller->value]);
+    $organization->users()->attach($controllerWithoutZone, ['role' => OrganizationMemberRole::Controller->value]);
+    $organization->users()->attach($operator, ['role' => OrganizationMemberRole::Operator->value]);
+    Organization::factory()->create()->users()->attach($otherTenantController, [
+        'role' => OrganizationMemberRole::Controller->value,
+    ]);
+
+    DB::table('organization_user_regions')->insert([
+        'organization_id' => $organization->id,
+        'user_id' => $firstController->id,
+        'region_id' => $firstRegion->id,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+    DB::table('organization_user_streets')->insert([
+        'organization_id' => $organization->id,
+        'user_id' => $secondController->id,
+        'street_id' => $secondStreet->id,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    $firstClient = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'account_number' => '300001',
+            'billing_type' => 'meter',
+            'region_id' => $firstRegion->id,
+            'street_id' => $firstStreet->id,
+            'status' => 'active',
+        ]);
+    $secondClient = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'account_number' => '300002',
+            'billing_type' => 'meter',
+            'region_id' => $secondRegion->id,
+            'street_id' => $secondStreet->id,
+            'status' => 'active',
+        ]);
+    $inactiveClient = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'billing_type' => 'meter',
+            'region_id' => $firstRegion->id,
+            'street_id' => $firstStreet->id,
+            'status' => 'inactive',
+        ]);
+    $perPersonClient = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'billing_type' => 'per_person',
+            'region_id' => $firstRegion->id,
+            'street_id' => $firstStreet->id,
+            'status' => 'active',
+        ]);
+
+    $firstReadMeter = Meter::factory()
+        ->for($organization)
+        ->for($firstClient)
+        ->for($utilityService)
+        ->create(['number' => 'CTRL-A-READ-1', 'status' => 'active']);
+    $secondReadMeter = Meter::factory()
+        ->for($organization)
+        ->for($firstClient)
+        ->for($utilityService)
+        ->create(['number' => 'CTRL-A-READ-2', 'status' => 'active']);
+    $missingMeter = Meter::factory()
+        ->for($organization)
+        ->for($firstClient)
+        ->for($utilityService)
+        ->create(['number' => 'CTRL-A-MISSING', 'status' => 'active']);
+    $secondControllerMeter = Meter::factory()
+        ->for($organization)
+        ->for($secondClient)
+        ->for($utilityService)
+        ->create(['number' => 'CTRL-B-READ', 'status' => 'active']);
+    $inactiveClientMeter = Meter::factory()
+        ->for($organization)
+        ->for($inactiveClient)
+        ->for($utilityService)
+        ->create(['number' => 'CTRL-INACTIVE', 'status' => 'active']);
+    $perPersonMeter = Meter::factory()
+        ->for($organization)
+        ->for($perPersonClient)
+        ->for($utilityService)
+        ->create(['number' => 'CTRL-PER-PERSON', 'status' => 'active']);
+    $removedMeter = Meter::factory()
+        ->for($organization)
+        ->for($firstClient)
+        ->for($utilityService)
+        ->create(['number' => 'CTRL-REMOVED', 'status' => 'removed']);
+
+    MeterReading::factory()
+        ->for($missingMeter)
+        ->create(['period' => '202605']);
+    closedBillingPeriodFor($organization, '202605');
+
+    billingPeriodFor($organization, '202606');
+
+    MeterReading::factory()
+        ->for($firstReadMeter)
+        ->create(['period' => '202606']);
+    MeterReading::factory()
+        ->for($secondReadMeter)
+        ->create(['period' => '202606']);
+    MeterReading::factory()
+        ->for($secondControllerMeter)
+        ->create(['period' => '202606']);
+
+    actingAsReportsTenant($organization);
+
+    Livewire::test(ViewReport::class, ['report' => 'controller-meter-reading-progress'])
+        ->assertOk()
+        ->assertCanSeeTableRecords([$firstController, $secondController, $controllerWithoutZone], inOrder: true)
+        ->assertCanNotSeeTableRecords([$operator, $otherTenantController])
+        ->assertTableColumnStateSet('name', 'Controller A', $firstController)
+        ->assertTableColumnStateSet('email', 'controller-a@example.test', $firstController)
+        ->assertTableColumnStateSet('assigned_regions_for_report', 'Алмалинский', $firstController)
+        ->assertTableColumnStateSet('assigned_streets_for_report', '-', $firstController)
+        ->assertTableColumnStateSet('billing_period_for_report', '06.2026', $firstController)
+        ->assertTableColumnStateSet('total_meters_for_report', 3, $firstController)
+        ->assertTableColumnStateSet('read_meters_for_report', 2, $firstController)
+        ->assertTableColumnStateSet('missing_meters_for_report', 1, $firstController)
+        ->assertTableColumnStateSet('reading_completion_percent_for_report', '66.67%', $firstController)
+        ->assertTableColumnStateSet('assigned_regions_for_report', '-', $secondController)
+        ->assertTableColumnStateSet('assigned_streets_for_report', 'Медеуский / Достык', $secondController)
+        ->assertTableColumnStateSet('total_meters_for_report', 1, $secondController)
+        ->assertTableColumnStateSet('read_meters_for_report', 1, $secondController)
+        ->assertTableColumnStateSet('missing_meters_for_report', 0, $secondController)
+        ->assertTableColumnStateSet('reading_completion_percent_for_report', '100.00%', $secondController)
+        ->assertTableColumnStateSet('total_meters_for_report', 0, $controllerWithoutZone)
+        ->assertTableColumnStateSet('read_meters_for_report', 0, $controllerWithoutZone)
+        ->assertTableColumnStateSet('missing_meters_for_report', 0, $controllerWithoutZone)
+        ->assertTableColumnStateSet('reading_completion_percent_for_report', '0.00%', $controllerWithoutZone);
+
+    $download = Livewire::test(ViewReport::class, ['report' => 'controller-meter-reading-progress'])
+        ->assertOk()
+        ->assertActionExists('downloadExcel')
+        ->callAction('downloadExcel')
+        ->assertFileDownloaded(
+            'controller-meter-reading-progress-'.$organization->getKey().'-202606-'.today()->format('Y-m-d').'.xlsx',
+            contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        );
+
+    $rows = downloadedXlsxRows($download->effects['download']);
+
+    expect($rows[0])->toBe([
+        'Контроллер',
+        'Email',
+        'Регионы',
+        'Улицы',
+        'Период',
+        'Всего счётчиков',
+        'Снято',
+        'Не снято',
+        'Процент снятия',
+    ]);
+    expect($rows[1])->toEqual([
+        'Controller A',
+        'controller-a@example.test',
+        'Алмалинский',
+        '-',
+        '06.2026',
+        3,
+        2,
+        1,
+        66.67,
+    ]);
+    expect($rows[2])->toEqual([
+        'Controller B',
+        'controller-b@example.test',
+        '-',
+        'Медеуский / Достык',
+        '06.2026',
+        1,
+        1,
+        0,
+        100.0,
+    ]);
+    expect($rows[3])->toEqual([
+        'Controller C',
+        'controller-c@example.test',
+        '-',
+        '-',
+        '06.2026',
+        0,
+        0,
+        0,
+        0.0,
+    ]);
+    expect(collect($rows)->flatten()->contains('Operator'))->toBeFalse();
+    expect(collect($rows)->flatten()->contains('Other Controller'))->toBeFalse();
+    expect(collect($rows)->flatten()->contains('CTRL-INACTIVE'))->toBeFalse();
+    expect(collect($rows)->flatten()->contains('CTRL-PER-PERSON'))->toBeFalse();
+    expect(collect($rows)->flatten()->contains('CTRL-REMOVED'))->toBeFalse();
 });

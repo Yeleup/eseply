@@ -292,7 +292,7 @@
                         <p class="text-sm text-zinc-500 dark:text-zinc-400">Reports / XLSX export</p>
                         <h2 class="text-base font-semibold">Отчёты по показаниям</h2>
                         <p class="mt-2 max-w-2xl text-sm text-zinc-500 dark:text-zinc-400">
-                            Список отчётов показывает ведомость снятия и отчёт по не снятым показаниям. На странице отчёта доступны возврат к списку и скачивание Excel-файла.
+                            Список отчётов показывает ведомость снятия, не снятые показания и процент снятия по контроллерам. На странице отчёта доступны возврат к списку и скачивание Excel-файла.
                         </p>
                     </div>
 
@@ -306,7 +306,7 @@
                     </div>
                 </div>
 
-                <div class="grid grid-cols-1 gap-3 border-b border-zinc-200 p-4 dark:border-zinc-800 md:grid-cols-2">
+                <div class="grid grid-cols-1 gap-3 border-b border-zinc-200 p-4 dark:border-zinc-800 md:grid-cols-3">
                     <div class="rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-950">
                         <p class="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Отчёт</p>
                         <h3 class="mt-2 font-semibold">Ведомость снятия показаний</h3>
@@ -317,6 +317,12 @@
                         <p class="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">Новый отчёт</p>
                         <h3 class="mt-2 font-semibold">Список не снятых показаний</h3>
                         <p class="mt-1 text-sm text-amber-800/80 dark:text-amber-200/80">Счётчики без показания за текущий расчётный месяц.</p>
+                    </div>
+
+                    <div class="rounded-lg border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-900/60 dark:bg-emerald-950/30">
+                        <p class="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">Новый отчёт</p>
+                        <h3 class="mt-2 font-semibold">Процент снятия по контроллерам</h3>
+                        <p class="mt-1 text-sm text-emerald-800/80 dark:text-emerald-200/80">Снято, не снято и процент по зонам ответственности.</p>
                     </div>
                 </div>
 
@@ -354,6 +360,50 @@
                                 <td class="px-4 py-3 text-zinc-500 dark:text-zinc-400">-</td>
                                 <td class="px-4 py-3">06.2026</td>
                                 <td class="px-4 py-3 font-medium">20.0000</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="border-t border-zinc-200 p-4 dark:border-zinc-800">
+                    <h3 class="text-sm font-semibold">Процент снятия по контроллерам</h3>
+                    <p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Отдельная таблица показывает прогресс за текущий расчётный месяц.</p>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full min-w-220 text-left text-sm">
+                        <thead class="bg-zinc-100 text-xs font-semibold uppercase text-zinc-500 dark:bg-zinc-950 dark:text-zinc-400">
+                            <tr>
+                                <th class="px-4 py-3">Контроллер</th>
+                                <th class="px-4 py-3">Регионы</th>
+                                <th class="px-4 py-3">Улицы</th>
+                                <th class="px-4 py-3">Период</th>
+                                <th class="px-4 py-3">Всего</th>
+                                <th class="px-4 py-3">Снято</th>
+                                <th class="px-4 py-3">Не снято</th>
+                                <th class="px-4 py-3">%</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-zinc-200 dark:divide-zinc-800">
+                            <tr>
+                                <td class="px-4 py-3 font-medium">Controller A</td>
+                                <td class="px-4 py-3 text-zinc-500 dark:text-zinc-400">Алмалинский</td>
+                                <td class="px-4 py-3 text-zinc-500 dark:text-zinc-400">-</td>
+                                <td class="px-4 py-3">06.2026</td>
+                                <td class="px-4 py-3">3</td>
+                                <td class="px-4 py-3">2</td>
+                                <td class="px-4 py-3">1</td>
+                                <td class="px-4 py-3"><span class="rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-900/50 dark:text-amber-200">66.67%</span></td>
+                            </tr>
+                            <tr>
+                                <td class="px-4 py-3 font-medium">Controller B</td>
+                                <td class="px-4 py-3 text-zinc-500 dark:text-zinc-400">-</td>
+                                <td class="px-4 py-3 text-zinc-500 dark:text-zinc-400">Медеуский / Достык</td>
+                                <td class="px-4 py-3">06.2026</td>
+                                <td class="px-4 py-3">1</td>
+                                <td class="px-4 py-3">1</td>
+                                <td class="px-4 py-3">0</td>
+                                <td class="px-4 py-3"><span class="rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200">100.00%</span></td>
                             </tr>
                         </tbody>
                     </table>

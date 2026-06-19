@@ -14,6 +14,8 @@ use App\Models\Street;
 use App\Models\User;
 use App\Models\UtilityService;
 use App\OrganizationMemberRole;
+use App\Reports\ReportSummaryGroup;
+use App\Reports\ReportSummaryService;
 use Filament\Facades\Filament;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -863,6 +865,187 @@ test('payments report lists payments for current billing period', function () {
         'Kaspi',
     ]);
     expect(collect($rows)->flatten()->contains('Чужой плательщик'))->toBeFalse();
+});
+
+test('summary reports include subscriber rows under every matching controller', function () {
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create();
+    $region = Region::factory()->for($organization)->create(['name' => 'Алмалинский']);
+    $street = Street::factory()->for($region)->create(['name' => 'Абая']);
+    $unrelatedRegion = Region::factory()->for($organization)->create(['name' => 'Медеуский']);
+
+    $billingPeriod = billingPeriodFor($organization, '202606');
+
+    $controllerByRegion = User::factory()->create(['name' => 'Controller By Region']);
+    $controllerByStreet = User::factory()->create(['name' => 'Controller By Street']);
+    $controllerByBoth = User::factory()->create(['name' => 'Controller By Both']);
+    $unrelatedController = User::factory()->create(['name' => 'Unrelated Controller']);
+
+    $organization->users()->attach($controllerByRegion, ['role' => OrganizationMemberRole::Controller->value]);
+    $organization->users()->attach($controllerByStreet, ['role' => OrganizationMemberRole::Controller->value]);
+    $organization->users()->attach($controllerByBoth, ['role' => OrganizationMemberRole::Controller->value]);
+    $organization->users()->attach($unrelatedController, ['role' => OrganizationMemberRole::Controller->value]);
+
+    DB::table('organization_user_regions')->insert([
+        [
+            'organization_id' => $organization->id,
+            'user_id' => $controllerByRegion->id,
+            'region_id' => $region->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ],
+        [
+            'organization_id' => $organization->id,
+            'user_id' => $controllerByBoth->id,
+            'region_id' => $region->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ],
+        [
+            'organization_id' => $organization->id,
+            'user_id' => $unrelatedController->id,
+            'region_id' => $unrelatedRegion->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ],
+    ]);
+    DB::table('organization_user_streets')->insert([
+        [
+            'organization_id' => $organization->id,
+            'user_id' => $controllerByStreet->id,
+            'street_id' => $street->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ],
+        [
+            'organization_id' => $organization->id,
+            'user_id' => $controllerByBoth->id,
+            'street_id' => $street->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ],
+    ]);
+
+    $client = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'account_number' => '500010',
+            'name' => 'Сводный плательщик',
+            'region_id' => $region->id,
+            'street_id' => $street->id,
+        ]);
+    Payment::factory()
+        ->for($organization)
+        ->for($client)
+        ->create([
+            'period' => '202606',
+            'amount' => 3500,
+            'paid_at' => '2026-06-09',
+        ]);
+
+    $operator = actingAsReportsTenant($organization);
+    $summaryService = app(ReportSummaryService::class);
+
+    $controllerRecords = collect($summaryService->records(
+        'payments',
+        ReportSummaryGroup::Controller,
+        $organization,
+        $operator,
+        $billingPeriod,
+    ))->keyBy('group_label');
+
+    expect($controllerRecords->keys()->all())->toContain(
+        'Controller By Both',
+        'Controller By Region',
+        'Controller By Street',
+    );
+    expect($controllerRecords->keys()->all())->not->toContain('Unrelated Controller');
+
+    foreach (['Controller By Both', 'Controller By Region', 'Controller By Street'] as $controllerName) {
+        expect($controllerRecords->get($controllerName))->toMatchArray([
+            'clients_count' => 1,
+            'records_count' => 1,
+            'payments_count' => 1,
+            'payment_amount' => 3500.0,
+        ]);
+    }
+
+    $regionRecords = collect($summaryService->records(
+        'payments',
+        ReportSummaryGroup::Region,
+        $organization,
+        $operator,
+        $billingPeriod,
+    ))->keyBy('group_label');
+    $streetRecords = collect($summaryService->records(
+        'payments',
+        ReportSummaryGroup::Street,
+        $organization,
+        $operator,
+        $billingPeriod,
+    ))->keyBy('group_label');
+
+    expect($regionRecords->get('Алмалинский'))->toMatchArray([
+        'clients_count' => 1,
+        'records_count' => 1,
+        'payment_amount' => 3500.0,
+    ]);
+    expect($streetRecords->get('Алмалинский / Абая'))->toMatchArray([
+        'clients_count' => 1,
+        'records_count' => 1,
+        'payment_amount' => 3500.0,
+    ]);
+
+    Livewire::test(ViewReport::class, [
+        'report' => 'payments',
+        'mode' => 'summary',
+        'group' => ReportSummaryGroup::Controller->value,
+    ])
+        ->assertOk()
+        ->assertActionExists('detailMode')
+        ->assertActionExists('summaryByController')
+        ->assertActionExists('summaryByRegion')
+        ->assertActionExists('summaryByStreet')
+        ->assertSee('Controller By Both')
+        ->assertSee('Controller By Region')
+        ->assertSee('Controller By Street')
+        ->assertDontSee('Unrelated Controller');
+
+    $download = Livewire::test(ViewReport::class, [
+        'report' => 'payments',
+        'mode' => 'summary',
+        'group' => ReportSummaryGroup::Controller->value,
+    ])
+        ->assertOk()
+        ->callAction('downloadExcel')
+        ->assertFileDownloaded(
+            'summary-payments-controller-'.$organization->getKey().'-202606-'.today()->format('Y-m-d').'.xlsx',
+            contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        );
+
+    $rows = downloadedXlsxRows($download->effects['download']);
+
+    expect($rows[0])->toBe([
+        'Контроллер',
+        'Абонентов',
+        'Строк',
+        'Оплат',
+        'Сумма оплат',
+    ]);
+
+    $rowsByController = collect(array_slice($rows, 1))->keyBy(fn (array $row): mixed => $row[0]);
+
+    foreach (['Controller By Both', 'Controller By Region', 'Controller By Street'] as $controllerName) {
+        expect($rowsByController->get($controllerName))->toEqual([
+            $controllerName,
+            1,
+            1,
+            1,
+            3500.0,
+        ]);
+    }
+    expect($rowsByController->has('Unrelated Controller'))->toBeFalse();
 });
 
 test('unpaid receipts and debts reports use receipt payment and balance totals', function () {

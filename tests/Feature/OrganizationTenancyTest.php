@@ -4,6 +4,7 @@ use App\Filament\Pages\Tenancy\EditOrganizationProfile;
 use App\Filament\Pages\Tenancy\RegisterOrganization;
 use App\Filament\Pages\Tenancy\RelationManagers\RegionsRelationManager;
 use App\Filament\Pages\Tenancy\RelationManagers\UsersRelationManager;
+use App\Filament\Resources\Clients\ClientResource;
 use App\Filament\Resources\Regions\Pages\EditRegion;
 use App\Filament\Resources\Regions\RegionResource;
 use App\Filament\Resources\Regions\RelationManagers\StreetsRelationManager;
@@ -46,6 +47,17 @@ test('users can access only attached organization tenants', function () {
         ->toBe([$ownedOrganization->id])
         ->and($user->canAccessTenant($ownedOrganization))->toBeTrue()
         ->and($user->canAccessTenant($otherOrganization))->toBeFalse();
+});
+
+test('tenant home redirects to clients list', function () {
+    $organization = Organization::factory()->create();
+    $user = User::factory()->create();
+
+    $user->organizations()->attach($organization);
+
+    $this->actingAs($user)
+        ->get("/admin/{$organization->getRouteKey()}")
+        ->assertRedirect(ClientResource::getUrl(panel: 'admin', tenant: $organization));
 });
 
 test('tenant registration creates an organization and attaches the current user', function () {

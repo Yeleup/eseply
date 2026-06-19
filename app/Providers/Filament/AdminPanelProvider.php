@@ -7,6 +7,7 @@ use App\Filament\Pages\Tenancy\RegisterOrganization;
 use App\Filament\Resources\Accruals\Pages\ListAccruals;
 use App\Filament\Resources\BalanceAdjustments\Pages\CreateBalanceAdjustment;
 use App\Filament\Resources\BalanceAdjustments\Pages\ListBalanceAdjustments;
+use App\Filament\Resources\Clients\ClientResource;
 use App\Filament\Resources\Clients\Pages\EditClient;
 use App\Filament\Resources\MeterReadings\Pages\CreateMeterReading;
 use App\Filament\Resources\MeterReadings\Pages\ListMeterReadings;
@@ -22,17 +23,15 @@ use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
-use Filament\Pages\Dashboard;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
 use Filament\View\PanelsRenderHook;
-use Filament\Widgets\AccountWidget;
-use Filament\Widgets\FilamentInfoWidget;
 use Illuminate\Contracts\View\View;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\Route;
@@ -79,6 +78,10 @@ class AdminPanelProvider extends PanelProvider
                 ],
             )
             ->authenticatedTenantRoutes(function (): void {
+                Route::get('/', function (): RedirectResponse {
+                    return redirect()->to(ClientResource::getUrl(panel: 'admin', tenant: Filament::getTenant()));
+                })->name('home');
+
                 Route::get('/clients/{client}/card', ClientCardController::class)
                     ->name('clients.card');
                 Route::get('/receipts/{receipt}/print', [ReceiptPrintController::class, 'single'])
@@ -88,14 +91,7 @@ class AdminPanelProvider extends PanelProvider
             })
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\Filament\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\Filament\Pages')
-            ->pages([
-                Dashboard::class,
-            ])
-            ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\Filament\Widgets')
-            ->widgets([
-                AccountWidget::class,
-                FilamentInfoWidget::class,
-            ])
+            ->pages([])
             ->middleware([
                 EncryptCookies::class,
                 AddQueuedCookiesToResponse::class,

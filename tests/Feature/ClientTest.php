@@ -18,6 +18,7 @@ use App\Models\Accrual;
 use App\Models\BalanceAdjustment;
 use App\Models\Client;
 use App\Models\Meter;
+use App\Models\MeterReading;
 use App\Models\Organization;
 use App\Models\Payment;
 use App\Models\Receipt;
@@ -548,7 +549,7 @@ test('admin users can open a current tenant client card as a blade view', functi
             'apartment' => '15',
         ]);
 
-    Meter::factory()
+    $meter = Meter::factory()
         ->for($organization)
         ->for($utilityService)
         ->for($client)
@@ -566,6 +567,68 @@ test('admin users can open a current tenant client card as a blade view', functi
             'paid_at' => '2026-05-26',
             'note' => 'Оплата через кассу',
         ]);
+
+    BalanceAdjustment::factory()
+        ->for($organization)
+        ->for($client)
+        ->create([
+            'period' => '202605',
+            'type' => 'write_off',
+            'amount' => -500,
+            'adjusted_at' => '2026-05-27',
+            'note' => 'Списание по акту',
+        ]);
+
+    $meterReading = MeterReading::factory()
+        ->for($organization)
+        ->for($meter)
+        ->for($client)
+        ->create([
+            'period' => '202605',
+            'previous_reading' => 15.25,
+            'current_reading' => 48.12,
+            'read_at' => '2026-05-28',
+            'note' => 'Контрольное показание',
+        ]);
+
+    Accrual::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->for($client)
+        ->create([
+            'period' => '202605',
+            'account_number' => '100010',
+            'client_name' => 'Иванов Иван',
+            'utility_service_name' => 'Водоснабжение',
+            'billing_type' => 'meter',
+            'volume' => 32.87,
+            'tariff_price' => 195.77,
+            'amount' => 6435,
+            'paid_amount' => 2500,
+            'adjustment_amount' => -500,
+            'opening_balance' => 0,
+            'closing_balance' => 3435,
+            'closed_at' => '2026-05-31 10:00:00',
+        ]);
+
+    Receipt::query()
+        ->where('organization_id', $organization->getKey())
+        ->where('client_id', $client->getKey())
+        ->where('billing_period_id', $meterReading->billing_period_id)
+        ->sole()
+        ->forceFill([
+            'utility_service_name' => 'Водоснабжение',
+            'billing_type' => 'meter',
+            'volume' => 32.87,
+            'tariff_price' => 195.77,
+            'amount' => 6435,
+            'paid_amount' => 2500,
+            'adjustment_amount' => -500,
+            'opening_balance' => 0,
+            'closing_balance' => 3435,
+            'issued_at' => '2026-05-31 10:15:00',
+        ])
+        ->save();
 
     $user = actingAsTenant($organization);
     $this->actingAs($user);
@@ -588,18 +651,33 @@ test('admin users can open a current tenant client card as a blade view', functi
             'addressDetails',
             'billingDetails',
             'meters',
+            'meterRows',
+            'meterReadingRows',
+            'paymentRows',
+            'balanceAdjustmentRows',
+            'accrualRows',
+            'receiptRows',
             'payments',
         ])
         ->assertSeeTextInOrder([
             'Карточка абонента',
+            'Печатать PDF',
             'Лицевой счёт',
             '100010',
             'Иванов Иван',
             'Счётчики',
             'MTR-100010',
+            'Показания счётчиков',
+            '48.1200',
             'Оплаты',
             '202605',
             '2 500.00 KZT',
+            'Корректировки сальдо',
+            'Списание',
+            'Начисления',
+            '6 435.00 KZT',
+            'Квитанции',
+            '202605-100010',
         ]);
 
     expect(str_starts_with($response->getContent(), '%PDF'))->toBeFalse();

@@ -134,16 +134,16 @@ class PaymentsRelationManager extends RelationManager
 
                         return $data;
                     }),
-                Action::make('createKaspiQr')
-                    ->label('Создать Kaspi QR')
-                    ->icon(Heroicon::OutlinedQrCode)
+                Action::make('createKaspiRemotePayment')
+                    ->label('Отправить Kaspi оплату')
+                    ->icon(Heroicon::OutlinedDevicePhoneMobile)
                     ->color('danger')
-                    ->modalHeading('Создать Kaspi QR')
-                    ->modalSubmitActionLabel('Создать QR')
+                    ->modalHeading('Отправить удалённую Kaspi оплату')
+                    ->modalSubmitActionLabel('Отправить')
                     ->disabled(fn (): bool => CurrentBillingPeriod::missing($this->ownerRecord->organization))
                     ->tooltip(fn (): ?string => CurrentBillingPeriod::missingTooltip($this->ownerRecord->organization))
                     ->schema(fn (): array => [
-                        Section::make('Kaspi QR')
+                        Section::make('Удалённая Kaspi оплата')
                             ->columns(2)
                             ->schema([
                                 TextInput::make('amount')
@@ -155,7 +155,8 @@ class PaymentsRelationManager extends RelationManager
                                 TextInput::make('payer_phone')
                                     ->label('Телефон плательщика')
                                     ->tel()
-                                    ->maxLength(255),
+                                    ->maxLength(255)
+                                    ->required(),
                                 Textarea::make('note')
                                     ->label('Примечание')
                                     ->columnSpanFull(),
@@ -166,14 +167,14 @@ class PaymentsRelationManager extends RelationManager
                             $paymentTransaction = app(CreateKaspiPaymentTransaction::class)->handle(
                                 client: $this->ownerRecord,
                                 amount: $data['amount'],
-                                payerPhone: $data['payer_phone'] ?? null,
+                                payerPhone: (string) ($data['payer_phone'] ?? ''),
                                 note: $data['note'] ?? null,
                             );
                         } catch (Throwable $exception) {
                             report($exception);
 
                             Notification::make()
-                                ->title('Не удалось создать Kaspi QR')
+                                ->title('Не удалось отправить Kaspi оплату')
                                 ->body($exception->getMessage())
                                 ->danger()
                                 ->send();
@@ -182,10 +183,8 @@ class PaymentsRelationManager extends RelationManager
                         }
 
                         Notification::make()
-                            ->title('Kaspi QR создан')
-                            ->body($paymentTransaction->qr_url
-                                ? "Ссылка QR: {$paymentTransaction->qr_url}"
-                                : 'Заявка создана. Ссылка QR не вернулась от XPayment.')
+                            ->title('Kaspi-заявка отправлена')
+                            ->body("Удалённая оплата отправлена на телефон {$paymentTransaction->payer_phone}.")
                             ->success()
                             ->send();
                     }),

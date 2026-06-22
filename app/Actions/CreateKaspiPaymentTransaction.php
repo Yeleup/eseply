@@ -17,8 +17,14 @@ class CreateKaspiPaymentTransaction
 {
     public function __construct(private readonly XPaymentClient $xPaymentClient) {}
 
-    public function handle(Client $client, float|int|string $amount, ?string $payerPhone = null, ?string $note = null): PaymentTransaction
+    public function handle(Client $client, float|int|string $amount, string $payerPhone, ?string $note = null): PaymentTransaction
     {
+        $payerPhone = trim($payerPhone);
+
+        if ($payerPhone === '') {
+            throw new RuntimeException('Укажите телефон плательщика Kaspi для удалённой оплаты.');
+        }
+
         $client->loadMissing('organization');
 
         $apiKey = $client->organization?->xpayment_api_key;
@@ -45,7 +51,14 @@ class CreateKaspiPaymentTransaction
         ]);
 
         try {
-            $response = $this->xPaymentClient->createPaymentLink($amount, $merchantOrderId, $idempotencyKey, $apiKey);
+            $response = $this->xPaymentClient->createPayment(
+                amount: $amount,
+                merchantOrderId: $merchantOrderId,
+                payerPhone: $payerPhone,
+                comment: $note,
+                idempotencyKey: $idempotencyKey,
+                apiKey: $apiKey,
+            );
         } catch (Throwable $exception) {
             $paymentTransaction->forceFill([
                 'status' => PaymentTransactionStatus::Failed,
@@ -64,7 +77,7 @@ class CreateKaspiPaymentTransaction
         $paymentTransaction->forceFill([
             'status' => $status,
             'external_payment_id' => $this->payloadString($response, 'payment_id'),
-            'qr_url' => $this->payloadString($response, 'qr_token'),
+            'qr_url' => null,
             'expires_at' => $this->parseDateTime($response['expire_date'] ?? null),
             'completed_at' => $status === PaymentTransactionStatus::Completed ? now() : null,
             'failed_at' => $status === PaymentTransactionStatus::Failed ? now() : null,

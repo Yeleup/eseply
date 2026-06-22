@@ -64,11 +64,6 @@ class PaymentTransactionsRelationManager extends RelationManager
                     ->badge()
                     ->formatStateUsing(fn (mixed $state): string => PaymentTransactionStatus::labelFor($state) ?? (string) $state)
                     ->color(fn (mixed $state): string => PaymentTransactionStatus::colorFor($state)),
-                TextColumn::make('qr_url')
-                    ->label('QR')
-                    ->state(fn (PaymentTransaction $record): ?string => $record->qr_url ? 'Открыть QR' : null)
-                    ->url(fn (PaymentTransaction $record): ?string => $record->qr_url, shouldOpenInNewTab: true)
-                    ->placeholder('-'),
                 TextColumn::make('payer_phone')
                     ->label('Телефон')
                     ->placeholder('-')
@@ -96,11 +91,6 @@ class PaymentTransactionsRelationManager extends RelationManager
                     ->options(PaymentTransactionStatus::class),
             ])
             ->recordActions([
-                Action::make('openQr')
-                    ->label('Открыть QR')
-                    ->icon(Heroicon::OutlinedQrCode)
-                    ->url(fn (PaymentTransaction $record): ?string => $record->qr_url, shouldOpenInNewTab: true)
-                    ->visible(fn (PaymentTransaction $record): bool => filled($record->qr_url)),
                 Action::make('syncStatus')
                     ->label('Синхронизировать')
                     ->icon(Heroicon::OutlinedArrowPath)

@@ -11,16 +11,29 @@ class XPaymentClient
     /**
      * @return array<string, mixed>
      */
-    public function createPaymentLink(float|int|string $amount, string $merchantOrderId, string $idempotencyKey, string $apiKey): array
-    {
+    public function createPayment(
+        float|int|string $amount,
+        string $merchantOrderId,
+        string $payerPhone,
+        ?string $comment,
+        string $idempotencyKey,
+        string $apiKey,
+    ): array {
+        $payload = [
+            'payer_phone' => $payerPhone,
+            'amount' => (float) $amount,
+            'merchant_order_id' => $merchantOrderId,
+        ];
+
+        if ($comment !== null && trim($comment) !== '') {
+            $payload['comment'] = $comment;
+        }
+
         $response = $this->request($apiKey)
             ->withHeaders([
                 'X-Idempotency-Key' => $idempotencyKey,
             ])
-            ->post('/payments/link', [
-                'amount' => (float) $amount,
-                'merchant_order_id' => $merchantOrderId,
-            ])
+            ->post('/payments', $payload)
             ->throw();
 
         return $response->json() ?? [];

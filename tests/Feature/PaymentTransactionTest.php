@@ -19,14 +19,12 @@ beforeEach(function () {
     config()->set('services.xpayment.webhook_secret', 'xpayment-global-webhook-secret');
 });
 
-test('creating kaspi qr stores a pending transaction without creating a payment', function () {
+test('creating kaspi remote payment stores a pending transaction without creating a payment', function () {
     Http::preventStrayRequests();
     Http::fake([
-        'api.xpayment.test/v1/payments/link' => Http::response([
-            'expire_date' => '2026-06-22T11:39:53.000+05:00',
+        'api.xpayment.test/v1/payments' => Http::response([
             'payment_id' => 'xpay-uuid-1',
-            'qr_token' => 'https://qr.kaspi.kz/test-token',
-            'status' => 'QrTokenCreated',
+            'status' => 'pending',
         ]),
     ]);
 
@@ -40,7 +38,7 @@ test('creating kaspi qr stores a pending transaction without creating a payment'
         client: $client,
         amount: 2500,
         payerPhone: '+77001234567',
-        note: 'Оплата по QR',
+        note: 'Удалённая оплата',
     );
 
     expect($paymentTransaction->organization->is($organization))->toBeTrue()
@@ -48,15 +46,31 @@ test('creating kaspi qr stores a pending transaction without creating a payment'
         ->and($paymentTransaction->period)->toBe('202606')
         ->and($paymentTransaction->status)->toBe(PaymentTransactionStatus::Pending)
         ->and($paymentTransaction->external_payment_id)->toBe('xpay-uuid-1')
-        ->and($paymentTransaction->qr_url)->toBe('https://qr.kaspi.kz/test-token')
+        ->and($paymentTransaction->qr_url)->toBeNull()
         ->and($paymentTransaction->payer_phone)->toBe('+77001234567')
         ->and(Payment::query()->count())->toBe(0);
 
-    Http::assertSent(fn (Request $request): bool => $request->url() === 'https://api.xpayment.test/v1/payments/link'
+    Http::assertSent(fn (Request $request): bool => $request->url() === 'https://api.xpayment.test/v1/payments'
         && $request->hasHeader('Authorization', 'Bearer xdev_org_key_1')
         && $request->hasHeader('X-Idempotency-Key')
         && $request['amount'] === 2500.0
+        && $request['payer_phone'] === '+77001234567'
+        && $request['comment'] === 'Удалённая оплата'
         && $request['merchant_order_id'] === $paymentTransaction->merchant_order_id);
+});
+
+test('kaspi remote payment requires payer phone', function () {
+    $organization = Organization::factory()->create([
+        'xpayment_api_key' => 'xdev_org_key_1',
+    ]);
+    $client = Client::factory()->for($organization)->create();
+    billingPeriodFor($organization, '202606');
+
+    expect(fn () => app(CreateKaspiPaymentTransaction::class)->handle(
+        client: $client,
+        amount: 2500,
+        payerPhone: '',
+    ))->toThrow(RuntimeException::class, 'Укажите телефон плательщика Kaspi для удалённой оплаты.');
 });
 
 test('completed kaspi transaction creates one kaspi payment', function () {

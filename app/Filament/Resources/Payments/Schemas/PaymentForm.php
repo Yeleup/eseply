@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Payments\Schemas;
 
 use App\Models\Client;
+use App\PaymentMethod;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
@@ -34,6 +35,12 @@ class PaymentForm
                             ->preload()
                             ->required()
                             ->scopedExists(Client::class, 'id')
+                            ->native(false),
+                        Select::make('method')
+                            ->label('Способ оплаты')
+                            ->options(PaymentMethod::class)
+                            ->default(PaymentMethod::Cash->value)
+                            ->required()
                             ->native(false),
                         TextInput::make('amount')
                             ->label('Сумма')

@@ -11,6 +11,7 @@ use App\Models\Organization;
 use App\Models\Payment;
 use App\Models\User;
 use App\Models\UtilityService;
+use App\PaymentMethod;
 use Filament\Facades\Filament;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
@@ -47,6 +48,7 @@ test('payments belong to an organization and client', function () {
     expect($payment->organization->is($organization))->toBeTrue()
         ->and($payment->client->is($client))->toBeTrue()
         ->and($payment->period)->toBe('202605')
+        ->and($payment->method)->toBe(PaymentMethod::Cash)
         ->and($payment->amount)->toBe('1500.00')
         ->and($payment->paid_at->toDateString())->toBe('2026-05-26');
 });
@@ -159,6 +161,7 @@ test('admin users can create and list payments for the current tenant', function
         ->sole();
 
     expect($payment->amount)->toBe('2500.00');
+    expect($payment->method)->toBe(PaymentMethod::Cash);
 
     Livewire::test(ListPayments::class)
         ->assertOk()

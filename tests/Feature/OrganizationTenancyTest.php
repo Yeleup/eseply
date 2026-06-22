@@ -132,6 +132,43 @@ test('tenant profile updates organization utility service', function () {
         ->and($organization->utilityService()->count())->toBe(1);
 });
 
+test('tenant profile stores organization xpayment api key encrypted', function () {
+    $organization = Organization::factory()->create([
+        'phone' => '+7 777 000 22 33',
+    ]);
+    UtilityService::factory()->for($organization)->create([
+        'name' => 'Водоснабжение',
+        'unit_of_measurement' => 'м3',
+    ]);
+
+    actingAsOrganizationTenant($organization);
+
+    Livewire::test(EditOrganizationProfile::class)
+        ->fillForm([
+            'name' => $organization->name,
+            'bin_iin' => $organization->bin_iin,
+            'phone' => '+7 777 000 22 33',
+            'address' => $organization->address,
+            'bank' => $organization->bank,
+            'iban' => $organization->iban,
+            'note' => $organization->note,
+            'utility_service_name' => 'Водоснабжение',
+            'utility_service_unit_of_measurement' => 'м3',
+            'xpayment_api_key' => 'xdev_organization_key',
+        ])
+        ->call('save')
+        ->assertHasNoFormErrors()
+        ->assertNotified();
+
+    $organization->refresh();
+    $rawOrganization = DB::table((new Organization)->getTable())
+        ->where('id', $organization->getKey())
+        ->first();
+
+    expect($organization->xpayment_api_key)->toBe('xdev_organization_key')
+        ->and($rawOrganization->xpayment_api_key)->not->toBe('xdev_organization_key');
+});
+
 test('regions and streets belong to an organization', function () {
     $organization = Organization::factory()->create();
     $region = Region::factory()

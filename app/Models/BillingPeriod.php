@@ -174,6 +174,11 @@ class BillingPeriod extends Model
         return $this->hasMany(Payment::class);
     }
 
+    public function paymentTransactions(): HasMany
+    {
+        return $this->hasMany(PaymentTransaction::class);
+    }
+
     public function meterReadings(): HasMany
     {
         return $this->hasMany(MeterReading::class);

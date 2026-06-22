@@ -14,6 +14,7 @@ use App\Models\Street;
 use App\Models\User;
 use App\Models\UtilityService;
 use App\OrganizationMemberRole;
+use App\PaymentMethod;
 use App\Reports\ReportSummaryGroup;
 use App\Reports\ReportSummaryService;
 use Filament\Facades\Filament;
@@ -811,6 +812,7 @@ test('payments report lists payments for current billing period', function () {
             'period' => '202606',
             'amount' => 3500,
             'paid_at' => '2026-06-09',
+            'method' => PaymentMethod::Kaspi,
             'note' => 'Kaspi',
         ]);
 
@@ -853,6 +855,7 @@ test('payments report lists payments for current billing period', function () {
         'Период',
         'Дата оплаты',
         'Сумма',
+        'Способ',
         'Примечание',
     ]);
     expect($rows[1])->toEqual([
@@ -862,6 +865,7 @@ test('payments report lists payments for current billing period', function () {
         '06.2026',
         '09.06.2026',
         3500.0,
+        'Kaspi',
         'Kaspi',
     ]);
     expect(collect($rows)->flatten()->contains('Чужой плательщик'))->toBeFalse();

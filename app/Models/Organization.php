@@ -12,7 +12,16 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
-#[Fillable(['name', 'bin_iin', 'phone', 'address', 'bank', 'iban', 'note'])]
+#[Fillable([
+    'name',
+    'bin_iin',
+    'phone',
+    'address',
+    'bank',
+    'iban',
+    'note',
+    'xpayment_api_key',
+])]
 class Organization extends Model implements HasCurrentTenantLabel, HasName
 {
     /** @use HasFactory<OrganizationFactory> */
@@ -23,6 +32,13 @@ class Organization extends Model implements HasCurrentTenantLabel, HasName
      */
     protected $attributes = [
         'next_client_account_number' => Client::FIRST_AUTOMATIC_ACCOUNT_NUMBER,
+    ];
+
+    /**
+     * @var list<string>
+     */
+    protected $hidden = [
+        'xpayment_api_key',
     ];
 
     public function users(): BelongsToMany
@@ -82,6 +98,11 @@ class Organization extends Model implements HasCurrentTenantLabel, HasName
         return $this->hasMany(Payment::class);
     }
 
+    public function paymentTransactions(): HasMany
+    {
+        return $this->hasMany(PaymentTransaction::class);
+    }
+
     public function balanceAdjustments(): HasMany
     {
         return $this->hasMany(BalanceAdjustment::class);
@@ -111,6 +132,7 @@ class Organization extends Model implements HasCurrentTenantLabel, HasName
     {
         return [
             'next_client_account_number' => 'integer',
+            'xpayment_api_key' => 'encrypted',
         ];
     }
 }

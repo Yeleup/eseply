@@ -63,6 +63,17 @@ class RegisterOrganization extends RegisterTenant
                             ->required()
                             ->maxLength(255),
                     ]),
+                Section::make('XPayment / Kaspi')
+                    ->columns(1)
+                    ->schema([
+                        TextInput::make('xpayment_api_key')
+                            ->label('API key устройства')
+                            ->password()
+                            ->revealable()
+                            ->maxLength(255)
+                            ->helperText('Уникальный xdev_* ключ этой организации. Можно заполнить позже в профиле организации.')
+                            ->dehydrated(fn (?string $state): bool => filled($state)),
+                    ]),
             ]);
     }
 

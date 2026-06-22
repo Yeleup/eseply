@@ -6,6 +6,7 @@ use App\Models\BillingPeriod;
 use App\Models\Organization;
 use App\Models\Payment;
 use App\Models\User;
+use App\PaymentMethod;
 use App\Reports\Concerns\FormatsReportValues;
 use App\Reports\Contracts\OrganizationReport;
 use Filament\Tables\Columns\TextColumn;
@@ -71,6 +72,11 @@ class PaymentsReport implements OrganizationReport
                     ->label('Сумма')
                     ->money('KZT')
                     ->sortable(),
+                TextColumn::make('method')
+                    ->label('Способ')
+                    ->badge()
+                    ->formatStateUsing(fn (mixed $state): string => PaymentMethod::labelFor($state) ?? (string) $state)
+                    ->color(fn (mixed $state): string => PaymentMethod::colorFor($state)),
                 TextColumn::make('note')
                     ->label('Примечание')
                     ->placeholder('-')
@@ -145,7 +151,8 @@ class PaymentsReport implements OrganizationReport
         $options->setColumnWidth(14, 4);
         $options->setColumnWidth(16, 5);
         $options->setColumnWidth(16, 6);
-        $options->setColumnWidth(32, 7);
+        $options->setColumnWidth(16, 7);
+        $options->setColumnWidth(32, 8);
 
         return $options;
     }
@@ -162,6 +169,7 @@ class PaymentsReport implements OrganizationReport
             'Период',
             'Дата оплаты',
             'Сумма',
+            'Способ',
             'Примечание',
         ];
     }
@@ -181,6 +189,7 @@ class PaymentsReport implements OrganizationReport
             new StringCell($billingPeriod?->label ?? '', null),
             new StringCell($payment->paid_at?->format('d.m.Y') ?? '', null),
             new NumericCell((float) $payment->amount, null),
+            new StringCell(PaymentMethod::labelFor($payment->method) ?? '', null),
             new StringCell((string) ($payment->note ?? ''), null),
         ];
     }

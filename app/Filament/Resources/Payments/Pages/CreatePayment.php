@@ -4,6 +4,7 @@ namespace App\Filament\Resources\Payments\Pages;
 
 use App\Filament\Resources\Payments\PaymentResource;
 use App\Filament\Support\CurrentBillingPeriod;
+use App\PaymentMethod;
 use Filament\Actions\Action;
 use Filament\Facades\Filament;
 use Filament\Resources\Pages\CreateRecord;
@@ -19,6 +20,8 @@ class CreatePayment extends CreateRecord
     protected function mutateFormDataBeforeCreate(array $data): array
     {
         $data['organization_id'] = Filament::getTenant()?->getKey();
+        $data['method'] ??= PaymentMethod::Cash->value;
+        $data['received_by_user_id'] = auth()->id();
 
         return $data;
     }

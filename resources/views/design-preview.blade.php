@@ -794,6 +794,7 @@
                                         <tr>
                                             <th class="border-b border-r border-zinc-200 px-3 py-2 dark:border-zinc-800">Раздел</th>
                                             <th class="border-b border-r border-zinc-200 px-3 py-2 dark:border-zinc-800">Период</th>
+                                            <th class="border-b border-r border-zinc-200 px-3 py-2 dark:border-zinc-800">Способ</th>
                                             <th class="border-b border-r border-zinc-200 px-3 py-2 text-right dark:border-zinc-800">Сумма</th>
                                             <th class="border-b border-zinc-200 px-3 py-2 dark:border-zinc-800">Дата</th>
                                         </tr>
@@ -802,17 +803,39 @@
                                         <tr class="odd:bg-zinc-50/70 dark:odd:bg-zinc-950/60">
                                             <td class="border-r border-zinc-200 px-3 py-2 font-semibold dark:border-zinc-800">Оплата</td>
                                             <td class="border-r border-zinc-200 px-3 py-2 dark:border-zinc-800">05.2026</td>
+                                            <td class="border-r border-zinc-200 px-3 py-2 dark:border-zinc-800">Наличные</td>
                                             <td class="border-r border-zinc-200 px-3 py-2 text-right font-semibold dark:border-zinc-800">2 500.00 KZT</td>
                                             <td class="px-3 py-2">26.05.2026</td>
                                         </tr>
                                         <tr>
                                             <td class="border-r border-zinc-200 px-3 py-2 font-semibold dark:border-zinc-800">Корректировка</td>
                                             <td class="border-r border-zinc-200 px-3 py-2 dark:border-zinc-800">05.2026</td>
+                                            <td class="border-r border-zinc-200 px-3 py-2 dark:border-zinc-800">-</td>
                                             <td class="border-r border-zinc-200 px-3 py-2 text-right font-semibold dark:border-zinc-800">-500.00 KZT</td>
                                             <td class="px-3 py-2">27.05.2026</td>
                                         </tr>
                                     </tbody>
                                 </table>
+                            </div>
+
+                            <div class="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 dark:border-red-900/60 dark:bg-red-950/20">
+                                <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                    <div>
+                                        <p class="text-xs font-semibold uppercase tracking-wide text-red-700 dark:text-red-300">Kaspi QR</p>
+                                        <p class="mt-1 text-sm font-medium text-red-950 dark:text-red-100">Заявка ожидает оплату</p>
+                                    </div>
+                                    <span class="rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-900 dark:bg-amber-900/50 dark:text-amber-100">pending</span>
+                                </div>
+                                <dl class="mt-4 grid grid-cols-2 gap-3 text-xs">
+                                    <div>
+                                        <dt class="text-zinc-500 dark:text-zinc-400">Сумма</dt>
+                                        <dd class="mt-1 font-semibold">2 500.00 KZT</dd>
+                                    </div>
+                                    <div>
+                                        <dt class="text-zinc-500 dark:text-zinc-400">QR</dt>
+                                        <dd class="mt-1 font-semibold text-red-700 dark:text-red-300">Открыть QR</dd>
+                                    </div>
+                                </dl>
                             </div>
                         </div>
                     </div>

@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Payments\Tables;
 
 use App\Filament\Support\BillingPeriodOptions;
+use App\PaymentMethod;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
@@ -40,6 +41,11 @@ class PaymentsTable
                     ->label('Сумма')
                     ->money('KZT')
                     ->sortable(),
+                TextColumn::make('method')
+                    ->label('Способ')
+                    ->badge()
+                    ->formatStateUsing(fn (mixed $state): string => PaymentMethod::labelFor($state) ?? (string) $state)
+                    ->color(fn (mixed $state): string => PaymentMethod::colorFor($state)),
                 TextColumn::make('paid_at')
                     ->label('Дата оплаты')
                     ->date('d.m.Y')
@@ -62,6 +68,9 @@ class PaymentsTable
                         ->orderBy('account_number')
                         ->pluck('account_number', 'id')
                         ->all() ?? []),
+                SelectFilter::make('method')
+                    ->label('Способ оплаты')
+                    ->options(PaymentMethod::class),
             ])
             ->recordActions([
                 EditAction::make(),

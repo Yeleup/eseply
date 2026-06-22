@@ -4,14 +4,16 @@ namespace Database\Factories;
 
 use App\Models\Client;
 use App\Models\Organization;
-use App\Models\Payment;
-use App\PaymentMethod;
+use App\Models\PaymentTransaction;
+use App\PaymentTransactionProvider;
+use App\PaymentTransactionStatus;
 use Illuminate\Database\Eloquent\Factories\Factory;
+use Illuminate\Support\Str;
 
 /**
- * @extends Factory<Payment>
+ * @extends Factory<PaymentTransaction>
  */
-class PaymentFactory extends Factory
+class PaymentTransactionFactory extends Factory
 {
     /**
      * Define the model's default state.
@@ -26,19 +28,22 @@ class PaymentFactory extends Factory
                 ->create(['organization_id' => $attributes['organization_id']])
                 ->id,
             'period' => fake()->dateTimeBetween('-1 year', 'now')->format('Ym'),
-            'method' => PaymentMethod::Cash,
+            'provider' => PaymentTransactionProvider::XPayment,
+            'merchant_order_id' => 'esepteu-'.Str::uuid(),
+            'idempotency_key' => (string) Str::uuid(),
             'amount' => fake()->randomFloat(2, 500, 50000),
-            'paid_at' => fake()->dateTimeBetween('-1 year', 'now')->format('Y-m-d'),
+            'status' => PaymentTransactionStatus::Pending,
+            'payer_phone' => fake()->optional()->numerify('+7701#######'),
             'note' => fake()->optional()->sentence(),
         ];
     }
 
-    public function kaspi(): self
+    public function completed(): self
     {
         return $this->state(fn (): array => [
-            'method' => PaymentMethod::Kaspi,
-            'external_provider' => 'xpayment',
+            'status' => PaymentTransactionStatus::Completed,
             'external_payment_id' => fake()->uuid(),
+            'completed_at' => now(),
         ]);
     }
 }

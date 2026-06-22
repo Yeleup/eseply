@@ -18,6 +18,7 @@ use App\Filament\Support\CurrentBillingPeriod;
 use App\Http\Controllers\ClientCardController;
 use App\Http\Controllers\ReceiptPrintController;
 use App\Models\Organization;
+use CraftForge\FilamentLanguageSwitcher\FilamentLanguageSwitcherPlugin;
 use Filament\Facades\Filament;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
@@ -102,6 +103,12 @@ class AdminPanelProvider extends PanelProvider
                 SubstituteBindings::class,
                 DisableBladeIconComponents::class,
                 DispatchServingFilamentEvent::class,
+            ])
+            ->plugins([
+                FilamentLanguageSwitcherPlugin::make()
+                    ->locales(['ru', 'kk'])
+                    ->rememberLocale()
+                    ->showOnAuthPages(),
             ])
             ->authMiddleware([
                 Authenticate::class,

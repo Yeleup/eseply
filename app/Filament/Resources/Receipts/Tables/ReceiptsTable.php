@@ -42,53 +42,53 @@ class ReceiptsTable
                 ->latest('issued_at'))
             ->columns([
                 TextColumn::make('receipt_number')
-                    ->label('Номер')
+                    ->label(__('filament-receipts.fields.receipt_number'))
                     ->searchable()
                     ->sortable(),
                 TextColumn::make('period')
-                    ->label('Период')
+                    ->label(__('filament-receipts.fields.period'))
                     ->placeholder('-'),
                 TextColumn::make('account_number')
-                    ->label('Лицевой счёт')
+                    ->label(__('filament-receipts.fields.account_number'))
                     ->searchable()
                     ->sortable(),
                 TextColumn::make('client_name')
-                    ->label('Абонент')
+                    ->label(__('filament-receipts.fields.client_name'))
                     ->searchable()
                     ->sortable(),
                 TextColumn::make('utility_service_name')
-                    ->label('Услуга')
+                    ->label(__('filament-receipts.fields.utility_service_name'))
                     ->searchable()
                     ->placeholder('-'),
                 TextColumn::make('amount')
-                    ->label('Сумма')
+                    ->label(__('filament-receipts.fields.amount'))
                     ->money('KZT')
                     ->sortable(),
                 TextColumn::make('paid_amount')
-                    ->label('Оплачено')
+                    ->label(__('filament-receipts.fields.paid_amount'))
                     ->money('KZT')
                     ->sortable()
                     ->toggleable(),
                 TextColumn::make('adjustment_amount')
-                    ->label('Корректировка')
+                    ->label(__('filament-receipts.fields.adjustment_amount'))
                     ->money('KZT')
                     ->sortable()
                     ->toggleable(),
                 TextColumn::make('closing_balance')
-                    ->label('Конечное сальдо')
+                    ->label(__('filament-receipts.fields.closing_balance'))
                     ->money('KZT')
                     ->sortable(),
                 TextColumn::make('issued_at')
-                    ->label('Сформирована')
+                    ->label(__('filament-receipts.fields.issued_at'))
                     ->dateTime('d.m.Y H:i')
                     ->sortable(),
             ])
             ->filters([
                 SelectFilter::make('billing_period_id')
-                    ->label('Период')
+                    ->label(__('filament-receipts.fields.period'))
                     ->options(fn (): array => BillingPeriodOptions::all()),
                 SelectFilter::make('region_id')
-                    ->label('Регион')
+                    ->label(__('filament-receipts.filters.region'))
                     ->options(fn (): array => self::regionOptions())
                     ->searchable()
                     ->query(fn (Builder $query, array $data): Builder => self::applyClientFilter(
@@ -97,7 +97,7 @@ class ReceiptsTable
                         self::filterValue($data),
                     )),
                 SelectFilter::make('street_id')
-                    ->label('Улица')
+                    ->label(__('filament-receipts.filters.street'))
                     ->options(fn (): array => self::streetOptions())
                     ->searchable()
                     ->query(fn (Builder $query, array $data): Builder => self::applyClientFilter(
@@ -106,7 +106,7 @@ class ReceiptsTable
                         self::filterValue($data),
                     )),
                 SelectFilter::make('controller_id')
-                    ->label('Контроллер')
+                    ->label(__('filament-receipts.filters.controller'))
                     ->options(fn (): array => self::controllerOptions())
                     ->searchable()
                     ->query(fn (Builder $query, array $data): Builder => self::applyControllerFilter(
@@ -116,7 +116,7 @@ class ReceiptsTable
             ])
             ->headerActions([
                 Action::make('printFiltered')
-                    ->label('Печатать по фильтру')
+                    ->label(__('filament-receipts.actions.print_filtered'))
                     ->icon(Heroicon::OutlinedPrinter)
                     ->color('gray')
                     ->url(fn (HasTable $livewire): string => route('filament.admin.receipts.print-bulk', [
@@ -128,7 +128,7 @@ class ReceiptsTable
             ])
             ->recordActions([
                 Action::make('print')
-                    ->label('Печать')
+                    ->label(__('filament-receipts.actions.print'))
                     ->icon(Heroicon::OutlinedPrinter)
                     ->url(fn (Receipt $record): string => route('filament.admin.receipts.print', [
                         'tenant' => Filament::getTenant(),
@@ -138,7 +138,7 @@ class ReceiptsTable
             ])
             ->toolbarActions([
                 BulkAction::make('printSelected')
-                    ->label('Печатать выбранные')
+                    ->label(__('filament-receipts.actions.print_selected'))
                     ->icon(Heroicon::OutlinedPrinter)
                     ->color('gray')
                     ->url(fn (Collection $records): string => route('filament.admin.receipts.print-bulk', [

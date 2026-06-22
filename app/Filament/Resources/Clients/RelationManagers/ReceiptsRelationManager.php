@@ -19,16 +19,25 @@ class ReceiptsRelationManager extends RelationManager
 {
     protected static string $relationship = 'receipts';
 
-    protected static ?string $title = 'Квитанции';
-
-    protected static ?string $modelLabel = 'квитанция';
-
-    protected static ?string $pluralModelLabel = 'квитанции';
-
     public static function canViewForRecord(Model $ownerRecord, string $pageClass): bool
     {
         return OrganizationMemberAccess::canManageTenant()
             && parent::canViewForRecord($ownerRecord, $pageClass);
+    }
+
+    public static function getTitle(Model $ownerRecord, string $pageClass): string
+    {
+        return __('filament-receipts.navigation_label');
+    }
+
+    protected static function getModelLabel(): ?string
+    {
+        return __('filament-receipts.model_label');
+    }
+
+    protected static function getPluralModelLabel(): ?string
+    {
+        return __('filament-receipts.plural_model_label');
     }
 
     public function mount(): void
@@ -53,47 +62,47 @@ class ReceiptsRelationManager extends RelationManager
                 ->latest('issued_at'))
             ->columns([
                 TextColumn::make('receipt_number')
-                    ->label('Номер')
+                    ->label(__('filament-receipts.fields.receipt_number'))
                     ->searchable()
                     ->sortable(),
                 TextColumn::make('period')
-                    ->label('Период')
+                    ->label(__('filament-receipts.fields.period'))
                     ->placeholder('-'),
                 TextColumn::make('utility_service_name')
-                    ->label('Услуга')
+                    ->label(__('filament-receipts.fields.utility_service_name'))
                     ->searchable()
                     ->placeholder('-'),
                 TextColumn::make('amount')
-                    ->label('Сумма')
+                    ->label(__('filament-receipts.fields.amount'))
                     ->money('KZT')
                     ->sortable(),
                 TextColumn::make('paid_amount')
-                    ->label('Оплачено')
+                    ->label(__('filament-receipts.fields.paid_amount'))
                     ->money('KZT')
                     ->sortable()
                     ->toggleable(),
                 TextColumn::make('adjustment_amount')
-                    ->label('Корректировка')
+                    ->label(__('filament-receipts.fields.adjustment_amount'))
                     ->money('KZT')
                     ->sortable()
                     ->toggleable(),
                 TextColumn::make('closing_balance')
-                    ->label('Конечное сальдо')
+                    ->label(__('filament-receipts.fields.closing_balance'))
                     ->money('KZT')
                     ->sortable(),
                 TextColumn::make('issued_at')
-                    ->label('Сформирована')
+                    ->label(__('filament-receipts.fields.issued_at'))
                     ->dateTime('d.m.Y H:i')
                     ->sortable(),
             ])
             ->filters([
                 SelectFilter::make('billing_period_id')
-                    ->label('Период')
+                    ->label(__('filament-receipts.fields.period'))
                     ->options(fn (): array => BillingPeriodOptions::all($this->ownerRecord->organization)),
             ])
             ->recordActions([
                 Action::make('open')
-                    ->label('Открыть')
+                    ->label(__('filament-receipts.actions.open'))
                     ->url(fn (Receipt $record): string => route('filament.admin.receipts.print', [
                         'tenant' => Filament::getTenant(),
                         'receipt' => $record,

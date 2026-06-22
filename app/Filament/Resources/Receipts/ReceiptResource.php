@@ -25,14 +25,6 @@ class ReceiptResource extends Resource
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedDocumentText;
 
-    protected static ?string $modelLabel = 'квитанция';
-
-    protected static ?string $pluralModelLabel = 'квитанции';
-
-    protected static ?string $navigationLabel = 'Квитанции';
-
-    protected static string|UnitEnum|null $navigationGroup = 'Учёт';
-
     protected static bool $shouldRegisterNavigation = true;
 
     protected static ?int $navigationSort = 100;
@@ -44,57 +36,77 @@ class ReceiptResource extends Resource
         return $schema;
     }
 
+    public static function getModelLabel(): string
+    {
+        return __('filament-receipts.model_label');
+    }
+
+    public static function getPluralModelLabel(): string
+    {
+        return __('filament-receipts.plural_model_label');
+    }
+
+    public static function getNavigationLabel(): string
+    {
+        return __('filament-receipts.navigation_label');
+    }
+
+    public static function getNavigationGroup(): string|UnitEnum|null
+    {
+        return __('filament-receipts.navigation_group');
+    }
+
     public static function infolist(Schema $schema): Schema
     {
         return $schema
             ->components([
-                Section::make('Квитанция')
+                Section::make(__('filament-receipts.sections.receipt'))
                     ->columns(3)
                     ->schema([
                         TextEntry::make('receipt_number')
-                            ->label('Номер'),
+                            ->label(__('filament-receipts.fields.receipt_number')),
                         TextEntry::make('period')
-                            ->label('Период'),
+                            ->label(__('filament-receipts.fields.period')),
                         TextEntry::make('issued_at')
-                            ->label('Сформирована')
+                            ->label(__('filament-receipts.fields.issued_at'))
                             ->dateTime('d.m.Y H:i'),
                         TextEntry::make('account_number')
-                            ->label('Лицевой счёт'),
+                            ->label(__('filament-receipts.fields.account_number')),
                         TextEntry::make('client_name')
-                            ->label('Абонент'),
+                            ->label(__('filament-receipts.fields.client_name')),
                         TextEntry::make('utility_service_name')
-                            ->label('Услуга')
+                            ->label(__('filament-receipts.fields.utility_service_name'))
                             ->placeholder('-'),
                         TextEntry::make('billing_type')
-                            ->label('Тип расчёта')
+                            ->label(__('filament-receipts.fields.billing_type'))
                             ->badge()
                             ->formatStateUsing(fn (string $state): string => match ($state) {
-                                'fixed' => 'Фиксированная сумма',
-                                'meter' => 'По счётчику',
-                                'per_person' => 'На одного человека',
+                                'fixed' => __('filament-receipts.billing_types.fixed'),
+                                'meter' => __('filament-receipts.billing_types.meter'),
+                                'per_person' => __('filament-receipts.billing_types.per_person'),
                                 default => $state,
                             }),
                         TextEntry::make('volume')
-                            ->label('Объём')
+                            ->label(__('filament-receipts.fields.volume'))
                             ->numeric(4)
                             ->placeholder('-'),
                         TextEntry::make('tariff_price')
-                            ->label('Тариф')
+                            ->label(__('filament-receipts.fields.tariff_price'))
                             ->money('KZT')
                             ->placeholder('-'),
                     ]),
-                Section::make('Счётчики')
+                Section::make(__('filament-receipts.sections.meters'))
                     ->schema([
                         RepeatableEntry::make('meter_reading_lines')
                             ->hiddenLabel()
                             ->state(fn (Receipt $record): array => app(BuildReceiptMeterReadingLines::class)->handle($record))
                             ->table([
-                                TableColumn::make('№ счётчика'),
-                                TableColumn::make('Предыдущее'),
-                                TableColumn::make('Текущее'),
-                                TableColumn::make('Расход'),
-                                TableColumn::make('Тариф'),
-                                TableColumn::make('Сумма'),
+                                TableColumn::make(__('filament-receipts.meter_columns.meter_number')),
+                                TableColumn::make(__('filament-receipts.meter_columns.previous_reading')),
+                                TableColumn::make(__('filament-receipts.meter_columns.current_reading')),
+                                TableColumn::make(__('filament-receipts.meter_columns.consumption')),
+                                TableColumn::make(__('filament-receipts.meter_columns.tariff_price')),
+                                TableColumn::make(__('filament-receipts.meter_columns.amount')),
                             ])
                             ->schema([
                                 TextEntry::make('meter_number'),
@@ -106,23 +118,23 @@ class ReceiptResource extends Resource
                             ])
                             ->contained(false),
                     ]),
-                Section::make('Расчёт')
+                Section::make(__('filament-receipts.sections.calculation'))
                     ->columns(5)
                     ->schema([
                         TextEntry::make('opening_balance')
-                            ->label('Начальное сальдо')
+                            ->label(__('filament-receipts.fields.opening_balance'))
                             ->money('KZT'),
                         TextEntry::make('amount')
-                            ->label('Сумма')
+                            ->label(__('filament-receipts.fields.amount'))
                             ->money('KZT'),
                         TextEntry::make('paid_amount')
-                            ->label('Оплачено')
+                            ->label(__('filament-receipts.fields.paid_amount'))
                             ->money('KZT'),
                         TextEntry::make('adjustment_amount')
-                            ->label('Корректировка')
+                            ->label(__('filament-receipts.fields.adjustment_amount'))
                             ->money('KZT'),
                         TextEntry::make('closing_balance')
-                            ->label('Конечное сальдо')
+                            ->label(__('filament-receipts.fields.closing_balance'))
                             ->money('KZT'),
                     ]),
             ]);

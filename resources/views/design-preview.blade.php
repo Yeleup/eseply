@@ -216,6 +216,13 @@
                     </p>
                 </div>
 
+                <div class="mt-3 rounded-xl border border-sky-200 bg-sky-50 p-4 dark:border-sky-900/60 dark:bg-sky-950/20">
+                    <p class="text-sm font-semibold text-sky-900 dark:text-sky-100">Расчётный месяц закрывается</p>
+                    <p class="mt-1 text-sm text-sky-800 dark:text-sky-200">
+                        Идёт расчёт начислений по всем активным абонентам. Уведомление о результате придёт, когда расчёт закончится.
+                    </p>
+                </div>
+
                 <form class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                     <label class="flex flex-col gap-2 text-sm font-medium">
                         Лицевой счёт
@@ -1096,6 +1103,55 @@
                         </button>
                         <p class="mt-3 text-xs text-amber-800 dark:text-amber-200">
                             Оплаты, показания и корректировки автоматически относятся к 05.2026. Пока он открыт, система не позволит открыть 06.2026.
+                        </p>
+
+                        <div class="mt-4 border-t border-amber-300 pt-4 dark:border-amber-800">
+                            <p class="text-xs font-medium uppercase tracking-wide text-amber-700 dark:text-amber-300">Пока идёт расчёт</p>
+                            <button disabled title="Расчётный месяц закрывается. Дождитесь результата." class="mt-2 w-full cursor-not-allowed rounded-md bg-zinc-200 px-3 py-2 text-sm font-medium text-zinc-500 dark:bg-white/10 dark:text-zinc-400">
+                                Закрыть месяц
+                            </button>
+                            <p class="mt-2 text-xs text-amber-800 dark:text-amber-200">
+                                Статус: закрывается. Кнопка недоступна, пока очередь считает начисления.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="rounded-xl border border-zinc-200 bg-white shadow-sm ring-1 ring-zinc-950/5 dark:border-white/10 dark:bg-zinc-900 dark:ring-white/10">
+                <div class="flex flex-col gap-3 border-b border-zinc-200 p-5 dark:border-white/10 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                        <p class="text-sm text-sky-700 dark:text-sky-300">Уведомления</p>
+                        <h2 class="text-base font-semibold">Результат закрытия месяца</h2>
+                        <p class="mt-2 max-w-2xl text-sm text-zinc-500 dark:text-zinc-400">
+                            Закрытие месяца считается в очереди, поэтому результат приходит операторам организации как уведомление в базе данных.
+                        </p>
+                    </div>
+                    <span class="flex w-fit items-center gap-2 rounded-md bg-sky-100 px-2 py-1 text-xs font-medium text-sky-700 ring-1 ring-sky-600/10 dark:bg-sky-400/10 dark:text-sky-300 dark:ring-sky-400/20">
+                        Колокольчик
+                        <span class="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-sky-600 px-1 text-[10px] font-semibold text-white dark:bg-sky-400 dark:text-zinc-950">3</span>
+                    </span>
+                </div>
+
+                <div class="grid gap-3 p-5 sm:grid-cols-3">
+                    <div class="rounded-xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-900/50 dark:bg-emerald-950/20">
+                        <p class="text-sm font-semibold text-emerald-900 dark:text-emerald-100">Месяц закрыт</p>
+                        <p class="mt-1 text-xs text-emerald-800 dark:text-emerald-200">
+                            Расчётный месяц: 05.2026. Активных абонентов: 12 480. Создано начислений: 12 480. Пропущено ранее созданных: 0. Ошибок данных: 0.
+                        </p>
+                    </div>
+
+                    <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/50 dark:bg-amber-950/20">
+                        <p class="text-sm font-semibold text-amber-900 dark:text-amber-100">Месяц закрыт с ошибками</p>
+                        <p class="mt-1 text-xs text-amber-800 dark:text-amber-200">
+                            Расчётный месяц: 05.2026. Активных абонентов: 12 480. Создано начислений: 0. Ошибок данных: 37. Откройте отчёт ошибок в разделе «Расчётные месяцы».
+                        </p>
+                    </div>
+
+                    <div class="rounded-xl border border-rose-200 bg-rose-50 p-4 dark:border-rose-900/50 dark:bg-rose-950/20">
+                        <p class="text-sm font-semibold text-rose-900 dark:text-rose-100">Не удалось закрыть месяц</p>
+                        <p class="mt-1 text-xs text-rose-800 dark:text-rose-200">
+                            Расчётный месяц: 05.2026. Закрытие прервано технической ошибкой, начисления не созданы. Запустите закрытие месяца заново.
                         </p>
                     </div>
                 </div>

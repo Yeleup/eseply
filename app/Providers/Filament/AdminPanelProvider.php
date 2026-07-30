@@ -55,6 +55,8 @@ class AdminPanelProvider extends PanelProvider
             ->tenantRegistration(RegisterOrganization::class)
             ->tenantProfile(EditOrganizationProfile::class)
             ->searchableTenantMenu()
+            ->databaseNotifications()
+            ->databaseNotificationsPolling('30s')
             ->renderHook(
                 PanelsRenderHook::PAGE_START,
                 function (): View {
@@ -63,6 +65,9 @@ class AdminPanelProvider extends PanelProvider
                     return view('filament.billing-period-required-callout', [
                         'billingPeriod' => $tenant instanceof Organization
                             ? CurrentBillingPeriod::get($tenant)
+                            : null,
+                        'closingBillingPeriod' => $tenant instanceof Organization
+                            ? CurrentBillingPeriod::closing($tenant)
                             : null,
                         'tenant' => $tenant,
                     ]);

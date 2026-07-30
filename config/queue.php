@@ -27,6 +27,11 @@ return [
     | Drivers: "sync", "database", "beanstalkd", "sqs", "redis",
     |          "deferred", "background", "failover", "null"
     |
+    | "retry_after" must stay above the timeout of the longest running job of
+    | the application. Closing a billing month recalculates every active client
+    | of an organization, so a short "retry_after" would hand the same closing
+    | job to a second worker while the first one is still calculating.
+    |
     */
 
     'connections' => [
@@ -40,7 +45,7 @@ return [
             'connection' => env('DB_QUEUE_CONNECTION'),
             'table' => env('DB_QUEUE_TABLE', 'jobs'),
             'queue' => env('DB_QUEUE', 'default'),
-            'retry_after' => (int) env('DB_QUEUE_RETRY_AFTER', 90),
+            'retry_after' => (int) env('DB_QUEUE_RETRY_AFTER', 3600),
             'after_commit' => false,
         ],
 
@@ -68,7 +73,7 @@ return [
             'driver' => 'redis',
             'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
             'queue' => env('REDIS_QUEUE', 'default'),
-            'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 90),
+            'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 3600),
             'block_for' => null,
             'after_commit' => false,
         ],

@@ -69,6 +69,33 @@ test('closed billing period blocks mutable accounting records', function () {
         ->toThrow(ValidationException::class);
 });
 
+test('billing period code always resolves to the first day of its own month', function (string $today) {
+    $this->travelTo($today);
+
+    expect(BillingPeriod::periodStart('202602')->toDateString())->toBe('2026-02-01')
+        ->and(BillingPeriod::periodStart('202604')->toDateString())->toBe('2026-04-01')
+        ->and(BillingPeriod::periodStart('202611')->toDateString())->toBe('2026-11-01')
+        ->and(BillingPeriod::normalizeCode('202602'))->toBe('202602')
+        ->and(BillingPeriod::normalizeCode('202604'))->toBe('202604')
+        ->and(BillingPeriod::normalizeCode('202611'))->toBe('202611');
+})->with([
+    'middle of the month' => '2026-07-15',
+    '29th' => '2026-07-29',
+    '30th' => '2026-07-30',
+    '31st' => '2026-07-31',
+]);
+
+test('billing period opened on the last day of a month belongs to the requested month', function () {
+    $this->travelTo('2026-07-31');
+
+    $organization = Organization::factory()->create();
+
+    $billingPeriod = BillingPeriod::openFor($organization, '202602');
+
+    expect($billingPeriod->starts_on->toDateString())->toBe('2026-02-01')
+        ->and($billingPeriod->code)->toBe('202602');
+});
+
 test('closed billing period cannot be closed again', function () {
     $organization = Organization::factory()->create();
     $billingPeriod = BillingPeriod::factory()

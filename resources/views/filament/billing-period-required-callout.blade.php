@@ -13,11 +13,21 @@
         </style>
     @endonce
 
-    <x-filament::callout
-        color="danger"
-        :icon="Heroicon::OutlinedExclamationTriangle"
-        :heading="CurrentBillingPeriod::MissingTitle"
-        :description="CurrentBillingPeriod::MissingDescription"
-        class="billing-period-required-callout"
-    />
+    @if ($closingBillingPeriod !== null)
+        <x-filament::callout
+            color="info"
+            :icon="Heroicon::OutlinedArrowPath"
+            :heading="CurrentBillingPeriod::ClosingTitle"
+            :description="CurrentBillingPeriod::ClosingDescription"
+            class="billing-period-required-callout"
+        />
+    @else
+        <x-filament::callout
+            color="danger"
+            :icon="Heroicon::OutlinedExclamationTriangle"
+            :heading="CurrentBillingPeriod::MissingTitle"
+            :description="CurrentBillingPeriod::MissingDescription"
+            class="billing-period-required-callout"
+        />
+    @endif
 @endif

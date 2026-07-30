@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\OrganizationMemberRole;
 use Database\Factories\OrganizationFactory;
 use Filament\Models\Contracts\HasCurrentTenantLabel;
 use Filament\Models\Contracts\HasName;
@@ -46,6 +47,14 @@ class Organization extends Model implements HasCurrentTenantLabel, HasName
         return $this->belongsToMany(User::class)
             ->withPivot('role')
             ->withTimestamps();
+    }
+
+    /**
+     * Members allowed to manage the organization, including closing months.
+     */
+    public function operators(): BelongsToMany
+    {
+        return $this->users()->wherePivot('role', OrganizationMemberRole::Operator->value);
     }
 
     public function clients(): HasMany

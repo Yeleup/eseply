@@ -8,6 +8,7 @@ use Database\Factories\BillingPeriodFactory;
 use DateTimeInterface;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Casts\Json;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -36,6 +37,11 @@ class BillingPeriod extends Model
 {
     /** @use HasFactory<BillingPeriodFactory> */
     use HasFactory;
+
+    /**
+     * Number of closure error rows written per insert statement.
+     */
+    public const int CLOSURE_ERROR_CHUNK_SIZE = 500;
 
     /**
      * @var array<string, mixed>
@@ -88,7 +94,12 @@ class BillingPeriod extends Model
             throw new InvalidArgumentException('Месяц в расчётном месяце должен быть от 01 до 12.');
         }
 
-        return CarbonImmutable::createFromFormat('Ym', $period)->startOfMonth();
+        /**
+         * The day is always given explicitly. Parsing `ГГГГММ` alone would fill
+         * the day from the current date and roll a short month over into the
+         * next one, so `202602` would resolve to March on the 30th of a month.
+         */
+        return CarbonImmutable::createFromFormat('Ymd', $period.'01')->startOfMonth();
     }
 
     public static function normalizeCode(string|DateTimeInterface $period): string
@@ -329,18 +340,25 @@ class BillingPeriod extends Model
             return;
         }
 
-        $this->closureErrors()->createMany(
-            array_map(fn (array $error): array => [
-                'organization_id' => $this->organization_id,
-                'client_id' => $error['client_id'],
-                'account_number' => $error['account_number'],
-                'client_name' => $error['client_name'],
-                'billing_type' => $error['billing_type'],
-                'code' => $error['code'],
-                'message' => $error['message'],
-                'context' => $error['context'],
-            ], $errors)
-        );
+        $reportedAt = now();
+
+        foreach (array_chunk($errors, self::CLOSURE_ERROR_CHUNK_SIZE) as $chunk) {
+            BillingPeriodClosureError::query()->insert(
+                array_map(fn (array $error): array => [
+                    'billing_period_id' => $this->getKey(),
+                    'organization_id' => $this->organization_id,
+                    'client_id' => $error['client_id'],
+                    'account_number' => $error['account_number'],
+                    'client_name' => $error['client_name'],
+                    'billing_type' => $error['billing_type'],
+                    'code' => $error['code'],
+                    'message' => $error['message'],
+                    'context' => $error['context'] === null ? null : Json::encode($error['context']),
+                    'created_at' => $reportedAt,
+                    'updated_at' => $reportedAt,
+                ], $chunk)
+            );
+        }
     }
 
     /**

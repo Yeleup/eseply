@@ -2,9 +2,9 @@
 
 namespace App\Filament\Pages\Tenancy\RelationManagers;
 
-use App\Filament\Resources\Regions\RegionResource;
+use App\Filament\Resources\Cities\CityResource;
 use App\Filament\Support\OrganizationMemberAccess;
-use App\Models\Region;
+use App\Models\City;
 use Filament\Actions\Action;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\CreateAction;
@@ -20,15 +20,15 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Validation\Rules\Unique;
 
-class RegionsRelationManager extends RelationManager
+class CitiesRelationManager extends RelationManager
 {
-    protected static string $relationship = 'regions';
+    protected static string $relationship = 'cities';
 
-    protected static ?string $title = 'Регионы';
+    protected static ?string $title = 'Города';
 
-    protected static ?string $modelLabel = 'регион';
+    protected static ?string $modelLabel = 'город';
 
-    protected static ?string $pluralModelLabel = 'регионы';
+    protected static ?string $pluralModelLabel = 'города';
 
     public static function canViewForRecord(Model $ownerRecord, string $pageClass): bool
     {
@@ -52,7 +52,7 @@ class RegionsRelationManager extends RelationManager
                     ->required()
                     ->maxLength(255)
                     ->unique(
-                        table: 'regions',
+                        table: 'cities',
                         column: 'name',
                         ignoreRecord: true,
                         modifyRuleUsing: fn (Unique $rule): Unique => $rule
@@ -66,15 +66,15 @@ class RegionsRelationManager extends RelationManager
         return $table
             ->recordTitleAttribute('name')
             ->modifyQueryUsing(fn (Builder $query): Builder => $query
-                ->withCount('streets')
+                ->withCount('regions')
                 ->orderBy('name'))
             ->columns([
                 TextColumn::make('name')
                     ->label('Название')
                     ->searchable()
                     ->sortable(),
-                TextColumn::make('streets_count')
-                    ->label('Улицы')
+                TextColumn::make('regions_count')
+                    ->label('Регионы')
                     ->numeric()
                     ->sortable(),
             ])
@@ -89,7 +89,7 @@ class RegionsRelationManager extends RelationManager
             ->recordActions([
                 Action::make('open')
                     ->label('Открыть')
-                    ->url(fn (Region $record): string => RegionResource::getUrl('edit', ['record' => $record])),
+                    ->url(fn (City $record): string => CityResource::getUrl('edit', ['record' => $record])),
                 EditAction::make(),
                 DeleteAction::make(),
             ])

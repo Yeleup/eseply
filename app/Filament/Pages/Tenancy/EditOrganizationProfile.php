@@ -2,7 +2,7 @@
 
 namespace App\Filament\Pages\Tenancy;
 
-use App\Filament\Pages\Tenancy\RelationManagers\RegionsRelationManager;
+use App\Filament\Pages\Tenancy\RelationManagers\CitiesRelationManager;
 use App\Filament\Pages\Tenancy\RelationManagers\UsersRelationManager;
 use App\Models\Organization;
 use App\Models\User;
@@ -41,11 +41,11 @@ class EditOrganizationProfile extends EditTenantProfile
                 ])
                     ->key('organization-users')
                     ->columnSpanFull(),
-                Livewire::make(RegionsRelationManager::class, fn (): array => [
+                Livewire::make(CitiesRelationManager::class, fn (): array => [
                     'ownerRecord' => $this->tenant,
                     'pageClass' => static::class,
                 ])
-                    ->key('organization-regions')
+                    ->key('organization-cities')
                     ->columnSpanFull(),
             ]);
     }

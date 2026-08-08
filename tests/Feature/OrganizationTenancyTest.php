@@ -2,8 +2,10 @@
 
 use App\Filament\Pages\Tenancy\EditOrganizationProfile;
 use App\Filament\Pages\Tenancy\RegisterOrganization;
-use App\Filament\Pages\Tenancy\RelationManagers\RegionsRelationManager;
+use App\Filament\Pages\Tenancy\RelationManagers\CitiesRelationManager;
 use App\Filament\Pages\Tenancy\RelationManagers\UsersRelationManager;
+use App\Filament\Resources\Cities\Pages\EditCity;
+use App\Filament\Resources\Cities\RelationManagers\RegionsRelationManager as CityRegionsRelationManager;
 use App\Filament\Resources\Clients\ClientResource;
 use App\Filament\Resources\Regions\Pages\EditRegion;
 use App\Filament\Resources\Regions\RegionResource;
@@ -266,31 +268,51 @@ test('region and street names are unique inside their owner', function () {
         ->and($sameNameInOtherRegion)->toBeInstanceOf(Street::class);
 });
 
-test('tenant profile manages organization regions', function () {
+test('tenant profile manages organization cities', function () {
     $organization = Organization::factory()->create();
     $otherOrganization = Organization::factory()->create();
-    $currentRegion = Region::factory()
-        ->for($organization)
-        ->create(['name' => 'Алмалинский']);
-    $otherRegion = Region::factory()
-        ->for($otherOrganization)
-        ->create(['name' => 'Медеуский']);
+    $currentCity = City::factory()->for($organization)->create(['name' => 'Алматы']);
+    $otherCity = City::factory()->for($otherOrganization)->create(['name' => 'Астана']);
 
     actingAsOrganizationTenant($organization);
 
-    Livewire::test(RegionsRelationManager::class, [
+    Livewire::test(CitiesRelationManager::class, [
         'ownerRecord' => $organization,
         'pageClass' => EditOrganizationProfile::class,
     ])
         ->assertOk()
-        ->assertCanSeeTableRecords([$currentRegion])
-        ->assertCanNotSeeTableRecords([$otherRegion])
+        ->assertCanSeeTableRecords([$currentCity])
+        ->assertCanNotSeeTableRecords([$otherCity])
+        ->callTableAction('create', data: [
+            'name' => 'Шымкент',
+        ])
+        ->assertHasNoTableActionErrors();
+
+    expect($organization->cities()->where('name', 'Шымкент')->exists())->toBeTrue();
+});
+
+test('city card manages regions of the city', function () {
+    $organization = Organization::factory()->create();
+    $city = City::factory()->for($organization)->create(['name' => 'Алматы']);
+    $otherCity = City::factory()->for($organization)->create(['name' => 'Астана']);
+    $cityRegion = Region::factory()->for($organization)->for($city)->create(['name' => 'Алмалинский']);
+    $otherCityRegion = Region::factory()->for($organization)->for($otherCity)->create(['name' => 'Есильский']);
+
+    actingAsOrganizationTenant($organization);
+
+    Livewire::test(CityRegionsRelationManager::class, [
+        'ownerRecord' => $city,
+        'pageClass' => EditCity::class,
+    ])
+        ->assertOk()
+        ->assertCanSeeTableRecords([$cityRegion])
+        ->assertCanNotSeeTableRecords([$otherCityRegion])
         ->callTableAction('create', data: [
             'name' => 'Бостандыкский',
         ])
         ->assertHasNoTableActionErrors();
 
-    expect($organization->regions()->where('name', 'Бостандыкский')->exists())->toBeTrue();
+    expect($city->regions()->where('name', 'Бостандыкский')->whereBelongsTo($organization)->exists())->toBeTrue();
 });
 
 test('tenant profile manages organization users with controller responsibility areas', function () {

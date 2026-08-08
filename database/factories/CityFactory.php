@@ -4,13 +4,12 @@ namespace Database\Factories;
 
 use App\Models\City;
 use App\Models\Organization;
-use App\Models\Region;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends Factory<Region>
+ * @extends Factory<City>
  */
-class RegionFactory extends Factory
+class CityFactory extends Factory
 {
     /**
      * Define the model's default state.
@@ -21,9 +20,6 @@ class RegionFactory extends Factory
     {
         return [
             'organization_id' => Organization::factory(),
-            'city_id' => fn (array $attributes): int => City::factory()
-                ->create(['organization_id' => $attributes['organization_id']])
-                ->getKey(),
             'name' => fake()->unique()->city(),
         ];
     }

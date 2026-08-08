@@ -8,6 +8,7 @@ use App\Filament\Resources\Clients\ClientResource;
 use App\Filament\Resources\Regions\Pages\EditRegion;
 use App\Filament\Resources\Regions\RegionResource;
 use App\Filament\Resources\Regions\RelationManagers\StreetsRelationManager;
+use App\Models\City;
 use App\Models\Organization;
 use App\Models\Region;
 use App\Models\Street;
@@ -190,19 +191,63 @@ test('regions and streets belong to an organization', function () {
         ->and($organization->streets()->whereKey($street)->exists())->toBeTrue();
 });
 
-test('region and street names are unique inside their owner', function () {
+test('cities belong to an organization and city names are unique inside it', function () {
     $organization = Organization::factory()->create();
     $otherOrganization = Organization::factory()->create();
+
+    $city = City::factory()->for($organization)->create(['name' => 'Алматы']);
+
+    expect($city->organization->is($organization))->toBeTrue()
+        ->and($organization->cities()->whereKey($city)->exists())->toBeTrue();
+
+    expect(fn () => City::factory()->for($organization)->create(['name' => 'Алматы']))
+        ->toThrow(QueryException::class);
+
+    $sameNameInOtherOrganization = City::factory()->for($otherOrganization)->create(['name' => 'Алматы']);
+
+    expect($sameNameInOtherOrganization)->toBeInstanceOf(City::class);
+});
+
+test('region belongs to a city and syncs its organization from the city', function () {
+    $organization = Organization::factory()->create();
+    $city = City::factory()->for($organization)->create();
+
+    $region = Region::factory()->for($organization)->for($city)->create();
+
+    expect($region->city->is($city))->toBeTrue()
+        ->and($region->organization->is($organization))->toBeTrue()
+        ->and($city->regions()->whereKey($region)->exists())->toBeTrue();
+});
+
+test('deleting a city deletes its regions and streets', function () {
+    $organization = Organization::factory()->create();
+    $city = City::factory()->for($organization)->create();
+    $region = Region::factory()->for($organization)->for($city)->create();
+    $street = Street::factory()->for($region)->create();
+
+    $city->delete();
+
+    expect(Region::query()->whereKey($region)->exists())->toBeFalse()
+        ->and(Street::query()->whereKey($street)->exists())->toBeFalse();
+});
+
+test('region and street names are unique inside their owner', function () {
+    $organization = Organization::factory()->create();
+    $city = City::factory()->for($organization)->create(['name' => 'Алматы']);
+    $otherCity = City::factory()->for($organization)->create(['name' => 'Астана']);
     $region = Region::factory()
         ->for($organization)
+        ->for($city)
         ->create(['name' => 'Центр']);
 
     expect(fn () => Region::factory()
         ->for($organization)
+        ->for($city)
         ->create(['name' => 'Центр']))->toThrow(QueryException::class);
 
-    $sameNameInOtherOrganization = Region::factory()
-        ->for($otherOrganization)
+    $sameNameInOtherCity = Region::factory()
+        ->for($organization)
+        ->for($otherCity)
         ->create(['name' => 'Центр']);
 
     Street::factory()
@@ -214,10 +259,10 @@ test('region and street names are unique inside their owner', function () {
         ->create(['name' => 'Абая']))->toThrow(QueryException::class);
 
     $sameNameInOtherRegion = Street::factory()
-        ->for($sameNameInOtherOrganization)
+        ->for($sameNameInOtherCity)
         ->create(['name' => 'Абая']);
 
-    expect($sameNameInOtherOrganization)->toBeInstanceOf(Region::class)
+    expect($sameNameInOtherCity)->toBeInstanceOf(Region::class)
         ->and($sameNameInOtherRegion)->toBeInstanceOf(Street::class);
 });
 

@@ -67,6 +67,11 @@ class Organization extends Model implements HasCurrentTenantLabel, HasName
         return $this->hasOne(UtilityService::class);
     }
 
+    public function cities(): HasMany
+    {
+        return $this->hasMany(City::class);
+    }
+
     public function regions(): HasMany
     {
         return $this->hasMany(Region::class);

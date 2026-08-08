@@ -272,6 +272,37 @@
                         Тех. условия
                         <input class="h-10 rounded-md border border-zinc-300 bg-white px-3 text-sm font-normal text-zinc-950 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-50" value="ТУ-2026-15">
                     </label>
+
+                    <label class="flex flex-col gap-2 text-sm font-medium">
+                        Город *
+                        <select class="h-10 rounded-md border border-zinc-300 bg-white px-3 text-sm font-normal text-zinc-950 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-50">
+                            <option>Алматы</option>
+                        </select>
+                    </label>
+
+                    <label class="flex flex-col gap-2 text-sm font-medium">
+                        Регион *
+                        <select class="h-10 rounded-md border border-zinc-300 bg-white px-3 text-sm font-normal text-zinc-950 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-50">
+                            <option>Алмалинский</option>
+                        </select>
+                    </label>
+
+                    <label class="flex flex-col gap-2 text-sm font-medium">
+                        Улица *
+                        <select class="h-10 rounded-md border border-zinc-300 bg-white px-3 text-sm font-normal text-zinc-950 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-50">
+                            <option>Абая</option>
+                        </select>
+                    </label>
+
+                    <label class="flex flex-col gap-2 text-sm font-medium">
+                        Дом
+                        <input class="h-10 rounded-md border border-zinc-300 bg-white px-3 text-sm font-normal text-zinc-950 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-50" value="10">
+                    </label>
+
+                    <label class="flex flex-col gap-2 text-sm font-medium">
+                        Квартира / помещение
+                        <input class="h-10 rounded-md border border-zinc-300 bg-white px-3 text-sm font-normal text-zinc-950 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-50" value="15">
+                    </label>
                 </form>
             </section>
 

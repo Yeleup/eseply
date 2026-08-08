@@ -17,6 +17,7 @@ use App\Filament\Resources\Payments\PaymentResource;
 use App\Filament\Resources\Receipts\ReceiptResource;
 use App\Models\Accrual;
 use App\Models\BalanceAdjustment;
+use App\Models\City;
 use App\Models\Client;
 use App\Models\Meter;
 use App\Models\MeterReading;
@@ -218,6 +219,7 @@ test('admin users can create a client for the current tenant', function () {
             'phone' => '+7 777 111 22 33',
             'contract' => 'Договор №15',
             'technical_conditions' => 'ТУ-2026-15',
+            'city_id' => $region->city_id,
             'region_id' => $region->getKey(),
             'street_id' => $street->getKey(),
             'house' => '10',
@@ -248,6 +250,57 @@ test('admin users can create a client for the current tenant', function () {
         ->exists())->toBeTrue();
 });
 
+test('client region must belong to the selected city', function () {
+    $organization = Organization::factory()->create();
+    UtilityService::factory()->for($organization)->create();
+    $city = City::factory()->for($organization)->create(['name' => 'Алматы']);
+    $otherCity = City::factory()->for($organization)->create(['name' => 'Астана']);
+    $region = Region::factory()->for($organization)->for($otherCity)->create();
+    $street = Street::factory()->for($region)->create();
+
+    actingAsTenant($organization);
+
+    Livewire::test(CreateClient::class)
+        ->fillForm([
+            'name' => 'Каскад Абонент',
+            'iin' => '870101300456',
+            'client_type' => ClientType::Individual->value,
+            'billing_type' => 'per_person',
+            'residents_count' => 1,
+            'fixed_amount' => 0,
+            'phone' => '+7 777 555 66 77',
+            'contract' => 'Договор №20',
+            'city_id' => $city->getKey(),
+            'region_id' => $region->getKey(),
+            'street_id' => $street->getKey(),
+            'status' => 'active',
+        ])
+        ->call('create')
+        ->assertHasFormErrors(['region_id']);
+});
+
+test('client card hydrates city from the region on edit', function () {
+    $organization = Organization::factory()->create();
+    UtilityService::factory()->for($organization)->create();
+    $city = City::factory()->for($organization)->create(['name' => 'Алматы']);
+    $region = Region::factory()->for($organization)->for($city)->create();
+    $street = Street::factory()->for($region)->create();
+    $client = Client::factory()
+        ->for($organization)
+        ->for($region)
+        ->for($street)
+        ->create();
+
+    actingAsTenant($organization);
+
+    Livewire::test(EditClient::class, [
+        'record' => $client->getKey(),
+    ])
+        ->assertFormSet([
+            'city_id' => $city->getKey(),
+        ]);
+});
+
 test('admin client form ignores submitted account number', function () {
     $organization = Organization::factory()->create();
     UtilityService::factory()->for($organization)->create([
@@ -273,6 +326,7 @@ test('admin client form ignores submitted account number', function () {
             'fixed_amount' => 0,
             'phone' => '+7 777 333 44 55',
             'contract' => 'Договор №18',
+            'city_id' => $region->city_id,
             'region_id' => $region->getKey(),
             'street_id' => $street->getKey(),
             'status' => 'active',
@@ -307,6 +361,7 @@ test('client iin contract and phone are required client data fields', function (
             'fixed_amount' => 0,
             'phone' => null,
             'contract' => null,
+            'city_id' => $region->city_id,
             'region_id' => $region->getKey(),
             'street_id' => $street->getKey(),
             'status' => 'active',
@@ -342,6 +397,7 @@ test('client iin and phone must be unique inside the current tenant form', funct
             'fixed_amount' => 0,
             'phone' => '+7 777 111 22 33',
             'contract' => 'Договор №22',
+            'city_id' => $region->city_id,
             'region_id' => $region->getKey(),
             'street_id' => $street->getKey(),
             'status' => 'active',
@@ -382,6 +438,7 @@ test('client iin and phone can repeat in another tenant form', function () {
             'fixed_amount' => 0,
             'phone' => '+7 777 111 22 33',
             'contract' => 'Договор №23',
+            'city_id' => $region->city_id,
             'region_id' => $region->getKey(),
             'street_id' => $street->getKey(),
             'status' => 'active',
@@ -427,6 +484,7 @@ test('admin users can keep client iin and phone when editing', function () {
             'fixed_amount' => 0,
             'phone' => '+7 777 111 22 33',
             'contract' => 'Договор №24',
+            'city_id' => $region->city_id,
             'region_id' => $region->getKey(),
             'street_id' => $street->getKey(),
             'status' => 'active',
@@ -472,6 +530,7 @@ test('admin users cannot edit a client account number', function () {
             'phone' => '+7 777 333 44 55',
             'contract' => 'Договор №20',
             'technical_conditions' => 'ТУ-2026-20',
+            'city_id' => $region->city_id,
             'region_id' => $region->getKey(),
             'street_id' => $street->getKey(),
             'status' => 'active',
@@ -724,6 +783,7 @@ test('client street must belong to the selected region', function () {
             'residents_count' => 1,
             'phone' => '+7 777 222 33 44',
             'contract' => 'Договор №16',
+            'city_id' => $selectedRegion->city_id,
             'region_id' => $selectedRegion->getKey(),
             'street_id' => $streetFromOtherRegion->getKey(),
             'status' => 'active',
@@ -775,6 +835,7 @@ test('client residents count is a required client data field', function () {
             'fixed_amount' => 0,
             'phone' => '+7 777 444 55 66',
             'contract' => 'Договор №17',
+            'city_id' => $region->city_id,
             'region_id' => $region->getKey(),
             'street_id' => $street->getKey(),
             'status' => 'active',
@@ -800,6 +861,7 @@ test('client residents count defaults to one', function () {
             'fixed_amount' => 0,
             'phone' => '+7 777 555 66 77',
             'contract' => 'Договор №19',
+            'city_id' => $region->city_id,
             'region_id' => $region->getKey(),
             'street_id' => $street->getKey(),
             'status' => 'active',
@@ -868,6 +930,7 @@ test('admin client form ignores duplicate submitted account number', function ()
             'fixed_amount' => 0,
             'phone' => '+7 777 666 77 88',
             'contract' => 'Договор №21',
+            'city_id' => $region->city_id,
             'region_id' => $region->getKey(),
             'street_id' => $street->getKey(),
             'status' => 'active',

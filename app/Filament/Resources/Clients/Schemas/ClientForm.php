@@ -3,7 +3,8 @@
 namespace App\Filament\Resources\Clients\Schemas;
 
 use App\ClientType;
-use App\Models\Region;
+use App\Models\City;
+use App\Models\Client;
 use App\Models\Street;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\Select;
@@ -86,17 +87,46 @@ class ClientForm
                             ->required(),
                         TextInput::make('technical_conditions')
                             ->label('Тех. условия'),
-                        Select::make('region_id')
-                            ->label('Регион')
+                        Select::make('city_id')
+                            ->label('Город')
                             ->options(fn (): array => Filament::getTenant()
-                                ?->regions()
+                                ?->cities()
                                 ->orderBy('name')
                                 ->pluck('name', 'id')
                                 ->all() ?? [])
                             ->searchable()
                             ->preload()
                             ->required()
-                            ->scopedExists(Region::class, 'id')
+                            ->scopedExists(City::class, 'id')
+                            ->live()
+                            ->saved(false)
+                            ->afterStateHydrated(function (Set $set, ?Client $record): void {
+                                if ($record?->region?->city_id !== null) {
+                                    $set('city_id', $record->region->city_id);
+                                }
+                            })
+                            ->afterStateUpdated(function (Set $set): void {
+                                $set('region_id', null);
+                                $set('street_id', null);
+                            })
+                            ->native(false),
+                        Select::make('region_id')
+                            ->label('Регион')
+                            ->options(fn (Get $get): array => Filament::getTenant()
+                                ?->regions()
+                                ->where('city_id', $get('city_id'))
+                                ->orderBy('name')
+                                ->pluck('name', 'id')
+                                ->all() ?? [])
+                            ->searchable()
+                            ->preload()
+                            ->required()
+                            ->disabled(fn (Get $get): bool => blank($get('city_id')))
+                            ->rules(fn (Get $get): array => [
+                                Rule::exists('regions', 'id')
+                                    ->where('organization_id', Filament::getTenant()?->getKey())
+                                    ->where('city_id', $get('city_id')),
+                            ])
                             ->live()
                             ->afterStateUpdated(fn (Set $set): mixed => $set('street_id', null))
                             ->native(false),

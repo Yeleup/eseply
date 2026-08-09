@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\MeterReadingPhotoStorage;
 use Database\Factories\MeterFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
@@ -32,6 +33,11 @@ class Meter extends Model
         'status' => 'active',
     ];
 
+    /**
+     * @var array<int, string>
+     */
+    private array $deletedReadingPhotoPaths = [];
+
     public function organization(): BelongsTo
     {
         return $this->belongsTo(Organization::class);
@@ -50,6 +56,20 @@ class Meter extends Model
     public function readings(): HasMany
     {
         return $this->hasMany(MeterReading::class);
+    }
+
+    /**
+     * @param  array<int, string>  $photoPaths
+     */
+    public function rememberDeletedReadingPhotoPaths(array $photoPaths): void
+    {
+        $this->deletedReadingPhotoPaths = $photoPaths;
+    }
+
+    public function flushDeletedReadingPhotoPaths(): void
+    {
+        MeterReadingPhotoStorage::deleteMany($this->deletedReadingPhotoPaths);
+        $this->deletedReadingPhotoPaths = [];
     }
 
     public function archive(): void
@@ -113,6 +133,25 @@ class Meter extends Model
                     ->where('organization_id', $meter->organization_id)
                     ->value('id');
             }
+        });
+
+        static::deleting(function (Meter $meter): void {
+            $photoPaths = [];
+
+            $meter->readings()
+                ->whereNotNull('photo_path')
+                ->select(['id', 'photo_path'])
+                ->chunkById(500, function ($readings) use (&$photoPaths): void {
+                    foreach ($readings as $reading) {
+                        $photoPaths[] = $reading->photo_path;
+                    }
+                });
+
+            $meter->rememberDeletedReadingPhotoPaths($photoPaths);
+        });
+
+        static::deleted(function (Meter $meter): void {
+            $meter->flushDeletedReadingPhotoPaths();
         });
     }
 

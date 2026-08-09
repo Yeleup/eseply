@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\OrganizationMemberRole;
+use App\Support\MeterReadingPhotoStorage;
 use Database\Factories\OrganizationFactory;
 use Filament\Models\Contracts\HasCurrentTenantLabel;
 use Filament\Models\Contracts\HasName;
@@ -135,6 +136,13 @@ class Organization extends Model implements HasCurrentTenantLabel, HasName
     public function getCurrentTenantLabel(): string
     {
         return 'Организация';
+    }
+
+    protected static function booted(): void
+    {
+        static::deleted(function (Organization $organization): void {
+            MeterReadingPhotoStorage::deleteOrganizationDirectory($organization->getKey());
+        });
     }
 
     /**

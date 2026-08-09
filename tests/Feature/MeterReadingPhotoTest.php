@@ -309,3 +309,74 @@ test('the photo storage helper exposes the disk and directory used by readings',
 
     Storage::disk('public')->assertMissing('meter-reading-photos/8/other.jpg');
 });
+
+test('deleting a meter deletes the photo files of its readings', function () {
+    Storage::fake('public');
+
+    $organization = Organization::factory()->create();
+    $meter = Meter::factory()->for($organization)->create();
+    $otherMeter = Meter::factory()->for($organization)->create();
+
+    $firstPhotoPath = "meter-reading-photos/{$organization->id}/first.jpg";
+    $secondPhotoPath = "meter-reading-photos/{$organization->id}/second.jpg";
+    $keptPhotoPath = "meter-reading-photos/{$organization->id}/kept.jpg";
+    Storage::disk('public')->put($firstPhotoPath, 'first');
+    Storage::disk('public')->put($secondPhotoPath, 'second');
+    Storage::disk('public')->put($keptPhotoPath, 'kept');
+
+    MeterReading::factory()->for($meter)->create([
+        'period' => '202604',
+        'photo_path' => $firstPhotoPath,
+    ]);
+    closedBillingPeriodFor($organization, '202604');
+
+    MeterReading::factory()->for($meter)->create([
+        'period' => '202605',
+        'photo_path' => $secondPhotoPath,
+    ]);
+
+    MeterReading::factory()->for($otherMeter)->create([
+        'period' => '202605',
+        'photo_path' => $keptPhotoPath,
+    ]);
+
+    $meter->delete();
+
+    Storage::disk('public')->assertMissing($firstPhotoPath);
+    Storage::disk('public')->assertMissing($secondPhotoPath);
+    Storage::disk('public')->assertExists($keptPhotoPath);
+    expect(MeterReading::query()->whereBelongsTo($meter)->exists())->toBeFalse();
+});
+
+test('deleting a meter without photos succeeds', function () {
+    Storage::fake('public');
+
+    $organization = Organization::factory()->create();
+    $meter = Meter::factory()->for($organization)->create();
+
+    MeterReading::factory()->for($meter)->create([
+        'period' => '202605',
+        'photo_path' => null,
+    ]);
+
+    $meter->delete();
+
+    expect(Meter::query()->whereKey($meter->getKey())->exists())->toBeFalse();
+});
+
+test('deleting an organization deletes its meter reading photo directory', function () {
+    Storage::fake('public');
+
+    $organization = Organization::factory()->create();
+    $otherOrganization = Organization::factory()->create();
+
+    $photoPath = "meter-reading-photos/{$organization->id}/photo.jpg";
+    $otherPhotoPath = "meter-reading-photos/{$otherOrganization->id}/photo.jpg";
+    Storage::disk('public')->put($photoPath, 'photo');
+    Storage::disk('public')->put($otherPhotoPath, 'other');
+
+    $organization->delete();
+
+    Storage::disk('public')->assertMissing($photoPath);
+    Storage::disk('public')->assertExists($otherPhotoPath);
+});

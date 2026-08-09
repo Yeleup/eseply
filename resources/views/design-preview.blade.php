@@ -859,7 +859,8 @@
                                             <th class="border-b border-r border-zinc-200 px-3 py-2 dark:border-zinc-800">Период</th>
                                             <th class="border-b border-r border-zinc-200 px-3 py-2 dark:border-zinc-800">Счётчик</th>
                                             <th class="border-b border-r border-zinc-200 px-3 py-2 text-right dark:border-zinc-800">Текущее</th>
-                                            <th class="border-b border-zinc-200 px-3 py-2 text-right dark:border-zinc-800">Расход</th>
+                                            <th class="border-b border-r border-zinc-200 px-3 py-2 text-right dark:border-zinc-800">Расход</th>
+                                            <th class="border-b border-zinc-200 px-3 py-2 dark:border-zinc-800">Фото</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -867,7 +868,10 @@
                                             <td class="border-r border-zinc-200 px-3 py-2 font-semibold dark:border-zinc-800">05.2026</td>
                                             <td class="border-r border-zinc-200 px-3 py-2 dark:border-zinc-800">MTR-100010</td>
                                             <td class="border-r border-zinc-200 px-3 py-2 text-right dark:border-zinc-800">48.1200</td>
-                                            <td class="px-3 py-2 text-right font-semibold">12.8700</td>
+                                            <td class="border-r border-zinc-200 px-3 py-2 text-right font-semibold dark:border-zinc-800">12.8700</td>
+                                            <td class="px-3 py-2">
+                                                <span class="inline-flex h-8 w-10 items-center justify-center rounded border border-zinc-300 bg-zinc-100 text-[10px] font-medium text-zinc-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400">Фото</span>
+                                            </td>
                                         </tr>
                                     </tbody>
                                 </table>

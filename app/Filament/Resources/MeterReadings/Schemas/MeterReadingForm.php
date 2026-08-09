@@ -13,10 +13,13 @@ use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
+use Filament\Resources\RelationManagers\RelationManager;
+use Filament\Schemas\Components\Component;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
+use Illuminate\Database\Eloquent\Model;
 
 class MeterReadingForm
 {
@@ -99,7 +102,7 @@ class MeterReadingForm
             ->automaticallyResizeImagesToWidth('1920')
             ->automaticallyResizeImagesToHeight('1920')
             ->openable()
-            ->preventFilePathTampering(allowFilePathUsing: function (string $file): bool {
+            ->preventFilePathTampering(allowFilePathUsing: function (string $file, Get $get, ?Model $record, Component $component): bool {
                 $tenant = Filament::getTenant();
 
                 if (! $tenant instanceof Organization) {
@@ -112,12 +115,48 @@ class MeterReadingForm
                     return false;
                 }
 
+                $meterId = self::meterIdForPhotoValidation($get, $record, $component);
+
+                if ($meterId === null) {
+                    return false;
+                }
+
                 return MeterReading::query()
                     ->where('organization_id', $tenant->getKey())
+                    ->where('meter_id', $meterId)
                     ->where('photo_path', $file)
                     ->exists();
             })
             ->columnSpanFull();
+    }
+
+    private static function meterIdForPhotoValidation(Get $get, ?Model $record, Component $component): ?int
+    {
+        $meterId = $get('meter_id');
+
+        if (filled($meterId)) {
+            return (int) $meterId;
+        }
+
+        if ($record instanceof MeterReading) {
+            return (int) $record->meter_id;
+        }
+
+        if ($record instanceof Meter) {
+            return (int) $record->getKey();
+        }
+
+        $livewire = $component->getLivewire();
+
+        if ($livewire instanceof RelationManager) {
+            $ownerRecord = $livewire->getOwnerRecord();
+
+            if ($ownerRecord instanceof Meter) {
+                return (int) $ownerRecord->getKey();
+            }
+        }
+
+        return null;
     }
 
     private static function currentBillingPeriodId(): ?int

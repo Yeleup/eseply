@@ -3,6 +3,9 @@
 use App\Filament\Resources\Clients\Pages\EditClient;
 use App\Filament\Resources\Clients\RelationManagers\MetersRelationManager;
 use App\Filament\Resources\MeterReadings\Pages\CreateMeterReading;
+use App\Filament\Resources\MeterReadings\Pages\ListMeterReadings;
+use App\Filament\Resources\Meters\Pages\EditMeter;
+use App\Filament\Resources\Meters\RelationManagers\ReadingsRelationManager;
 use App\Models\Client;
 use App\Models\Meter;
 use App\Models\MeterReading;
@@ -167,4 +170,30 @@ test('the client card reading action saves a photo', function () {
 
     expect($reading->photo_path)->not->toBeNull();
     Storage::disk('public')->assertExists($reading->photo_path);
+});
+
+test('reading tables show a photo column', function () {
+    Storage::fake('public');
+
+    $organization = Organization::factory()->create();
+    $meter = Meter::factory()->for($organization)->create();
+    $reading = MeterReading::factory()->for($meter)->create([
+        'period' => '202605',
+        'photo_path' => "meter-reading-photos/{$organization->id}/photo.jpg",
+    ]);
+
+    actingAsReadingPhotoTenant($organization);
+
+    Livewire::test(ListMeterReadings::class)
+        ->assertOk()
+        ->assertCanSeeTableRecords([$reading])
+        ->assertTableColumnExists('photo_path');
+
+    Livewire::test(ReadingsRelationManager::class, [
+        'ownerRecord' => $meter,
+        'pageClass' => EditMeter::class,
+    ])
+        ->assertOk()
+        ->assertCanSeeTableRecords([$reading])
+        ->assertTableColumnExists('photo_path');
 });

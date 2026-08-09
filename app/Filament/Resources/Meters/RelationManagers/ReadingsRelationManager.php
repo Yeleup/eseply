@@ -22,9 +22,11 @@ use Filament\Forms\Components\TextInput;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
+use Filament\Tables\Columns\ImageColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 
 class ReadingsRelationManager extends RelationManager
@@ -104,6 +106,15 @@ class ReadingsRelationManager extends RelationManager
                     ->label('Дата ввода')
                     ->date('d.m.Y')
                     ->sortable()
+                    ->toggleable(),
+                ImageColumn::make('photo_path')
+                    ->label('Фото')
+                    ->disk(MeterReading::PHOTO_DISK)
+                    ->imageHeight(40)
+                    ->url(fn (MeterReading $record): ?string => $record->photo_path
+                        ? Storage::disk(MeterReading::PHOTO_DISK)->url($record->photo_path)
+                        : null)
+                    ->openUrlInNewTab()
                     ->toggleable(),
             ])
             ->filters([

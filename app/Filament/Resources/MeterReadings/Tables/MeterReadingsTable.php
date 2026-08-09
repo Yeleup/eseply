@@ -12,10 +12,12 @@ use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Facades\Filament;
+use Filament\Tables\Columns\ImageColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Storage;
 
 class MeterReadingsTable
 {
@@ -79,6 +81,15 @@ class MeterReadingsTable
                     ->label('Дата ввода')
                     ->date('d.m.Y')
                     ->sortable()
+                    ->toggleable(),
+                ImageColumn::make('photo_path')
+                    ->label('Фото')
+                    ->disk(MeterReading::PHOTO_DISK)
+                    ->imageHeight(40)
+                    ->url(fn (MeterReading $record): ?string => $record->photo_path
+                        ? Storage::disk(MeterReading::PHOTO_DISK)->url($record->photo_path)
+                        : null)
+                    ->openUrlInNewTab()
                     ->toggleable(),
             ])
             ->filters([

@@ -3,6 +3,7 @@
 namespace App\Reports;
 
 use App\ClientType;
+use App\Filament\Support\DateRangeFilter;
 use App\Models\BillingPeriod;
 use App\Models\Client;
 use App\Models\Organization;
@@ -86,6 +87,9 @@ class NewClientAccountsReport implements OrganizationReport
                     ->label('Создан')
                     ->dateTime('d.m.Y H:i')
                     ->sortable(),
+            ])
+            ->filters([
+                DateRangeFilter::make('created_at', 'Создан', 'clients.created_at'),
             ])
             ->recordUrl(null)
             ->defaultPaginationPageOption(50)

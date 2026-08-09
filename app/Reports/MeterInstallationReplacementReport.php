@@ -2,6 +2,7 @@
 
 namespace App\Reports;
 
+use App\Filament\Support\DateRangeFilter;
 use App\Models\BillingPeriod;
 use App\Models\Meter;
 use App\Models\Organization;
@@ -86,6 +87,10 @@ class MeterInstallationReplacementReport implements OrganizationReport
                     ->placeholder('-')
                     ->wrap()
                     ->toggleable(),
+            ])
+            ->filters([
+                DateRangeFilter::make('installed_on', 'Установлен', 'meters.installed_on'),
+                DateRangeFilter::make('removed_on', 'Снят', 'meters.removed_on'),
             ])
             ->recordUrl(null)
             ->defaultPaginationPageOption(50)

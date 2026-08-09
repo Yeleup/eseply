@@ -2,6 +2,7 @@
 
 namespace App\Reports;
 
+use App\Filament\Support\DateRangeFilter;
 use App\Models\BillingPeriod;
 use App\Models\Meter;
 use App\Models\MeterReading;
@@ -77,6 +78,9 @@ class MeterReadingSheetReport implements OrganizationReport
                     ->label('Показание')
                     ->state(fn (): string => '')
                     ->placeholder(''),
+            ])
+            ->filters([
+                DateRangeFilter::make('installed_on', 'Дата установки', 'meters.installed_on'),
             ])
             ->recordUrl(null)
             ->defaultPaginationPageOption(50)

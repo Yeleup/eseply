@@ -2,6 +2,7 @@
 
 namespace App\Reports;
 
+use App\Filament\Support\DateRangeFilter;
 use App\Models\BillingPeriod;
 use App\Models\MeterReading;
 use App\Models\Organization;
@@ -76,6 +77,9 @@ class ConsumptionReport implements OrganizationReport
                     ->date('d.m.Y')
                     ->placeholder('-')
                     ->sortable(),
+            ])
+            ->filters([
+                DateRangeFilter::make('read_at', 'Дата снятия', 'meter_readings.read_at'),
             ])
             ->recordUrl(null)
             ->defaultPaginationPageOption(50)

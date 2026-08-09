@@ -2,6 +2,7 @@
 
 namespace App\Reports;
 
+use App\Filament\Support\DateRangeFilter;
 use App\Models\BillingPeriod;
 use App\Models\Organization;
 use App\Models\Receipt;
@@ -75,6 +76,9 @@ class UnpaidReceiptsReport implements OrganizationReport
                     ->dateTime('d.m.Y H:i')
                     ->sortable()
                     ->toggleable(),
+            ])
+            ->filters([
+                DateRangeFilter::make('issued_at', 'Квитанция сформирована', 'receipts.issued_at'),
             ])
             ->recordUrl(null)
             ->defaultPaginationPageOption(50)

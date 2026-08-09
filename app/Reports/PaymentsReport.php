@@ -2,6 +2,7 @@
 
 namespace App\Reports;
 
+use App\Filament\Support\DateRangeFilter;
 use App\Models\BillingPeriod;
 use App\Models\Organization;
 use App\Models\Payment;
@@ -82,6 +83,9 @@ class PaymentsReport implements OrganizationReport
                     ->placeholder('-')
                     ->wrap()
                     ->toggleable(),
+            ])
+            ->filters([
+                DateRangeFilter::make('paid_at', 'Дата оплаты', 'payments.paid_at'),
             ])
             ->recordUrl(null)
             ->defaultPaginationPageOption(50)

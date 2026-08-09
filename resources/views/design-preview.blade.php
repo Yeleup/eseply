@@ -401,6 +401,56 @@
                 </div>
 
                 <div class="border-b border-zinc-200 p-4 dark:border-zinc-800">
+                    <div>
+                        <p class="text-sm font-medium text-violet-700 dark:text-violet-300">Фильтры по датам</p>
+                        <h3 class="mt-1 text-base font-semibold">Диапазон «с» / «по» для каждой колонки даты</h3>
+                        <p class="mt-1 max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
+                            Каждая колонка даты детального отчёта фильтруется диапазоном с включительными границами. Активные границы отображаются индикаторами над таблицей и снимаются по отдельности. XLSX-выгрузка и сводный режим фильтры не учитывают.
+                        </p>
+                    </div>
+
+                    <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+                        <div class="rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-950">
+                            <p class="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Панель фильтра</p>
+                            <div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                <div>
+                                    <label class="text-sm font-medium">Дата оплаты с</label>
+                                    <div class="mt-1 flex items-center justify-between rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200">
+                                        <span>01.06.2026</span>
+                                        <span aria-hidden="true" class="text-zinc-400">📅</span>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="text-sm font-medium">Дата оплаты по</label>
+                                    <div class="mt-1 flex items-center justify-between rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-500">
+                                        <span>дд.мм.гггг</span>
+                                        <span aria-hidden="true" class="text-zinc-400">📅</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <p class="mt-3 text-xs text-zinc-500 dark:text-zinc-400">Каждую границу можно указать отдельно. Строки без даты скрываются, пока фильтр активен.</p>
+                        </div>
+
+                        <div class="rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-950">
+                            <p class="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Индикаторы активного фильтра</p>
+                            <div class="mt-3 flex flex-wrap items-center gap-2">
+                                <span class="inline-flex items-center gap-1 rounded-full bg-violet-100 px-3 py-1 text-xs font-medium text-violet-800 dark:bg-violet-950/60 dark:text-violet-200">
+                                    Дата оплаты: с 01.06.2026
+                                    <button type="button" class="text-violet-500 transition hover:text-violet-700 dark:hover:text-violet-100">&times;</button>
+                                </span>
+                                <span class="inline-flex items-center gap-1 rounded-full bg-violet-100 px-3 py-1 text-xs font-medium text-violet-800 dark:bg-violet-950/60 dark:text-violet-200">
+                                    Дата оплаты: по 15.06.2026
+                                    <button type="button" class="text-violet-500 transition hover:text-violet-700 dark:hover:text-violet-100">&times;</button>
+                                </span>
+                            </div>
+                            <p class="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
+                                Фильтры есть у дат: оплата, снятие показания, установка и снятие счётчика, создание абонента, формирование квитанции. «Замена/установка счётчика» имеет два независимых фильтра, которые работают одновременно.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="border-b border-zinc-200 p-4 dark:border-zinc-800">
                     <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
                         <div>
                             <p class="text-sm font-medium text-indigo-700 dark:text-indigo-300">Сводный режим</p>

@@ -1434,3 +1434,338 @@ test('consumption report lists meter readings for current billing period', funct
     ]);
     expect(collect($rows)->flatten()->contains('MTR-OTHER-CONSUME'))->toBeFalse();
 });
+
+test('payments report filters payments by paid_at date range', function () {
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create();
+
+    billingPeriodFor($organization, '202606');
+
+    $client = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create(['account_number' => '600001', 'name' => 'Плательщик по датам']);
+    $earlyPayment = Payment::factory()
+        ->for($organization)
+        ->for($client)
+        ->create(['period' => '202606', 'paid_at' => '2026-06-05']);
+    $middlePayment = Payment::factory()
+        ->for($organization)
+        ->for($client)
+        ->create(['period' => '202606', 'paid_at' => '2026-06-10']);
+    $latePayment = Payment::factory()
+        ->for($organization)
+        ->for($client)
+        ->create(['period' => '202606', 'paid_at' => '2026-06-20']);
+
+    actingAsReportsTenant($organization);
+
+    Livewire::test(ViewReport::class, ['report' => 'payments'])
+        ->assertOk()
+        ->assertCanSeeTableRecords([$earlyPayment, $middlePayment, $latePayment])
+        ->filterTable('paid_at', ['start_date' => '2026-06-08', 'end_date' => null])
+        ->assertCanSeeTableRecords([$middlePayment, $latePayment])
+        ->assertCanNotSeeTableRecords([$earlyPayment])
+        ->filterTable('paid_at', ['start_date' => '2026-06-08', 'end_date' => '2026-06-15'])
+        ->assertCanSeeTableRecords([$middlePayment])
+        ->assertCanNotSeeTableRecords([$earlyPayment, $latePayment])
+        ->filterTable('paid_at', ['start_date' => null, 'end_date' => '2026-06-05'])
+        ->assertCanSeeTableRecords([$earlyPayment])
+        ->assertCanNotSeeTableRecords([$middlePayment, $latePayment])
+        ->filterTable('paid_at', ['start_date' => '2026-06-05', 'end_date' => null])
+        ->assertCanSeeTableRecords([$earlyPayment, $middlePayment, $latePayment])
+        ->filterTable('paid_at', ['start_date' => '2026-06-08', 'end_date' => '2026-06-15'])
+        ->assertCanSeeTableRecords([$middlePayment])
+        ->removeTableFilter('paid_at', 'start_date')
+        ->assertCanSeeTableRecords([$earlyPayment, $middlePayment])
+        ->assertCanNotSeeTableRecords([$latePayment])
+        ->removeTableFilter('paid_at')
+        ->assertCanSeeTableRecords([$earlyPayment, $middlePayment, $latePayment]);
+});
+
+test('report date filters ignore invalid filter state', function () {
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create();
+
+    billingPeriodFor($organization, '202606');
+
+    $client = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create(['account_number' => '670001', 'name' => 'Плательщик с помехами']);
+    $payment = Payment::factory()
+        ->for($organization)
+        ->for($client)
+        ->create(['period' => '202606', 'paid_at' => '2026-06-10']);
+
+    actingAsReportsTenant($organization);
+
+    Livewire::test(ViewReport::class, ['report' => 'payments'])
+        ->assertOk()
+        ->set('tableFilters.paid_at.start_date', 'garbage')
+        ->assertOk()
+        ->assertCanSeeTableRecords([$payment])
+        ->set('tableFilters.paid_at.start_date', ['nested' => 'array'])
+        ->assertOk()
+        ->assertCanSeeTableRecords([$payment])
+        ->set('tableFilters.paid_at.end_date', 'not-a-date')
+        ->assertOk()
+        ->assertCanSeeTableRecords([$payment]);
+});
+
+test('consumption report filters meter readings by read_at date range', function () {
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create();
+
+    billingPeriodFor($organization, '202606');
+
+    $client = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create(['account_number' => '610001', 'billing_type' => 'meter']);
+    $earlyMeter = Meter::factory()
+        ->for($organization)
+        ->for($client)
+        ->for($utilityService)
+        ->create(['number' => 'MTR-READ-EARLY']);
+    $lateMeter = Meter::factory()
+        ->for($organization)
+        ->for($client)
+        ->for($utilityService)
+        ->create(['number' => 'MTR-READ-LATE']);
+    $earlyReading = MeterReading::factory()
+        ->for($earlyMeter)
+        ->create(['period' => '202606', 'read_at' => '2026-06-05']);
+    $lateReading = MeterReading::factory()
+        ->for($lateMeter)
+        ->create(['period' => '202606', 'read_at' => '2026-06-20']);
+
+    actingAsReportsTenant($organization);
+
+    Livewire::test(ViewReport::class, ['report' => 'consumption'])
+        ->assertOk()
+        ->assertCanSeeTableRecords([$earlyReading, $lateReading])
+        ->filterTable('read_at', ['start_date' => '2026-06-10', 'end_date' => null])
+        ->assertCanSeeTableRecords([$lateReading])
+        ->assertCanNotSeeTableRecords([$earlyReading])
+        ->filterTable('read_at', ['start_date' => null, 'end_date' => '2026-06-10'])
+        ->assertCanSeeTableRecords([$earlyReading])
+        ->assertCanNotSeeTableRecords([$lateReading]);
+});
+
+test('meter installation replacement report filters by installed_on and removed_on date ranges', function () {
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create();
+
+    billingPeriodFor($organization, '202606');
+
+    $client = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create(['account_number' => '620001', 'billing_type' => 'meter']);
+    $earlyInstalledMeter = Meter::factory()
+        ->for($organization)
+        ->for($client)
+        ->for($utilityService)
+        ->create(['number' => 'MTR-INSTALL-EARLY', 'installed_on' => '2026-06-03']);
+    $lateInstalledMeter = Meter::factory()
+        ->for($organization)
+        ->for($client)
+        ->for($utilityService)
+        ->create(['number' => 'MTR-INSTALL-LATE', 'installed_on' => '2026-06-20']);
+    $removedMeter = Meter::factory()
+        ->for($organization)
+        ->for($client)
+        ->for($utilityService)
+        ->create(['number' => 'MTR-REPLACED', 'installed_on' => '2025-02-01']);
+    $removedMeter->forceFill(['removed_on' => '2026-06-12', 'status' => 'removed'])->save();
+    $oldInstalledRemovedMeter = Meter::factory()
+        ->for($organization)
+        ->for($client)
+        ->for($utilityService)
+        ->create(['number' => 'MTR-REPLACED-OLD', 'installed_on' => '2024-12-01']);
+    $oldInstalledRemovedMeter->forceFill(['removed_on' => '2026-06-25', 'status' => 'removed'])->save();
+
+    actingAsReportsTenant($organization);
+
+    Livewire::test(ViewReport::class, ['report' => 'meter-installation-replacement'])
+        ->assertOk()
+        ->assertCanSeeTableRecords([$earlyInstalledMeter, $lateInstalledMeter, $removedMeter, $oldInstalledRemovedMeter])
+        ->filterTable('installed_on', ['start_date' => '2026-06-10', 'end_date' => null])
+        ->assertCanSeeTableRecords([$lateInstalledMeter])
+        ->assertCanNotSeeTableRecords([$earlyInstalledMeter, $removedMeter, $oldInstalledRemovedMeter])
+        ->removeTableFilter('installed_on')
+        ->filterTable('removed_on', ['start_date' => '2026-06-01', 'end_date' => '2026-06-30'])
+        ->assertCanSeeTableRecords([$removedMeter, $oldInstalledRemovedMeter])
+        ->assertCanNotSeeTableRecords([$earlyInstalledMeter, $lateInstalledMeter])
+        ->filterTable('installed_on', ['start_date' => '2025-01-01', 'end_date' => '2026-06-10'])
+        ->assertCanSeeTableRecords([$removedMeter])
+        ->assertCanNotSeeTableRecords([$earlyInstalledMeter, $lateInstalledMeter, $oldInstalledRemovedMeter]);
+});
+
+test('meter reading sheet report filters meters by installed_on date range', function () {
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create();
+
+    $client = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'account_number' => '630001',
+            'billing_type' => 'meter',
+            'status' => 'active',
+        ]);
+    $winterMeter = Meter::factory()
+        ->for($organization)
+        ->for($client)
+        ->for($utilityService)
+        ->create(['number' => 'MTR-SHEET-WINTER', 'installed_on' => '2026-01-10', 'status' => 'active']);
+    $springMeter = Meter::factory()
+        ->for($organization)
+        ->for($client)
+        ->for($utilityService)
+        ->create(['number' => 'MTR-SHEET-SPRING', 'installed_on' => '2026-03-15', 'status' => 'active']);
+
+    actingAsReportsTenant($organization);
+
+    Livewire::test(ViewReport::class, ['report' => 'meter-reading-sheet'])
+        ->assertOk()
+        ->assertCanSeeTableRecords([$winterMeter, $springMeter])
+        ->filterTable('installed_on', ['start_date' => '2026-02-01', 'end_date' => null])
+        ->assertCanSeeTableRecords([$springMeter])
+        ->assertCanNotSeeTableRecords([$winterMeter])
+        ->filterTable('installed_on', ['start_date' => null, 'end_date' => '2026-02-01'])
+        ->assertCanSeeTableRecords([$winterMeter])
+        ->assertCanNotSeeTableRecords([$springMeter]);
+});
+
+test('missing meter readings report filters meters by installed_on date range', function () {
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create();
+
+    billingPeriodFor($organization, '202606');
+
+    $client = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'account_number' => '640001',
+            'billing_type' => 'meter',
+            'status' => 'active',
+        ]);
+    $winterMeter = Meter::factory()
+        ->for($organization)
+        ->for($client)
+        ->for($utilityService)
+        ->create(['number' => 'MTR-MISS-WINTER', 'installed_on' => '2026-01-10', 'status' => 'active']);
+    $springMeter = Meter::factory()
+        ->for($organization)
+        ->for($client)
+        ->for($utilityService)
+        ->create(['number' => 'MTR-MISS-SPRING', 'installed_on' => '2026-03-15', 'status' => 'active']);
+
+    actingAsReportsTenant($organization);
+
+    Livewire::test(ViewReport::class, ['report' => 'missing-meter-readings'])
+        ->assertOk()
+        ->assertCanSeeTableRecords([$winterMeter, $springMeter])
+        ->filterTable('installed_on', ['start_date' => '2026-02-01', 'end_date' => null])
+        ->assertCanSeeTableRecords([$springMeter])
+        ->assertCanNotSeeTableRecords([$winterMeter]);
+});
+
+test('new client accounts report filters clients by created_at date range', function () {
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create();
+
+    billingPeriodFor($organization, '202606');
+
+    $earlyClient = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'account_number' => '650001',
+            'created_at' => '2026-06-05 09:15:00',
+            'updated_at' => '2026-06-05 09:15:00',
+        ]);
+    $middleClient = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'account_number' => '650002',
+            'created_at' => '2026-06-16 18:30:00',
+            'updated_at' => '2026-06-16 18:30:00',
+        ]);
+    $lateClient = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'account_number' => '650003',
+            'created_at' => '2026-06-25 08:00:00',
+            'updated_at' => '2026-06-25 08:00:00',
+        ]);
+
+    actingAsReportsTenant($organization);
+
+    Livewire::test(ViewReport::class, ['report' => 'new-client-accounts'])
+        ->assertOk()
+        ->assertCanSeeTableRecords([$earlyClient, $middleClient, $lateClient])
+        ->filterTable('created_at', ['start_date' => '2026-06-10', 'end_date' => null])
+        ->assertCanSeeTableRecords([$middleClient, $lateClient])
+        ->assertCanNotSeeTableRecords([$earlyClient])
+        ->filterTable('created_at', ['start_date' => '2026-06-10', 'end_date' => '2026-06-16'])
+        ->assertCanSeeTableRecords([$middleClient])
+        ->assertCanNotSeeTableRecords([$earlyClient, $lateClient]);
+});
+
+test('unpaid receipts report filters receipts by issued_at date range', function () {
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create();
+
+    billingPeriodFor($organization, '202606');
+
+    $earlyClient = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create(['account_number' => '660001', 'name' => 'Ранний должник']);
+    $lateClient = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create(['account_number' => '660002', 'name' => 'Поздний должник']);
+    $earlyReceipt = Receipt::factory()
+        ->for($organization)
+        ->for($earlyClient)
+        ->create([
+            'period' => '202606',
+            'receipt_number' => '202606-660001',
+            'account_number' => '660001',
+            'client_name' => 'Ранний должник',
+            'amount' => 5000,
+            'paid_amount' => 1000,
+            'issued_at' => '2026-06-05 09:00:00',
+        ]);
+    $lateReceipt = Receipt::factory()
+        ->for($organization)
+        ->for($lateClient)
+        ->create([
+            'period' => '202606',
+            'receipt_number' => '202606-660002',
+            'account_number' => '660002',
+            'client_name' => 'Поздний должник',
+            'amount' => 7000,
+            'paid_amount' => 2000,
+            'issued_at' => '2026-06-20 23:30:00',
+        ]);
+
+    actingAsReportsTenant($organization);
+
+    Livewire::test(ViewReport::class, ['report' => 'unpaid-receipts'])
+        ->assertOk()
+        ->assertCanSeeTableRecords([$earlyReceipt, $lateReceipt])
+        ->filterTable('issued_at', ['start_date' => '2026-06-10', 'end_date' => null])
+        ->assertCanSeeTableRecords([$lateReceipt])
+        ->assertCanNotSeeTableRecords([$earlyReceipt])
+        ->filterTable('issued_at', ['start_date' => '2026-06-10', 'end_date' => '2026-06-20'])
+        ->assertCanSeeTableRecords([$lateReceipt])
+        ->assertCanNotSeeTableRecords([$earlyReceipt]);
+});

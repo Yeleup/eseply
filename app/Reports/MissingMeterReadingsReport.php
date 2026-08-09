@@ -2,6 +2,7 @@
 
 namespace App\Reports;
 
+use App\Filament\Support\DateRangeFilter;
 use App\Models\BillingPeriod;
 use App\Models\Meter;
 use App\Models\MeterReading;
@@ -78,6 +79,9 @@ class MissingMeterReadingsReport implements OrganizationReport
                     ->label('Предыдущее показание')
                     ->state(fn (Meter $record): mixed => $record->getAttribute('previous_reading_for_report') ?? $record->initial_reading)
                     ->numeric(4),
+            ])
+            ->filters([
+                DateRangeFilter::make('installed_on', 'Дата установки', 'meters.installed_on'),
             ])
             ->recordUrl(null)
             ->defaultPaginationPageOption(50)

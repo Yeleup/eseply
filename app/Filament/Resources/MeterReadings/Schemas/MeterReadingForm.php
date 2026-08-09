@@ -9,6 +9,7 @@ use App\Models\Organization;
 use App\Models\User;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
@@ -75,8 +76,30 @@ class MeterReadingForm
                         Textarea::make('note')
                             ->label('Примечание')
                             ->columnSpanFull(),
+                        self::photoUpload(),
                     ]),
             ]);
+    }
+
+    public static function photoUpload(): FileUpload
+    {
+        return FileUpload::make('photo_path')
+            ->label('Фото счётчика')
+            ->image()
+            ->disk(MeterReading::PHOTO_DISK)
+            ->directory(function (): string {
+                $tenant = Filament::getTenant();
+
+                return MeterReading::photoDirectoryFor(
+                    $tenant instanceof Organization ? $tenant->getKey() : 0,
+                );
+            })
+            ->maxSize(10240)
+            ->automaticallyResizeImagesMode('contain')
+            ->automaticallyResizeImagesToWidth('1920')
+            ->automaticallyResizeImagesToHeight('1920')
+            ->openable()
+            ->columnSpanFull();
     }
 
     private static function currentBillingPeriodId(): ?int

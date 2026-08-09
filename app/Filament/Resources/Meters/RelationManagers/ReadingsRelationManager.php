@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Meters\RelationManagers;
 
+use App\Filament\Resources\MeterReadings\Schemas\MeterReadingForm;
 use App\Filament\Support\CurrentBillingPeriod;
 use App\Filament\Support\OrganizationMemberAccess;
 use App\Models\BillingPeriod;
@@ -63,6 +64,7 @@ class ReadingsRelationManager extends RelationManager
                         Textarea::make('note')
                             ->label('Примечание')
                             ->columnSpanFull(),
+                        MeterReadingForm::photoUpload(),
                     ]),
             ]);
     }

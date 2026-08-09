@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Clients\RelationManagers;
 
+use App\Filament\Resources\MeterReadings\Schemas\MeterReadingForm;
 use App\Filament\Resources\Meters\MeterResource;
 use App\Filament\Support\CurrentBillingPeriod;
 use App\Filament\Support\OrganizationMemberAccess;
@@ -186,6 +187,7 @@ class MetersRelationManager extends RelationManager
                             'current_reading' => $data['current_reading'],
                             'read_at' => $data['read_at'] ?? null,
                             'note' => $data['note'] ?? null,
+                            'photo_path' => $data['photo_path'] ?? null,
                         ];
 
                         if ($meterReading instanceof MeterReading) {
@@ -269,6 +271,7 @@ class MetersRelationManager extends RelationManager
                     Textarea::make('note')
                         ->label('Примечание')
                         ->columnSpanFull(),
+                    MeterReadingForm::photoUpload(),
                 ]),
         ];
     }
@@ -286,7 +289,7 @@ class MetersRelationManager extends RelationManager
     }
 
     /**
-     * @return array{previous_reading: float, current_reading?: float|null, read_at?: string|null, note?: string|null}
+     * @return array{previous_reading: float, current_reading?: float|null, read_at?: string|null, note?: string|null, photo_path?: string|null}
      */
     private function readingActionFormData(Meter $meter): array
     {
@@ -299,6 +302,7 @@ class MetersRelationManager extends RelationManager
                 'current_reading' => (float) $meterReading->current_reading,
                 'read_at' => $meterReading->read_at?->toDateString(),
                 'note' => $meterReading->note,
+                'photo_path' => $meterReading->photo_path,
             ];
         }
 

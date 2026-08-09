@@ -99,6 +99,24 @@ class MeterReadingForm
             ->automaticallyResizeImagesToWidth('1920')
             ->automaticallyResizeImagesToHeight('1920')
             ->openable()
+            ->preventFilePathTampering(allowFilePathUsing: function (string $file): bool {
+                $tenant = Filament::getTenant();
+
+                if (! $tenant instanceof Organization) {
+                    return false;
+                }
+
+                $directory = MeterReading::photoDirectoryFor($tenant->getKey()).'/';
+
+                if (! str_starts_with($file, $directory)) {
+                    return false;
+                }
+
+                return MeterReading::query()
+                    ->where('organization_id', $tenant->getKey())
+                    ->where('photo_path', $file)
+                    ->exists();
+            })
             ->columnSpanFull();
     }
 

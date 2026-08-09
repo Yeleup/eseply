@@ -16,6 +16,7 @@ use Filament\Facades\Filament;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Livewire\Livewire;
 
 uses(RefreshDatabase::class);
@@ -132,6 +133,85 @@ test('a meter reading can be created with a photo through the resource form', fu
     expect($reading->photo_path)->not->toBeNull()
         ->and($reading->photo_path)->toStartWith("meter-reading-photos/{$organization->id}/");
     Storage::disk('public')->assertExists($reading->photo_path);
+});
+
+test('creating a reading with a tampered foreign photo path is rejected', function () {
+    Storage::fake('public');
+
+    $victimOrganization = Organization::factory()->create();
+    $victimMeter = Meter::factory()->for($victimOrganization)->create();
+    $victimPhotoPath = "meter-reading-photos/{$victimOrganization->id}/victim.jpg";
+    Storage::disk('public')->put($victimPhotoPath, 'victim');
+
+    $victimReading = MeterReading::factory()->for($victimMeter)->create([
+        'period' => '202605',
+        'photo_path' => $victimPhotoPath,
+    ]);
+
+    $organization = Organization::factory()->create();
+    $meter = Meter::factory()->for($organization)->create([
+        'initial_reading' => 100,
+    ]);
+    billingPeriodFor($organization);
+
+    actingAsReadingPhotoTenant($organization);
+
+    Livewire::test(CreateMeterReading::class)
+        ->fillForm([
+            'meter_id' => $meter->id,
+            'current_reading' => 137.125,
+            'photo_path' => [(string) Str::uuid() => $victimPhotoPath],
+        ])
+        ->call('create')
+        ->assertHasFormErrors(['photo_path']);
+
+    expect(MeterReading::query()->whereBelongsTo($meter)->exists())->toBeFalse();
+    Storage::disk('public')->assertExists($victimPhotoPath);
+    expect($victimReading->refresh()->photo_path)->toBe($victimPhotoPath);
+});
+
+test('the client card reading action keeps an existing photo path when resubmitted unchanged', function () {
+    Storage::fake('public');
+
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create();
+    $client = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'billing_type' => 'meter',
+        ]);
+    $meter = Meter::factory()
+        ->for($organization)
+        ->for($client)
+        ->for($utilityService)
+        ->create([
+            'initial_reading' => 100,
+        ]);
+    billingPeriodFor($organization);
+
+    $photoPath = "meter-reading-photos/{$organization->id}/existing.jpg";
+    Storage::disk('public')->put($photoPath, 'existing');
+
+    $reading = MeterReading::factory()->for($meter)->create([
+        'period' => '202605',
+        'photo_path' => $photoPath,
+    ]);
+
+    actingAsReadingPhotoTenant($organization);
+
+    Livewire::test(MetersRelationManager::class, [
+        'ownerRecord' => $client,
+        'pageClass' => EditClient::class,
+    ])
+        ->callTableAction('addReading', $meter, data: [
+            'current_reading' => 141.5,
+            'photo_path' => [(string) Str::uuid() => $photoPath],
+        ])
+        ->assertHasNoTableActionErrors();
+
+    expect($reading->refresh()->photo_path)->toBe($photoPath);
+    Storage::disk('public')->assertExists($photoPath);
 });
 
 test('the client card reading action saves a photo', function () {

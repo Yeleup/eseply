@@ -3,6 +3,7 @@
 use App\Filament\Resources\Clients\Pages\EditClient;
 use App\Filament\Resources\Clients\RelationManagers\MetersRelationManager;
 use App\Filament\Resources\MeterReadings\Pages\CreateMeterReading;
+use App\Filament\Resources\MeterReadings\Pages\EditMeterReading;
 use App\Filament\Resources\MeterReadings\Pages\ListMeterReadings;
 use App\Filament\Resources\Meters\Pages\EditMeter;
 use App\Filament\Resources\Meters\RelationManagers\ReadingsRelationManager;
@@ -136,6 +137,38 @@ test('a meter reading can be created with a photo through the resource form', fu
     Storage::disk('public')->assertExists($reading->photo_path);
 });
 
+test('editing a meter reading keeps its own photo path when resubmitted unchanged', function () {
+    Storage::fake('public');
+
+    $organization = Organization::factory()->create();
+    $meter = Meter::factory()->for($organization)->create([
+        'initial_reading' => 100,
+    ]);
+    billingPeriodFor($organization);
+
+    $photoPath = "meter-reading-photos/{$organization->id}/own.jpg";
+    Storage::disk('public')->put($photoPath, 'own');
+
+    $reading = MeterReading::factory()->for($meter)->create([
+        'period' => '202605',
+        'photo_path' => $photoPath,
+    ]);
+
+    actingAsReadingPhotoTenant($organization);
+
+    Livewire::test(EditMeterReading::class, [
+        'record' => $reading->getRouteKey(),
+    ])
+        ->fillForm([
+            'photo_path' => [(string) Str::uuid() => $photoPath],
+        ])
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    expect($reading->refresh()->photo_path)->toBe($photoPath);
+    Storage::disk('public')->assertExists($photoPath);
+});
+
 test('creating a reading with a tampered foreign photo path is rejected', function () {
     Storage::fake('public');
 
@@ -201,6 +234,60 @@ test('a photo path belonging to another meter of the same organization is reject
         ])
         ->call('create')
         ->assertHasFormErrors(['photo_path']);
+
+    expect(MeterReading::query()->whereBelongsTo($meter)->exists())->toBeFalse();
+    Storage::disk('public')->assertExists($otherPhotoPath);
+    expect($otherReading->refresh()->photo_path)->toBe($otherPhotoPath);
+});
+
+test('the client card reading action rejects an injected meter_id pointing at another meter\'s photo', function () {
+    Storage::fake('public');
+
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create();
+    $client = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'billing_type' => 'meter',
+        ]);
+    $meter = Meter::factory()
+        ->for($organization)
+        ->for($client)
+        ->for($utilityService)
+        ->create([
+            'initial_reading' => 100,
+        ]);
+
+    $otherMeter = Meter::factory()->for($organization)->create();
+    $otherPhotoPath = "meter-reading-photos/{$organization->id}/other-meter-injected.jpg";
+    Storage::disk('public')->put($otherPhotoPath, 'other');
+    $otherReading = MeterReading::factory()->for($otherMeter)->create([
+        'period' => '202604',
+        'photo_path' => $otherPhotoPath,
+    ]);
+    closedBillingPeriodFor($organization, '202604');
+
+    billingPeriodFor($organization);
+
+    actingAsReadingPhotoTenant($organization);
+
+    // The "meter_id" key does not exist in the addReading modal schema (the
+    // meter is always the row record), but a crafted Livewire payload can
+    // still inject it into the mounted action's raw state. If the photo
+    // path validator trusted that injected key over the actual row record,
+    // it would validate against the wrong meter while the reading is
+    // actually written to $meter.
+    Livewire::test(MetersRelationManager::class, [
+        'ownerRecord' => $client,
+        'pageClass' => EditClient::class,
+    ])
+        ->callTableAction('addReading', $meter, data: [
+            'current_reading' => 140.75,
+            'meter_id' => $otherMeter->id,
+            'photo_path' => [(string) Str::uuid() => $otherPhotoPath],
+        ])
+        ->assertHasTableActionErrors(['photo_path']);
 
     expect(MeterReading::query()->whereBelongsTo($meter)->exists())->toBeFalse();
     Storage::disk('public')->assertExists($otherPhotoPath);
@@ -345,6 +432,49 @@ test('the meter card readings relation manager rejects a tampered photo path fro
     ])
         ->callTableAction('create', data: [
             'current_reading' => 137.125,
+            'photo_path' => [(string) Str::uuid() => $otherPhotoPath],
+        ])
+        ->assertHasTableActionErrors(['photo_path']);
+
+    expect(MeterReading::query()->whereBelongsTo($meter)->exists())->toBeFalse();
+    Storage::disk('public')->assertExists($otherPhotoPath);
+    expect($otherReading->refresh()->photo_path)->toBe($otherPhotoPath);
+});
+
+test('the meter card readings relation manager create action rejects an injected meter_id pointing at another meter photo', function () {
+    Storage::fake('public');
+
+    $organization = Organization::factory()->create();
+    $meter = Meter::factory()->for($organization)->create([
+        'initial_reading' => 100,
+    ]);
+
+    $otherMeter = Meter::factory()->for($organization)->create();
+    $otherPhotoPath = "meter-reading-photos/{$organization->id}/other-meter-modal-injected.jpg";
+    Storage::disk('public')->put($otherPhotoPath, 'other');
+    $otherReading = MeterReading::factory()->for($otherMeter)->create([
+        'period' => '202604',
+        'photo_path' => $otherPhotoPath,
+    ]);
+    closedBillingPeriodFor($organization, '202604');
+
+    billingPeriodFor($organization);
+
+    actingAsReadingPhotoTenant($organization);
+
+    // The "create" modal for a meter's readings relation manager has no
+    // "meter_id" field either (the owner record IS the meter), but a
+    // crafted payload can still inject the key into the mounted action's
+    // raw state and try to shift photo path validation to another meter
+    // of the same organization while the reading is actually created for
+    // $meter (the relation manager's owner record).
+    Livewire::test(ReadingsRelationManager::class, [
+        'ownerRecord' => $meter,
+        'pageClass' => EditMeter::class,
+    ])
+        ->callTableAction('create', data: [
+            'current_reading' => 137.125,
+            'meter_id' => $otherMeter->id,
             'photo_path' => [(string) Str::uuid() => $otherPhotoPath],
         ])
         ->assertHasTableActionErrors(['photo_path']);

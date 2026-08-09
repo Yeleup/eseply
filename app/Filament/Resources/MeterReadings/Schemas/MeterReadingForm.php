@@ -132,16 +132,12 @@ class MeterReadingForm
 
     private static function meterIdForPhotoValidation(Get $get, ?Model $record, Component $component): ?int
     {
-        $meterId = $get('meter_id');
-
-        if (filled($meterId)) {
-            return (int) $meterId;
-        }
-
-        if ($record instanceof MeterReading) {
-            return (int) $record->meter_id;
-        }
-
+        // Authoritative, server-controlled contexts take priority over the
+        // "meter_id" form state: in these contexts the field isn't part of
+        // the schema, so a crafted Livewire payload could otherwise inject
+        // a "meter_id" key into the raw component state and make the
+        // validator check a different meter than the one the reading is
+        // actually written to.
         if ($record instanceof Meter) {
             return (int) $record->getKey();
         }
@@ -154,6 +150,22 @@ class MeterReadingForm
             if ($ownerRecord instanceof Meter) {
                 return (int) $ownerRecord->getKey();
             }
+        }
+
+        // On the meter reading resource form "meter_id" is a real,
+        // user-editable field, and its state is what will actually be
+        // saved. It must be checked before falling back to the record's
+        // stored meter_id, otherwise switching the meter while keeping an
+        // existing photo path would validate against the meter being left
+        // instead of the meter being saved to.
+        $meterId = $get('meter_id');
+
+        if (filled($meterId)) {
+            return (int) $meterId;
+        }
+
+        if ($record instanceof MeterReading) {
+            return (int) $record->meter_id;
         }
 
         return null;

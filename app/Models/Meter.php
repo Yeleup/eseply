@@ -6,6 +6,7 @@ use App\Support\MeterReadingPhotoStorage;
 use Database\Factories\MeterFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -141,7 +142,7 @@ class Meter extends Model
             $meter->readings()
                 ->whereNotNull('photo_path')
                 ->select(['id', 'photo_path'])
-                ->chunkById(500, function ($readings) use (&$photoPaths): void {
+                ->chunkById(500, function (Collection $readings) use (&$photoPaths): void {
                     foreach ($readings as $reading) {
                         $photoPaths[] = $reading->photo_path;
                     }

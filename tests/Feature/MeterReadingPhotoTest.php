@@ -289,6 +289,71 @@ test('the client card reading action saves a photo', function () {
     Storage::disk('public')->assertExists($reading->photo_path);
 });
 
+test('the meter card readings relation manager saves a photo through the create action', function () {
+    Storage::fake('public');
+
+    $organization = Organization::factory()->create();
+    $meter = Meter::factory()->for($organization)->create([
+        'initial_reading' => 100,
+    ]);
+    billingPeriodFor($organization);
+
+    actingAsReadingPhotoTenant($organization);
+
+    Livewire::test(ReadingsRelationManager::class, [
+        'ownerRecord' => $meter,
+        'pageClass' => EditMeter::class,
+    ])
+        ->callTableAction('create', data: [
+            'current_reading' => 137.125,
+            'photo_path' => UploadedFile::fake()->image('meter.jpg'),
+        ])
+        ->assertHasNoTableActionErrors();
+
+    $reading = MeterReading::query()->whereBelongsTo($meter)->sole();
+
+    expect($reading->photo_path)->not->toBeNull()
+        ->and($reading->photo_path)->toStartWith("meter-reading-photos/{$organization->id}/");
+    Storage::disk('public')->assertExists($reading->photo_path);
+});
+
+test('the meter card readings relation manager rejects a tampered photo path from another meter', function () {
+    Storage::fake('public');
+
+    $organization = Organization::factory()->create();
+
+    $otherMeter = Meter::factory()->for($organization)->create();
+    $otherPhotoPath = "meter-reading-photos/{$organization->id}/other-meter-modal.jpg";
+    Storage::disk('public')->put($otherPhotoPath, 'other');
+
+    $otherReading = MeterReading::factory()->for($otherMeter)->create([
+        'period' => '202604',
+        'photo_path' => $otherPhotoPath,
+    ]);
+    closedBillingPeriodFor($organization, '202604');
+
+    $meter = Meter::factory()->for($organization)->create([
+        'initial_reading' => 100,
+    ]);
+    billingPeriodFor($organization);
+
+    actingAsReadingPhotoTenant($organization);
+
+    Livewire::test(ReadingsRelationManager::class, [
+        'ownerRecord' => $meter,
+        'pageClass' => EditMeter::class,
+    ])
+        ->callTableAction('create', data: [
+            'current_reading' => 137.125,
+            'photo_path' => [(string) Str::uuid() => $otherPhotoPath],
+        ])
+        ->assertHasTableActionErrors(['photo_path']);
+
+    expect(MeterReading::query()->whereBelongsTo($meter)->exists())->toBeFalse();
+    Storage::disk('public')->assertExists($otherPhotoPath);
+    expect($otherReading->refresh()->photo_path)->toBe($otherPhotoPath);
+});
+
 test('reading tables show a photo column', function () {
     Storage::fake('public');
 

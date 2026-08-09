@@ -67,6 +67,8 @@ XPayment API key уникален для каждой tenant-организац�
 
 Глобальные `.env` настройки XPayment используются для технических параметров клиента и общего webhook secret: base URL, webhook secret, timeout и connect timeout.
 
+При удалении организации вместе с её данными удаляется каталог фото показаний счётчиков `meter-reading-photos/{organization_id}` на диске `public`.
+
 ## Профиль организации
 
 Профиль tenant-организации доступен только оператору выбранной организации.

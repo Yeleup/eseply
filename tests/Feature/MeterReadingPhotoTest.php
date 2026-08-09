@@ -12,6 +12,7 @@ use App\Models\MeterReading;
 use App\Models\Organization;
 use App\Models\User;
 use App\Models\UtilityService;
+use App\Support\MeterReadingPhotoStorage;
 use Filament\Facades\Filament;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -276,4 +277,35 @@ test('reading tables show a photo column', function () {
         ->assertOk()
         ->assertCanSeeTableRecords([$reading])
         ->assertTableColumnExists('photo_path');
+});
+
+test('the photo storage helper exposes the disk and directory used by readings', function () {
+    Storage::fake('public');
+    Storage::disk('public')->put('meter-reading-photos/7/one.jpg', 'one');
+    Storage::disk('public')->put('meter-reading-photos/7/two.jpg', 'two');
+    Storage::disk('public')->put('meter-reading-photos/8/other.jpg', 'other');
+
+    expect(MeterReadingPhotoStorage::disk())->toBe('public')
+        ->and(MeterReadingPhotoStorage::directoryFor(7))->toBe('meter-reading-photos/7')
+        ->and(MeterReading::PHOTO_DISK)->toBe(MeterReadingPhotoStorage::disk())
+        ->and(MeterReading::photoDirectoryFor(7))->toBe(MeterReadingPhotoStorage::directoryFor(7));
+
+    MeterReadingPhotoStorage::delete(null);
+    MeterReadingPhotoStorage::delete('');
+    Storage::disk('public')->assertExists('meter-reading-photos/7/one.jpg');
+
+    MeterReadingPhotoStorage::deleteMany([
+        'meter-reading-photos/7/one.jpg',
+        null,
+        '',
+        'meter-reading-photos/7/two.jpg',
+    ]);
+
+    Storage::disk('public')->assertMissing('meter-reading-photos/7/one.jpg');
+    Storage::disk('public')->assertMissing('meter-reading-photos/7/two.jpg');
+    Storage::disk('public')->assertExists('meter-reading-photos/8/other.jpg');
+
+    MeterReadingPhotoStorage::deleteOrganizationDirectory(8);
+
+    Storage::disk('public')->assertMissing('meter-reading-photos/8/other.jpg');
 });

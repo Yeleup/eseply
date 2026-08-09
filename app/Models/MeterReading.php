@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 
 #[Fillable([
@@ -21,6 +22,7 @@ use Illuminate\Validation\ValidationException;
     'consumption',
     'read_at',
     'note',
+    'photo_path',
     'period',
 ])]
 class MeterReading extends Model
@@ -31,6 +33,8 @@ class MeterReading extends Model
     use HasFactory;
 
     public const DUPLICATE_BILLING_PERIOD_MESSAGE = 'За текущий расчётный месяц уже есть показание по этому счётчику. Измените существующее показание вместо создания нового.';
+
+    public const PHOTO_DISK = 'public';
 
     /**
      * @var array<string, mixed>
@@ -147,6 +151,11 @@ class MeterReading extends Model
         return $query->exists();
     }
 
+    public static function photoDirectoryFor(int|string $organizationId): string
+    {
+        return "meter-reading-photos/{$organizationId}";
+    }
+
     /**
      * Get the attributes that should be cast.
      *
@@ -191,6 +200,20 @@ class MeterReading extends Model
 
         static::deleting(function (MeterReading $meterReading): void {
             $meterReading->ensureBillingPeriodIsEditable();
+        });
+
+        static::updated(function (MeterReading $meterReading): void {
+            $previousPhotoPath = $meterReading->getOriginal('photo_path');
+
+            if ($meterReading->wasChanged('photo_path') && $previousPhotoPath) {
+                Storage::disk(self::PHOTO_DISK)->delete($previousPhotoPath);
+            }
+        });
+
+        static::deleted(function (MeterReading $meterReading): void {
+            if ($meterReading->photo_path) {
+                Storage::disk(self::PHOTO_DISK)->delete($meterReading->photo_path);
+            }
         });
 
         static::saved(function (MeterReading $meterReading): void {

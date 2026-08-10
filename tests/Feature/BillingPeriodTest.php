@@ -3,6 +3,7 @@
 use App\Actions\CloseBillingMonth;
 use App\BalanceAdjustmentType;
 use App\BillingPeriodStatus;
+use App\Filament\Resources\BillingPeriods\BillingPeriodResource;
 use App\Filament\Resources\BillingPeriods\Pages\ListBillingPeriods;
 use App\Models\BalanceAdjustment;
 use App\Models\BillingPeriod;
@@ -261,9 +262,9 @@ test('failed billing period shows closure error report action', function () {
     Livewire::test(ListBillingPeriods::class)
         ->assertOk()
         ->assertTableActionVisible('closureErrors', $billingPeriod)
-        ->mountTableAction('closureErrors', $billingPeriod)
-        ->assertMountedActionModalSee('80502')
-        ->assertMountedActionModalSee('Без суммы')
-        ->assertMountedActionModalSee('Не указана фиксированная сумма.')
-        ->assertMountedActionModalSee('missing_fixed_amount');
+        ->assertTableActionHasUrl(
+            'closureErrors',
+            BillingPeriodResource::getUrl('closureErrors', ['record' => $billingPeriod]),
+            $billingPeriod,
+        );
 });

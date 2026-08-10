@@ -325,6 +325,229 @@
             </section>
 
             <section class="overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+                <div class="flex flex-col gap-4 border-b border-zinc-200 p-4 dark:border-zinc-800 sm:flex-row sm:items-end sm:justify-between">
+                    <div>
+                        <p class="text-sm text-zinc-500 dark:text-zinc-400">Dashboard / стартовая страница панели</p>
+                        <h2 class="text-base font-semibold">Дашборд</h2>
+                        <p class="mt-2 max-w-2xl text-sm text-zinc-500 dark:text-zinc-400">
+                            Картина организации за один расчётный месяц: абоненты, снятие показаний, потребление, начисления, оплаты, долг, динамика по месяцам, прогресс контроллеров и срез по районам.
+                        </p>
+                    </div>
+
+                    <label class="flex flex-col gap-1 text-sm sm:w-64">
+                        <span class="font-medium text-zinc-700 dark:text-zinc-200">Расчётный месяц</span>
+                        <select class="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100">
+                            <option>08.2026 — Открыт</option>
+                            <option>07.2026 — Закрыт</option>
+                            <option>06.2026 — Закрыт</option>
+                        </select>
+                    </label>
+                </div>
+
+                <div class="grid grid-cols-1 gap-4 border-b border-zinc-200 p-4 dark:border-zinc-800 sm:grid-cols-2 xl:grid-cols-4">
+                    <div class="rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-950">
+                        <p class="text-sm text-zinc-500 dark:text-zinc-400">Абоненты</p>
+                        <p class="mt-2 text-2xl font-semibold">1 240</p>
+                        <p class="mt-2 text-sm text-zinc-500 dark:text-zinc-400">всего 1 310 · новых за месяц 24</p>
+                    </div>
+                    <div class="rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-950">
+                        <p class="text-sm text-zinc-500 dark:text-zinc-400">Счётчики</p>
+                        <p class="mt-2 text-2xl font-semibold">1 118</p>
+                        <p class="mt-2 text-sm text-zinc-500 dark:text-zinc-400">по счётчику 1 118</p>
+                    </div>
+                    <div class="rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-950">
+                        <p class="text-sm text-zinc-500 dark:text-zinc-400">Снято показаний</p>
+                        <p class="mt-2 text-2xl font-semibold text-amber-700 dark:text-amber-300">86.4 %</p>
+                        <p class="mt-2 text-sm text-zinc-500 dark:text-zinc-400">966 из 1 118</p>
+                    </div>
+                    <div class="rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-950">
+                        <p class="text-sm text-zinc-500 dark:text-zinc-400">Потребление</p>
+                        <p class="mt-2 text-2xl font-semibold">18 402</p>
+                        <p class="mt-2 text-sm text-zinc-500 dark:text-zinc-400">за выбранный месяц, м³</p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 gap-4 border-b border-zinc-200 p-4 dark:border-zinc-800 sm:grid-cols-2 xl:grid-cols-3">
+                    <div class="rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-950">
+                        <p class="text-sm text-zinc-500 dark:text-zinc-400">Начислено</p>
+                        <p class="mt-2 text-2xl font-semibold text-amber-700 dark:text-amber-300">12 480 000 ₸</p>
+                        <p class="mt-2 text-sm text-zinc-500 dark:text-zinc-400">предварительно, по 966 квитанциям</p>
+                    </div>
+                    <div class="rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-950">
+                        <p class="text-sm text-zinc-500 dark:text-zinc-400">Оплачено</p>
+                        <p class="mt-2 text-2xl font-semibold text-emerald-700 dark:text-emerald-300">9 120 000 ₸</p>
+                        <p class="mt-2 text-sm text-zinc-500 dark:text-zinc-400">412 оплат · сбор 73.1 %</p>
+                    </div>
+                    <div class="rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-950">
+                        <p class="text-sm text-zinc-500 dark:text-zinc-400">Долг на конец месяца</p>
+                        <p class="mt-2 text-2xl font-semibold text-red-700 dark:text-red-300">3 360 000 ₸</p>
+                        <p class="mt-2 text-sm text-zinc-500 dark:text-zinc-400">318 абонентов</p>
+                    </div>
+                </div>
+
+                <div class="border-b border-zinc-200 p-4 dark:border-zinc-800">
+                    <div class="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                            <h3 class="text-sm font-semibold">Начисления и оплаты по месяцам</h3>
+                            <p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Последние 12 расчётных месяцев организации.</p>
+                        </div>
+
+                        <div class="flex items-center gap-4 text-sm text-zinc-600 dark:text-zinc-300">
+                            <span class="flex items-center gap-2">
+                                <span class="inline-block size-3 rounded-sm bg-amber-500"></span>
+                                Начислено
+                            </span>
+                            <span class="flex items-center gap-2">
+                                <span class="inline-block size-3 rounded-sm bg-emerald-500"></span>
+                                Оплачено
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="mt-4 flex h-64 items-end gap-2 rounded-lg border border-dashed border-zinc-300 bg-zinc-50 p-4 dark:border-zinc-700 dark:bg-zinc-950">
+                        @foreach ([[45, 32], [52, 40], [61, 47], [58, 44], [66, 51], [72, 58], [69, 55], [74, 60], [80, 63], [77, 61], [85, 68], [90, 66]] as $bar)
+                            <div class="flex h-full flex-1 items-end gap-1">
+                                <div class="w-full rounded-t bg-amber-500" style="height: {{ $bar[0] }}%"></div>
+                                <div class="w-full rounded-t bg-emerald-500" style="height: {{ $bar[1] }}%"></div>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 gap-4 border-b border-zinc-200 p-4 dark:border-zinc-800 lg:grid-cols-2">
+                    <div class="overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-800">
+                        <div class="border-b border-zinc-200 bg-zinc-50 px-4 py-3 dark:border-zinc-800 dark:bg-zinc-950">
+                            <h3 class="text-sm font-semibold">Прогресс снятия по контроллерам</h3>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full min-w-[36rem] text-left text-sm">
+                                <thead class="bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500 dark:bg-zinc-950 dark:text-zinc-400">
+                                    <tr>
+                                        <th class="px-4 py-2 font-medium">Контроллер</th>
+                                        <th class="px-4 py-2 font-medium">Всего</th>
+                                        <th class="px-4 py-2 font-medium">Снято</th>
+                                        <th class="px-4 py-2 font-medium">Не снято</th>
+                                        <th class="px-4 py-2 font-medium">Процент</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-zinc-200 dark:divide-zinc-800">
+                                    <tr>
+                                        <td class="px-4 py-2">Абаев Абай</td>
+                                        <td class="px-4 py-2">412</td>
+                                        <td class="px-4 py-2">268</td>
+                                        <td class="px-4 py-2">144</td>
+                                        <td class="px-4 py-2">
+                                            <span class="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800 dark:bg-red-500/15 dark:text-red-300">65 %</span>
+                                        </td>
+                                    </tr>
+                                    <tr class="bg-zinc-50 dark:bg-zinc-950">
+                                        <td class="px-4 py-2">Букеев Букей</td>
+                                        <td class="px-4 py-2">356</td>
+                                        <td class="px-4 py-2">311</td>
+                                        <td class="px-4 py-2">45</td>
+                                        <td class="px-4 py-2">
+                                            <span class="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">87.4 %</span>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-4 py-2">Валиев Валихан</td>
+                                        <td class="px-4 py-2">350</td>
+                                        <td class="px-4 py-2">350</td>
+                                        <td class="px-4 py-2">0</td>
+                                        <td class="px-4 py-2">
+                                            <span class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300">100 %</span>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-800">
+                        <div class="border-b border-zinc-200 bg-zinc-50 px-4 py-3 dark:border-zinc-800 dark:bg-zinc-950">
+                            <h3 class="text-sm font-semibold">Срез по районам</h3>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full min-w-[42rem] text-left text-sm">
+                                <thead class="bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500 dark:bg-zinc-950 dark:text-zinc-400">
+                                    <tr>
+                                        <th class="px-4 py-2 font-medium">Район</th>
+                                        <th class="px-4 py-2 font-medium">Абонентов</th>
+                                        <th class="px-4 py-2 font-medium">Снято</th>
+                                        <th class="px-4 py-2 font-medium">Начислено</th>
+                                        <th class="px-4 py-2 font-medium">Оплачено</th>
+                                        <th class="px-4 py-2 font-medium">Долг</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-zinc-200 dark:divide-zinc-800">
+                                    <tr>
+                                        <td class="px-4 py-2">Алматы / Бостандыкский</td>
+                                        <td class="px-4 py-2">512</td>
+                                        <td class="px-4 py-2">74.2 %</td>
+                                        <td class="px-4 py-2">5 120 000 ₸</td>
+                                        <td class="px-4 py-2">3 480 000 ₸</td>
+                                        <td class="px-4 py-2 text-red-700 dark:text-red-300">1 640 000 ₸</td>
+                                    </tr>
+                                    <tr class="bg-zinc-50 dark:bg-zinc-950">
+                                        <td class="px-4 py-2">Алматы / Алмалинский</td>
+                                        <td class="px-4 py-2">438</td>
+                                        <td class="px-4 py-2">91.6 %</td>
+                                        <td class="px-4 py-2">4 380 000 ₸</td>
+                                        <td class="px-4 py-2">3 260 000 ₸</td>
+                                        <td class="px-4 py-2 text-red-700 dark:text-red-300">1 120 000 ₸</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-4 py-2">Алматы / Медеуский</td>
+                                        <td class="px-4 py-2">290</td>
+                                        <td class="px-4 py-2">96.8 %</td>
+                                        <td class="px-4 py-2">2 980 000 ₸</td>
+                                        <td class="px-4 py-2">2 380 000 ₸</td>
+                                        <td class="px-4 py-2 text-red-700 dark:text-red-300">600 000 ₸</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 gap-4 p-4 lg:grid-cols-2">
+                    <div class="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
+                        <p class="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Контроллер: денежные блоки скрыты</p>
+
+                        <div class="mt-3 grid grid-cols-2 gap-3">
+                            <div class="rounded-md border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-950">
+                                <p class="text-xs text-zinc-500 dark:text-zinc-400">Абоненты</p>
+                                <p class="mt-1 text-lg font-semibold">412</p>
+                            </div>
+                            <div class="rounded-md border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-950">
+                                <p class="text-xs text-zinc-500 dark:text-zinc-400">Счётчики</p>
+                                <p class="mt-1 text-lg font-semibold">412</p>
+                            </div>
+                            <div class="rounded-md border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-950">
+                                <p class="text-xs text-zinc-500 dark:text-zinc-400">Снято показаний</p>
+                                <p class="mt-1 text-lg font-semibold text-red-700 dark:text-red-300">65 %</p>
+                            </div>
+                            <div class="rounded-md border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-950">
+                                <p class="text-xs text-zinc-500 dark:text-zinc-400">Потребление</p>
+                                <p class="mt-1 text-lg font-semibold">6 140</p>
+                            </div>
+                        </div>
+
+                        <p class="mt-3 text-sm text-zinc-500 dark:text-zinc-400">
+                            В прогрессе снятия контроллер видит одну строку — свою.
+                        </p>
+                    </div>
+
+                    <div class="rounded-lg border border-dashed border-zinc-300 p-6 text-center dark:border-zinc-700">
+                        <p class="text-sm font-semibold text-zinc-700 dark:text-zinc-200">Расчётный месяц не открыт</p>
+                        <p class="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
+                            Откройте расчётный месяц в разделе «Расчётные месяцы», чтобы увидеть показатели.
+                        </p>
+                    </div>
+                </div>
+            </section>
+
+            <section class="overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
                 <div class="flex flex-col gap-4 border-b border-zinc-200 p-4 dark:border-zinc-800 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                         <p class="text-sm text-zinc-500 dark:text-zinc-400">Reports / XLSX export</p>

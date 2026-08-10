@@ -6,7 +6,6 @@ use App\Filament\Pages\Tenancy\RelationManagers\CitiesRelationManager;
 use App\Filament\Pages\Tenancy\RelationManagers\UsersRelationManager;
 use App\Filament\Resources\Cities\Pages\EditCity;
 use App\Filament\Resources\Cities\RelationManagers\RegionsRelationManager as CityRegionsRelationManager;
-use App\Filament\Resources\Clients\ClientResource;
 use App\Filament\Resources\Regions\Pages\EditRegion;
 use App\Filament\Resources\Regions\RegionResource;
 use App\Filament\Resources\Regions\RelationManagers\StreetsRelationManager;
@@ -52,7 +51,7 @@ test('users can access only attached organization tenants', function () {
         ->and($user->canAccessTenant($otherOrganization))->toBeFalse();
 });
 
-test('tenant home redirects to clients list', function () {
+test('tenant home opens the dashboard', function () {
     $organization = Organization::factory()->create();
     $user = User::factory()->create();
 
@@ -60,7 +59,8 @@ test('tenant home redirects to clients list', function () {
 
     $this->actingAs($user)
         ->get("/admin/{$organization->getRouteKey()}")
-        ->assertRedirect(ClientResource::getUrl(panel: 'admin', tenant: $organization));
+        ->assertSuccessful()
+        ->assertSeeText('Дашборд');
 });
 
 test('tenant registration creates an organization and attaches the current user', function () {

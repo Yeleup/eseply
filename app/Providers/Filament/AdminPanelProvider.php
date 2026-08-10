@@ -2,12 +2,12 @@
 
 namespace App\Providers\Filament;
 
+use App\Filament\Pages\Dashboard;
 use App\Filament\Pages\Tenancy\EditOrganizationProfile;
 use App\Filament\Pages\Tenancy\RegisterOrganization;
 use App\Filament\Resources\Accruals\Pages\ListAccruals;
 use App\Filament\Resources\BalanceAdjustments\Pages\CreateBalanceAdjustment;
 use App\Filament\Resources\BalanceAdjustments\Pages\ListBalanceAdjustments;
-use App\Filament\Resources\Clients\ClientResource;
 use App\Filament\Resources\Clients\Pages\EditClient;
 use App\Filament\Resources\MeterReadings\Pages\CreateMeterReading;
 use App\Filament\Resources\MeterReadings\Pages\ListMeterReadings;
@@ -32,7 +32,6 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
-use Illuminate\Http\RedirectResponse;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\Route;
@@ -82,6 +81,7 @@ class AdminPanelProvider extends PanelProvider
                     CreateBalanceAdjustment::class,
                     CreateMeterReading::class,
                     CreatePayment::class,
+                    Dashboard::class,
                     EditClient::class,
                     EditMeter::class,
                     ListAccruals::class,
@@ -91,10 +91,6 @@ class AdminPanelProvider extends PanelProvider
                 ],
             )
             ->authenticatedTenantRoutes(function (): void {
-                Route::get('/', function (): RedirectResponse {
-                    return redirect()->to(ClientResource::getUrl(panel: 'admin', tenant: Filament::getTenant()));
-                })->name('home');
-
                 Route::get('/clients/{client}/card', ClientCardController::class)
                     ->name('clients.card');
                 Route::get('/receipts/{receipt}/print', [ReceiptPrintController::class, 'single'])

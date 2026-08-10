@@ -3,15 +3,14 @@
 namespace App\Reports;
 
 use App\Models\BillingPeriod;
-use App\Models\Meter;
 use App\Models\Organization;
 use App\Models\User;
 use App\OrganizationMemberRole;
 use App\Reports\Contracts\OrganizationReport;
+use App\Support\ControllerZoneMeterCounts;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Facades\DB;
 use OpenSpout\Common\Entity\Cell;
 use OpenSpout\Common\Entity\Cell\NumericCell;
@@ -143,44 +142,7 @@ class ControllerMeterReadingProgressReport implements OrganizationReport
 
     private function meterCountQuery(Organization $organization, ?BillingPeriod $billingPeriod = null): Builder
     {
-        $query = Meter::query()
-            ->selectRaw('count(distinct meters.id)')
-            ->join('clients', 'clients.id', '=', 'meters.client_id')
-            ->where('meters.organization_id', $organization->getKey())
-            ->where('meters.status', 'active')
-            ->where('clients.status', 'active')
-            ->where('clients.billing_type', 'meter')
-            ->where(function (Builder $query) use ($organization): void {
-                $query
-                    ->whereExists(function (QueryBuilder $query) use ($organization): void {
-                        $query
-                            ->selectRaw('1')
-                            ->from('organization_user_regions')
-                            ->where('organization_user_regions.organization_id', $organization->getKey())
-                            ->whereColumn('organization_user_regions.user_id', 'users.id')
-                            ->whereColumn('organization_user_regions.region_id', 'clients.region_id');
-                    })
-                    ->orWhereExists(function (QueryBuilder $query) use ($organization): void {
-                        $query
-                            ->selectRaw('1')
-                            ->from('organization_user_streets')
-                            ->where('organization_user_streets.organization_id', $organization->getKey())
-                            ->whereColumn('organization_user_streets.user_id', 'users.id')
-                            ->whereColumn('organization_user_streets.street_id', 'clients.street_id');
-                    });
-            });
-
-        if (! $billingPeriod instanceof BillingPeriod) {
-            return $query;
-        }
-
-        return $query->whereExists(function (QueryBuilder $query) use ($billingPeriod): void {
-            $query
-                ->selectRaw('1')
-                ->from('meter_readings')
-                ->whereColumn('meter_readings.meter_id', 'meters.id')
-                ->where('meter_readings.billing_period_id', $billingPeriod->getKey());
-        });
+        return ControllerZoneMeterCounts::query($organization, $billingPeriod);
     }
 
     private function assignedRegionNames(Organization $organization, User $controller): string

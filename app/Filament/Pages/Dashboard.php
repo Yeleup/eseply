@@ -3,6 +3,8 @@
 namespace App\Filament\Pages;
 
 use App\Filament\Support\DashboardBillingPeriod;
+use App\Filament\Widgets\DashboardFinanceStatsWidget;
+use App\Filament\Widgets\DashboardStatsWidget;
 use App\Models\Organization;
 use BackedEnum;
 use Filament\Facades\Filament;
@@ -11,6 +13,8 @@ use Filament\Pages\Dashboard as BaseDashboard;
 use Filament\Pages\Dashboard\Concerns\HasFiltersForm;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
+use Filament\Widgets\Widget;
+use Filament\Widgets\WidgetConfiguration;
 
 class Dashboard extends BaseDashboard
 {
@@ -34,6 +38,17 @@ class Dashboard extends BaseDashboard
                 ->selectablePlaceholder(false)
                 ->native(false),
         ]);
+    }
+
+    /**
+     * @return array<class-string<Widget>|WidgetConfiguration>
+     */
+    public function getWidgets(): array
+    {
+        return [
+            DashboardStatsWidget::class,
+            DashboardFinanceStatsWidget::class,
+        ];
     }
 
     /**

@@ -2,12 +2,15 @@
 
 use App\BillingPeriodStatus;
 use App\Dashboard\DashboardMetrics;
+use App\Models\Accrual;
 use App\Models\BillingPeriod;
 use App\Models\City;
 use App\Models\Client;
 use App\Models\Meter;
 use App\Models\MeterReading;
 use App\Models\Organization;
+use App\Models\Payment;
+use App\Models\Receipt;
 use App\Models\Region;
 use App\Models\Street;
 use App\Models\User;
@@ -267,4 +270,189 @@ it('не смешивает данные разных организаций', f
 
     expect($metrics['clients_total'])->toBe(1)
         ->and($metrics['consumption'])->toBe(10);
+});
+
+function dashboardFixedClient(Organization $organization, Region $region, string $accountNumber): Client
+{
+    return Client::factory()->create([
+        'organization_id' => $organization->id,
+        'account_number' => $accountNumber,
+        'region_id' => $region->id,
+        'status' => 'active',
+        'billing_type' => 'fixed',
+        'fixed_amount' => 1000,
+    ]);
+}
+
+function dashboardCloseBillingPeriod(BillingPeriod $billingPeriod): BillingPeriod
+{
+    $billingPeriod->forceFill([
+        'status' => BillingPeriodStatus::Closed,
+        'closed_at' => now(),
+    ])->save();
+
+    return $billingPeriod->refresh();
+}
+
+it('берёт начисление и долг открытого месяца из квитанций', function (): void {
+    $organization = dashboardOrganization();
+    $billingPeriod = BillingPeriod::openFor($organization, '202608');
+    $region = dashboardRegion($organization, 'Алмалинский');
+
+    $firstClient = dashboardFixedClient($organization, $region, '100001');
+    $secondClient = dashboardFixedClient($organization, $region, '100002');
+
+    Receipt::factory()->create([
+        'organization_id' => $organization->id,
+        'client_id' => $firstClient->id,
+        'billing_period_id' => $billingPeriod->id,
+        'period' => null,
+        'amount' => 600,
+        'paid_amount' => 0,
+        'adjustment_amount' => 0,
+        'opening_balance' => 0,
+        'closing_balance' => 600,
+    ]);
+
+    Receipt::factory()->create([
+        'organization_id' => $organization->id,
+        'client_id' => $secondClient->id,
+        'billing_period_id' => $billingPeriod->id,
+        'period' => null,
+        'amount' => 400,
+        'paid_amount' => 400,
+        'adjustment_amount' => 0,
+        'opening_balance' => 0,
+        'closing_balance' => 0,
+    ]);
+
+    Payment::factory()->create([
+        'organization_id' => $organization->id,
+        'client_id' => $secondClient->id,
+        'billing_period_id' => $billingPeriod->id,
+        'period' => null,
+        'amount' => 400,
+    ]);
+
+    $finance = app(DashboardMetrics::class)->finance($organization, $billingPeriod);
+
+    expect($finance['charged'])->toBe(1000.0)
+        ->and($finance['charged_is_preliminary'])->toBeTrue()
+        ->and($finance['charged_documents'])->toBe(2)
+        ->and($finance['paid'])->toBe(400.0)
+        ->and($finance['payments_count'])->toBe(1)
+        ->and($finance['collection_percent'])->toBe(40.0)
+        ->and($finance['debt'])->toBe(600.0)
+        ->and($finance['debtors_count'])->toBe(1);
+});
+
+it('берёт начисление и долг закрытого месяца из начислений', function (): void {
+    $organization = dashboardOrganization();
+    $billingPeriod = BillingPeriod::openFor($organization, '202608');
+    $region = dashboardRegion($organization, 'Алмалинский');
+
+    $client = dashboardFixedClient($organization, $region, '100001');
+
+    Receipt::factory()->create([
+        'organization_id' => $organization->id,
+        'client_id' => $client->id,
+        'billing_period_id' => $billingPeriod->id,
+        'period' => null,
+        'amount' => 111,
+        'closing_balance' => 111,
+    ]);
+
+    Payment::factory()->create([
+        'organization_id' => $organization->id,
+        'client_id' => $client->id,
+        'billing_period_id' => $billingPeriod->id,
+        'period' => null,
+        'amount' => 250,
+    ]);
+
+    dashboardCloseBillingPeriod($billingPeriod);
+
+    Accrual::factory()->create([
+        'organization_id' => $organization->id,
+        'client_id' => $client->id,
+        'billing_period_id' => $billingPeriod->id,
+        'period' => null,
+        'amount' => 1000,
+        'paid_amount' => 250,
+        'adjustment_amount' => 0,
+        'opening_balance' => 0,
+        'closing_balance' => 750,
+    ]);
+
+    $finance = app(DashboardMetrics::class)->finance($organization, $billingPeriod->refresh());
+
+    expect($finance['charged'])->toBe(1000.0)
+        ->and($finance['charged_is_preliminary'])->toBeFalse()
+        ->and($finance['charged_documents'])->toBe(1)
+        ->and($finance['paid'])->toBe(250.0)
+        ->and($finance['collection_percent'])->toBe(25.0)
+        ->and($finance['debt'])->toBe(750.0)
+        ->and($finance['debtors_count'])->toBe(1);
+});
+
+it('отдаёт нулевой процент сбора при нулевом начислении', function (): void {
+    $organization = dashboardOrganization();
+    $billingPeriod = BillingPeriod::openFor($organization, '202608');
+
+    $finance = app(DashboardMetrics::class)->finance($organization, $billingPeriod);
+
+    expect($finance['charged'])->toBe(0.0)
+        ->and($finance['paid'])->toBe(0.0)
+        ->and($finance['collection_percent'])->toBe(0.0)
+        ->and($finance['debt'])->toBe(0.0)
+        ->and($finance['debtors_count'])->toBe(0);
+});
+
+it('строит динамику по месяцам от старого месяца к новому', function (): void {
+    $organization = dashboardOrganization();
+    $region = dashboardRegion($organization, 'Алмалинский');
+    $client = dashboardFixedClient($organization, $region, '100001');
+
+    $julyPeriod = BillingPeriod::openFor($organization, '202607');
+
+    Payment::factory()->create([
+        'organization_id' => $organization->id,
+        'client_id' => $client->id,
+        'billing_period_id' => $julyPeriod->id,
+        'period' => null,
+        'amount' => 300,
+    ]);
+
+    dashboardCloseBillingPeriod($julyPeriod);
+
+    Accrual::factory()->create([
+        'organization_id' => $organization->id,
+        'client_id' => $client->id,
+        'billing_period_id' => $julyPeriod->id,
+        'period' => null,
+        'amount' => 500,
+        'closing_balance' => 200,
+    ]);
+
+    $augustPeriod = BillingPeriod::openFor($organization, '202608');
+
+    Receipt::factory()->create([
+        'organization_id' => $organization->id,
+        'client_id' => $client->id,
+        'billing_period_id' => $augustPeriod->id,
+        'period' => null,
+        'amount' => 700,
+        'closing_balance' => 700,
+    ]);
+
+    $totals = app(DashboardMetrics::class)->monthlyTotals($organization);
+
+    expect($totals)->toHaveCount(2)
+        ->and($totals[0]['period'])->toBe('202607')
+        ->and($totals[0]['label'])->toBe('07.2026')
+        ->and($totals[0]['charged'])->toBe(500.0)
+        ->and($totals[0]['paid'])->toBe(300.0)
+        ->and($totals[1]['period'])->toBe('202608')
+        ->and($totals[1]['charged'])->toBe(700.0)
+        ->and($totals[1]['paid'])->toBe(0.0);
 });

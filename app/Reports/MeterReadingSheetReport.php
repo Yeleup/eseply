@@ -2,14 +2,18 @@
 
 namespace App\Reports;
 
+use App\Filament\Support\ClientAddressFilter;
+use App\Filament\Support\ControllerZoneFilter;
 use App\Filament\Support\DateRangeFilter;
 use App\Models\BillingPeriod;
 use App\Models\Meter;
 use App\Models\MeterReading;
 use App\Models\Organization;
 use App\Models\User;
+use App\Reports\Contracts\FiltersExcelExport;
 use App\Reports\Contracts\OrganizationReport;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\BaseFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
@@ -24,7 +28,7 @@ use OpenSpout\Writer\XLSX\Options;
 use OpenSpout\Writer\XLSX\Writer;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
-class MeterReadingSheetReport implements OrganizationReport
+class MeterReadingSheetReport implements FiltersExcelExport, OrganizationReport
 {
     public function slug(): string
     {
@@ -79,9 +83,7 @@ class MeterReadingSheetReport implements OrganizationReport
                     ->state(fn (): string => '')
                     ->placeholder(''),
             ])
-            ->filters([
-                DateRangeFilter::make('installed_on', 'Дата установки', 'meters.installed_on'),
-            ])
+            ->filters($this->filters($organization))
             ->recordUrl(null)
             ->defaultPaginationPageOption(50)
             ->emptyStateHeading('Нет активных счётчиков')
@@ -90,14 +92,24 @@ class MeterReadingSheetReport implements OrganizationReport
 
     public function downloadExcel(Organization $organization, User $user): StreamedResponse
     {
+        return $this->downloadFilteredExcel($organization, $user, []);
+    }
+
+    /**
+     * @param  array<string, array<string, mixed>>  $filters
+     */
+    public function downloadFilteredExcel(Organization $organization, User $user, array $filters): StreamedResponse
+    {
+        $query = $this->filteredQuery($organization, $user, $filters);
+
         return response()->streamDownload(
-            function () use ($organization, $user): void {
+            function () use ($query): void {
                 $writer = new Writer($this->excelOptions());
                 $writer->openToFile('php://output');
 
                 $writer->addRow(new Row($this->excelHeadingCells()));
 
-                foreach ($this->query($organization, $user)->lazy(500) as $meter) {
+                foreach ($query->lazy(500) as $meter) {
                     $writer->addRow(new Row($this->excelCells($meter)));
                 }
 
@@ -108,6 +120,42 @@ class MeterReadingSheetReport implements OrganizationReport
                 'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             ],
         );
+    }
+
+    /**
+     * The screen table and the XLSX export share one filter definition, so both apply identical rules.
+     *
+     * @return list<BaseFilter>
+     */
+    private function filters(Organization $organization): array
+    {
+        return [
+            ClientAddressFilter::make($organization, 'clients.region_id', 'clients.street_id'),
+            ControllerZoneFilter::make($organization),
+            DateRangeFilter::make('installed_on', 'Дата установки', 'meters.installed_on'),
+        ];
+    }
+
+    /**
+     * Filters are applied exactly the way Filament applies them to the screen table:
+     * base-query callbacks first, then every filter inside one nested group.
+     *
+     * @param  array<string, array<string, mixed>>  $filters
+     */
+    private function filteredQuery(Organization $organization, User $user, array $filters): Builder
+    {
+        $query = $this->query($organization, $user);
+        $reportFilters = $this->filters($organization);
+
+        foreach ($reportFilters as $filter) {
+            $filter->applyToBaseQuery($query, $filters[$filter->getName()] ?? []);
+        }
+
+        return $query->where(function (Builder $query) use ($reportFilters, $filters): void {
+            foreach ($reportFilters as $filter) {
+                $filter->apply($query, $filters[$filter->getName()] ?? []);
+            }
+        });
     }
 
     private function query(Organization $organization, User $user): Builder

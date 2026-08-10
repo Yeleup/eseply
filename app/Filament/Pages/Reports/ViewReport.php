@@ -4,6 +4,7 @@ namespace App\Filament\Pages\Reports;
 
 use App\Models\Organization;
 use App\Models\User;
+use App\Reports\Contracts\FiltersExcelExport;
 use App\Reports\Contracts\OrganizationReport;
 use App\Reports\ReportRegistry;
 use App\Reports\ReportSummaryGroup;
@@ -105,7 +106,26 @@ class ViewReport extends Page implements HasTable
             );
         }
 
-        return $this->getReport()->downloadExcel($tenant, $user);
+        $report = $this->getReport();
+
+        if ($report instanceof FiltersExcelExport) {
+            return $report->downloadFilteredExcel($tenant, $user, $this->appliedTableFilters());
+        }
+
+        return $report->downloadExcel($tenant, $user);
+    }
+
+    /**
+     * Only filters the user has actually applied, never the pending state of a deferred filter form.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    private function appliedTableFilters(): array
+    {
+        return array_filter(
+            $this->tableFilters ?? [],
+            fn (mixed $data): bool => is_array($data),
+        );
     }
 
     /**

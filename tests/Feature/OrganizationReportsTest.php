@@ -3,6 +3,7 @@
 use App\ClientType;
 use App\Filament\Pages\Reports\ListReports;
 use App\Filament\Pages\Reports\ViewReport;
+use App\Models\City;
 use App\Models\Client;
 use App\Models\Meter;
 use App\Models\MeterReading;
@@ -20,6 +21,7 @@ use App\Reports\ReportSummaryService;
 use Filament\Facades\Filament;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
 use OpenSpout\Common\Entity\Cell;
 use OpenSpout\Reader\XLSX\Reader;
@@ -38,6 +40,119 @@ function actingAsReportsTenant(Organization $organization): User
     Filament::bootCurrentPanel();
 
     return $user;
+}
+
+function actingAsReportsController(Organization $organization): User
+{
+    $user = User::factory()->create();
+    $user->organizations()->attach($organization, [
+        'role' => OrganizationMemberRole::Controller->value,
+    ]);
+
+    Livewire::actingAs($user);
+
+    Filament::setCurrentPanel('admin');
+    Filament::setTenant($organization);
+    Filament::bootCurrentPanel();
+
+    return $user;
+}
+
+function meterReadingSheetMeterFor(
+    Organization $organization,
+    UtilityService $utilityService,
+    string $accountNumber,
+    ?int $regionId,
+    ?int $streetId,
+): Meter {
+    $client = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'account_number' => $accountNumber,
+            'billing_type' => 'meter',
+            'status' => 'active',
+            'region_id' => $regionId,
+            'street_id' => $streetId,
+        ]);
+
+    return Meter::factory()
+        ->for($organization)
+        ->for($client)
+        ->for($utilityService)
+        ->create([
+            'number' => 'MTR-'.$accountNumber,
+            'status' => 'active',
+        ]);
+}
+
+/**
+ * Two cities, three regions and four streets of one organization, one active meter on each street.
+ *
+ * @return array{
+ *     organization: Organization,
+ *     city: City,
+ *     otherCity: City,
+ *     almalinsky: Region,
+ *     bostandyk: Region,
+ *     esil: Region,
+ *     abay: Street,
+ *     gogol: Street,
+ *     satpaev: Street,
+ *     kabanbay: Street,
+ *     abayMeter: Meter,
+ *     gogolMeter: Meter,
+ *     satpaevMeter: Meter,
+ *     esilMeter: Meter,
+ * }
+ */
+function meterReadingSheetAddressFixture(): array
+{
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create();
+
+    $city = City::factory()->for($organization)->create(['name' => 'Алматы']);
+    $otherCity = City::factory()->for($organization)->create(['name' => 'Астана']);
+
+    $almalinsky = Region::factory()->for($organization)->for($city)->create(['name' => 'Алмалинский']);
+    $bostandyk = Region::factory()->for($organization)->for($city)->create(['name' => 'Бостандыкский']);
+    $esil = Region::factory()->for($organization)->for($otherCity)->create(['name' => 'Есильский']);
+
+    $abay = Street::factory()->for($almalinsky)->create(['name' => 'Абая']);
+    $gogol = Street::factory()->for($almalinsky)->create(['name' => 'Гоголя']);
+    $satpaev = Street::factory()->for($bostandyk)->create(['name' => 'Сатпаева']);
+    $kabanbay = Street::factory()->for($esil)->create(['name' => 'Кабанбай батыра']);
+
+    return [
+        'organization' => $organization,
+        'city' => $city,
+        'otherCity' => $otherCity,
+        'almalinsky' => $almalinsky,
+        'bostandyk' => $bostandyk,
+        'esil' => $esil,
+        'abay' => $abay,
+        'gogol' => $gogol,
+        'satpaev' => $satpaev,
+        'kabanbay' => $kabanbay,
+        'abayMeter' => meterReadingSheetMeterFor($organization, $utilityService, '710001', $almalinsky->id, $abay->id),
+        'gogolMeter' => meterReadingSheetMeterFor($organization, $utilityService, '710002', $almalinsky->id, $gogol->id),
+        'satpaevMeter' => meterReadingSheetMeterFor($organization, $utilityService, '710003', $bostandyk->id, $satpaev->id),
+        'esilMeter' => meterReadingSheetMeterFor($organization, $utilityService, '710004', $esil->id, $kabanbay->id),
+    ];
+}
+
+/**
+ * @return array<int|string, mixed>
+ */
+function meterReadingSheetAddressFilterOptions(Testable $page, string $field): array
+{
+    $fields = $page->instance()
+        ->getTableFiltersForm()
+        ->getComponentByStatePath('address')
+        ->getChildSchema()
+        ->getFlatFields();
+
+    return $fields[$field]->getOptions();
 }
 
 /**
@@ -1637,6 +1752,361 @@ test('meter reading sheet report filters meters by installed_on date range', fun
         ->filterTable('installed_on', ['start_date' => null, 'end_date' => '2026-02-01'])
         ->assertCanSeeTableRecords([$winterMeter])
         ->assertCanNotSeeTableRecords([$springMeter]);
+});
+
+test('meter reading sheet report filters meters by city, region and streets', function () {
+    $sheet = meterReadingSheetAddressFixture();
+
+    actingAsReportsTenant($sheet['organization']);
+
+    Livewire::test(ViewReport::class, ['report' => 'meter-reading-sheet'])
+        ->assertOk()
+        ->assertCanSeeTableRecords([$sheet['abayMeter'], $sheet['gogolMeter'], $sheet['satpaevMeter'], $sheet['esilMeter']])
+        ->filterTable('address', ['city_id' => $sheet['city']->id])
+        ->assertCanSeeTableRecords([$sheet['abayMeter'], $sheet['gogolMeter'], $sheet['satpaevMeter']])
+        ->assertCanNotSeeTableRecords([$sheet['esilMeter']])
+        ->filterTable('address', ['city_id' => $sheet['city']->id, 'region_id' => $sheet['almalinsky']->id])
+        ->assertCanSeeTableRecords([$sheet['abayMeter'], $sheet['gogolMeter']])
+        ->assertCanNotSeeTableRecords([$sheet['satpaevMeter'], $sheet['esilMeter']])
+        ->filterTable('address', [
+            'city_id' => $sheet['city']->id,
+            'region_id' => $sheet['almalinsky']->id,
+            'street_ids' => [$sheet['abay']->id],
+        ])
+        ->assertCanSeeTableRecords([$sheet['abayMeter']])
+        ->assertCanNotSeeTableRecords([$sheet['gogolMeter'], $sheet['satpaevMeter'], $sheet['esilMeter']])
+        ->filterTable('address', ['street_ids' => [$sheet['abay']->id, $sheet['satpaev']->id]])
+        ->assertCanSeeTableRecords([$sheet['abayMeter'], $sheet['satpaevMeter']])
+        ->assertCanNotSeeTableRecords([$sheet['gogolMeter'], $sheet['esilMeter']]);
+});
+
+test('meter reading sheet report ignores tampered address filter identifiers', function () {
+    $sheet = meterReadingSheetAddressFixture();
+
+    actingAsReportsTenant($sheet['organization']);
+
+    Livewire::test(ViewReport::class, ['report' => 'meter-reading-sheet'])
+        ->assertOk()
+        ->filterTable('address', ['city_id' => 'not-a-number', 'region_id' => '0', 'street_ids' => ['', null]])
+        ->assertCanSeeTableRecords([$sheet['abayMeter'], $sheet['gogolMeter'], $sheet['satpaevMeter'], $sheet['esilMeter']]);
+});
+
+test('meter reading sheet report narrows region and street filter options to the selected city and region', function () {
+    $sheet = meterReadingSheetAddressFixture();
+
+    actingAsReportsTenant($sheet['organization']);
+
+    $page = Livewire::test(ViewReport::class, ['report' => 'meter-reading-sheet'])->assertOk();
+
+    expect(array_keys(meterReadingSheetAddressFilterOptions($page, 'region_id')))
+        ->toEqualCanonicalizing([$sheet['almalinsky']->id, $sheet['bostandyk']->id, $sheet['esil']->id]);
+
+    $page->set('tableDeferredFilters.address.city_id', $sheet['city']->id);
+
+    expect(array_keys(meterReadingSheetAddressFilterOptions($page, 'region_id')))
+        ->toEqualCanonicalizing([$sheet['almalinsky']->id, $sheet['bostandyk']->id]);
+    expect(array_keys(meterReadingSheetAddressFilterOptions($page, 'street_ids')))
+        ->toEqualCanonicalizing([$sheet['abay']->id, $sheet['gogol']->id, $sheet['satpaev']->id]);
+
+    $page->set('tableDeferredFilters.address.region_id', $sheet['almalinsky']->id);
+
+    expect(array_keys(meterReadingSheetAddressFilterOptions($page, 'street_ids')))
+        ->toEqualCanonicalizing([$sheet['abay']->id, $sheet['gogol']->id]);
+});
+
+test('meter reading sheet address filter clears dependent fields when the city or region changes', function () {
+    $sheet = meterReadingSheetAddressFixture();
+
+    actingAsReportsTenant($sheet['organization']);
+
+    Livewire::test(ViewReport::class, ['report' => 'meter-reading-sheet'])
+        ->assertOk()
+        ->set('tableDeferredFilters.address.city_id', $sheet['city']->id)
+        ->set('tableDeferredFilters.address.region_id', $sheet['almalinsky']->id)
+        ->set('tableDeferredFilters.address.street_ids', [$sheet['abay']->id])
+        ->set('tableDeferredFilters.address.region_id', $sheet['bostandyk']->id)
+        ->assertSet('tableDeferredFilters.address.street_ids', [])
+        ->set('tableDeferredFilters.address.street_ids', [$sheet['satpaev']->id])
+        ->set('tableDeferredFilters.address.city_id', $sheet['otherCity']->id)
+        ->assertSet('tableDeferredFilters.address.region_id', null)
+        ->assertSet('tableDeferredFilters.address.street_ids', []);
+});
+
+test('meter reading sheet report filters meters by controller zones', function () {
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create();
+
+    $city = City::factory()->for($organization)->create(['name' => 'Алматы']);
+    $assignedRegion = Region::factory()->for($organization)->for($city)->create(['name' => 'Алмалинский']);
+    $unassignedRegion = Region::factory()->for($organization)->for($city)->create(['name' => 'Бостандыкский']);
+    $assignedStreet = Street::factory()->for($unassignedRegion)->create(['name' => 'Сатпаева']);
+
+    $regionController = User::factory()->create([
+        'name' => 'Контроллер района',
+        'email' => 'region-zone@example.test',
+    ]);
+    $streetController = User::factory()->create([
+        'name' => 'Контроллер улицы',
+        'email' => 'street-zone@example.test',
+    ]);
+    $otherTenantController = User::factory()->create(['name' => 'Чужой контроллер']);
+
+    $organization->users()->attach($regionController, ['role' => OrganizationMemberRole::Controller->value]);
+    $organization->users()->attach($streetController, ['role' => OrganizationMemberRole::Controller->value]);
+    Organization::factory()->create()->users()->attach($otherTenantController, [
+        'role' => OrganizationMemberRole::Controller->value,
+    ]);
+
+    DB::table('organization_user_regions')->insert([
+        'organization_id' => $organization->id,
+        'user_id' => $regionController->id,
+        'region_id' => $assignedRegion->id,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+    DB::table('organization_user_streets')->insert([
+        'organization_id' => $organization->id,
+        'user_id' => $streetController->id,
+        'street_id' => $assignedStreet->id,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    $regionMeter = meterReadingSheetMeterFor($organization, $utilityService, '720001', $assignedRegion->id, null);
+    $streetMeter = meterReadingSheetMeterFor($organization, $utilityService, '720002', $unassignedRegion->id, $assignedStreet->id);
+    $outsideMeter = meterReadingSheetMeterFor($organization, $utilityService, '720003', $unassignedRegion->id, null);
+
+    actingAsReportsTenant($organization);
+
+    Livewire::test(ViewReport::class, ['report' => 'meter-reading-sheet'])
+        ->assertOk()
+        ->assertCanSeeTableRecords([$regionMeter, $streetMeter, $outsideMeter])
+        ->filterTable('controller_ids', [$regionController->id])
+        ->assertCanSeeTableRecords([$regionMeter])
+        ->assertCanNotSeeTableRecords([$streetMeter, $outsideMeter])
+        ->filterTable('controller_ids', [$streetController->id])
+        ->assertCanSeeTableRecords([$streetMeter])
+        ->assertCanNotSeeTableRecords([$regionMeter, $outsideMeter])
+        ->filterTable('controller_ids', [$regionController->id, $streetController->id])
+        ->assertCountTableRecords(2)
+        ->assertCanSeeTableRecords([$regionMeter, $streetMeter])
+        ->assertCanNotSeeTableRecords([$outsideMeter])
+        ->filterTable('controller_ids', [$otherTenantController->id])
+        ->assertCountTableRecords(0)
+        ->assertCanNotSeeTableRecords([$regionMeter, $streetMeter, $outsideMeter]);
+});
+
+test('meter reading sheet report keeps a client in overlapping controller zones on a single row', function () {
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create();
+
+    $city = City::factory()->for($organization)->create(['name' => 'Алматы']);
+    $region = Region::factory()->for($organization)->for($city)->create(['name' => 'Алмалинский']);
+    $street = Street::factory()->for($region)->create(['name' => 'Абая']);
+
+    $regionController = User::factory()->create(['name' => 'Контроллер района']);
+    $streetController = User::factory()->create(['name' => 'Контроллер улицы']);
+
+    $organization->users()->attach($regionController, ['role' => OrganizationMemberRole::Controller->value]);
+    $organization->users()->attach($streetController, ['role' => OrganizationMemberRole::Controller->value]);
+
+    DB::table('organization_user_regions')->insert([
+        'organization_id' => $organization->id,
+        'user_id' => $regionController->id,
+        'region_id' => $region->id,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+    DB::table('organization_user_streets')->insert([
+        'organization_id' => $organization->id,
+        'user_id' => $streetController->id,
+        'street_id' => $street->id,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    $sharedMeter = meterReadingSheetMeterFor($organization, $utilityService, '730001', $region->id, $street->id);
+
+    actingAsReportsTenant($organization);
+
+    Livewire::test(ViewReport::class, ['report' => 'meter-reading-sheet'])
+        ->assertOk()
+        ->filterTable('controller_ids', [$regionController->id, $streetController->id])
+        ->assertCountTableRecords(1)
+        ->assertCanSeeTableRecords([$sharedMeter]);
+});
+
+test('meter reading sheet report controller filter cannot widen a controller own zone', function () {
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create();
+
+    $city = City::factory()->for($organization)->create(['name' => 'Алматы']);
+    $ownRegion = Region::factory()->for($organization)->for($city)->create(['name' => 'Алмалинский']);
+    $foreignRegion = Region::factory()->for($organization)->for($city)->create(['name' => 'Бостандыкский']);
+
+    $foreignController = User::factory()->create(['name' => 'Соседний контроллер']);
+    $organization->users()->attach($foreignController, ['role' => OrganizationMemberRole::Controller->value]);
+
+    DB::table('organization_user_regions')->insert([
+        'organization_id' => $organization->id,
+        'user_id' => $foreignController->id,
+        'region_id' => $foreignRegion->id,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    $ownMeter = meterReadingSheetMeterFor($organization, $utilityService, '740001', $ownRegion->id, null);
+    $foreignMeter = meterReadingSheetMeterFor($organization, $utilityService, '740002', $foreignRegion->id, null);
+
+    $controller = actingAsReportsController($organization);
+
+    DB::table('organization_user_regions')->insert([
+        'organization_id' => $organization->id,
+        'user_id' => $controller->id,
+        'region_id' => $ownRegion->id,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    Livewire::test(ViewReport::class, ['report' => 'meter-reading-sheet'])
+        ->assertOk()
+        ->assertCanSeeTableRecords([$ownMeter])
+        ->assertCanNotSeeTableRecords([$foreignMeter])
+        ->filterTable('controller_ids', [$foreignController->id])
+        ->assertCountTableRecords(0)
+        ->assertCanNotSeeTableRecords([$ownMeter, $foreignMeter]);
+});
+
+test('meter reading sheet excel download repeats the applied filters', function () {
+    $sheet = meterReadingSheetAddressFixture();
+
+    actingAsReportsTenant($sheet['organization']);
+
+    $unfiltered = Livewire::test(ViewReport::class, ['report' => 'meter-reading-sheet'])
+        ->assertOk()
+        ->callAction('downloadExcel')
+        ->assertFileDownloaded(
+            'meter-reading-sheet-'.$sheet['organization']->getKey().'-'.today()->format('Y-m-d').'.xlsx',
+            contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        );
+
+    expect(downloadedXlsxRows($unfiltered->effects['download']))->toHaveCount(5);
+
+    $filtered = Livewire::test(ViewReport::class, ['report' => 'meter-reading-sheet'])
+        ->assertOk()
+        ->filterTable('address', [
+            'city_id' => $sheet['city']->id,
+            'region_id' => $sheet['almalinsky']->id,
+            'street_ids' => [$sheet['abay']->id],
+        ])
+        ->callAction('downloadExcel')
+        ->assertFileDownloaded(
+            'meter-reading-sheet-'.$sheet['organization']->getKey().'-'.today()->format('Y-m-d').'.xlsx',
+            contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        );
+
+    $rows = downloadedXlsxRows($filtered->effects['download']);
+
+    expect($rows)->toHaveCount(2);
+    expect($rows[1][0])->toBe('710001');
+    expect($rows[1][4])->toBe('MTR-710001');
+});
+
+test('meter reading sheet excel download ignores filter values that were not applied', function () {
+    $sheet = meterReadingSheetAddressFixture();
+
+    actingAsReportsTenant($sheet['organization']);
+
+    $download = Livewire::test(ViewReport::class, ['report' => 'meter-reading-sheet'])
+        ->assertOk()
+        ->set('tableDeferredFilters.address.street_ids', [$sheet['abay']->id])
+        ->callAction('downloadExcel')
+        ->assertFileDownloaded(
+            'meter-reading-sheet-'.$sheet['organization']->getKey().'-'.today()->format('Y-m-d').'.xlsx',
+            contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        );
+
+    expect(downloadedXlsxRows($download->effects['download']))->toHaveCount(5);
+});
+
+test('meter reading sheet excel download repeats the applied controller filter', function () {
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create();
+
+    $city = City::factory()->for($organization)->create(['name' => 'Алматы']);
+    $assignedRegion = Region::factory()->for($organization)->for($city)->create(['name' => 'Алмалинский']);
+    $unassignedRegion = Region::factory()->for($organization)->for($city)->create(['name' => 'Бостандыкский']);
+
+    $controller = User::factory()->create(['name' => 'Контроллер района']);
+    $organization->users()->attach($controller, ['role' => OrganizationMemberRole::Controller->value]);
+
+    DB::table('organization_user_regions')->insert([
+        'organization_id' => $organization->id,
+        'user_id' => $controller->id,
+        'region_id' => $assignedRegion->id,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    meterReadingSheetMeterFor($organization, $utilityService, '750001', $assignedRegion->id, null);
+    meterReadingSheetMeterFor($organization, $utilityService, '750002', $unassignedRegion->id, null);
+
+    actingAsReportsTenant($organization);
+
+    $download = Livewire::test(ViewReport::class, ['report' => 'meter-reading-sheet'])
+        ->assertOk()
+        ->filterTable('controller_ids', [$controller->id])
+        ->callAction('downloadExcel')
+        ->assertFileDownloaded(
+            'meter-reading-sheet-'.$organization->getKey().'-'.today()->format('Y-m-d').'.xlsx',
+            contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        );
+
+    $rows = downloadedXlsxRows($download->effects['download']);
+
+    expect($rows)->toHaveCount(2);
+    expect($rows[1][0])->toBe('750001');
+});
+
+test('meter reading sheet excel download repeats the applied installed_on filter', function () {
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create();
+
+    $client = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'account_number' => '760001',
+            'billing_type' => 'meter',
+            'status' => 'active',
+        ]);
+
+    Meter::factory()
+        ->for($organization)
+        ->for($client)
+        ->for($utilityService)
+        ->create(['number' => 'MTR-EXCEL-WINTER', 'installed_on' => '2026-01-10', 'status' => 'active']);
+    Meter::factory()
+        ->for($organization)
+        ->for($client)
+        ->for($utilityService)
+        ->create(['number' => 'MTR-EXCEL-SPRING', 'installed_on' => '2026-03-15', 'status' => 'active']);
+
+    actingAsReportsTenant($organization);
+
+    $download = Livewire::test(ViewReport::class, ['report' => 'meter-reading-sheet'])
+        ->assertOk()
+        ->filterTable('installed_on', ['start_date' => '2026-02-01', 'end_date' => null])
+        ->callAction('downloadExcel')
+        ->assertFileDownloaded(
+            'meter-reading-sheet-'.$organization->getKey().'-'.today()->format('Y-m-d').'.xlsx',
+            contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        );
+
+    $rows = downloadedXlsxRows($download->effects['download']);
+
+    expect($rows)->toHaveCount(2);
+    expect($rows[1][4])->toBe('MTR-EXCEL-SPRING');
 });
 
 test('missing meter readings report filters meters by installed_on date range', function () {

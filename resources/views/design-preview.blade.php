@@ -405,7 +405,7 @@
                         <p class="text-sm font-medium text-violet-700 dark:text-violet-300">Фильтры по датам</p>
                         <h3 class="mt-1 text-base font-semibold">Диапазон «с» / «по» для каждой колонки даты</h3>
                         <p class="mt-1 max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
-                            Каждая колонка даты детального отчёта фильтруется диапазоном с включительными границами. Активные границы отображаются индикаторами над таблицей и снимаются по отдельности. XLSX-выгрузка и сводный режим фильтры не учитывают.
+                            Каждая колонка даты детального отчёта фильтруется диапазоном с включительными границами. Активные границы отображаются индикаторами над таблицей и снимаются по отдельности. Сводный режим фильтры не учитывает; XLSX-выгрузка не учитывает их везде, кроме ведомости снятия показаний.
                         </p>
                     </div>
 
@@ -446,6 +446,99 @@
                             <p class="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
                                 Фильтры есть у дат: оплата, снятие показания, установка и снятие счётчика, создание абонента, формирование квитанции. «Замена/установка счётчика» имеет два независимых фильтра, которые работают одновременно.
                             </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="border-b border-zinc-200 p-4 dark:border-zinc-800">
+                    <div>
+                        <p class="text-sm font-medium text-violet-700 dark:text-violet-300">Фильтры ведомости снятия показаний</p>
+                        <h3 class="mt-1 text-base font-semibold">Адрес каскадом и зоны контроллеров</h3>
+                        <p class="mt-1 max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
+                            Ведомость печатают для обхода участка, поэтому у неё есть фильтры по городу, району и улицам абонента и по контроллерам. Город сужает список районов, район — список улиц. Улиц и контроллеров можно выбрать несколько.
+                        </p>
+                    </div>
+
+                    <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+                        <div class="rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-950">
+                            <p class="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Панель фильтра</p>
+                            <div class="mt-3 flex flex-col gap-3">
+                                <div>
+                                    <label class="text-sm font-medium">Город</label>
+                                    <div class="mt-1 flex items-center justify-between rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200">
+                                        <span>Алматы</span>
+                                        <span aria-hidden="true" class="text-zinc-400">▾</span>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="text-sm font-medium">Район</label>
+                                    <div class="mt-1 flex items-center justify-between rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200">
+                                        <span>Алмалинский</span>
+                                        <span aria-hidden="true" class="text-zinc-400">▾</span>
+                                    </div>
+                                    <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Без выбранного города список показывает все районы как «Город / Район».</p>
+                                </div>
+                                <div>
+                                    <label class="text-sm font-medium">Улицы</label>
+                                    <div class="mt-1 flex flex-wrap items-center gap-2 rounded-md border border-zinc-300 bg-white px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900">
+                                        <span class="inline-flex items-center gap-1 rounded bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">
+                                            Абая
+                                            <button type="button" class="text-zinc-400 transition hover:text-zinc-700 dark:hover:text-zinc-100">&times;</button>
+                                        </span>
+                                        <span class="inline-flex items-center gap-1 rounded bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">
+                                            Гоголя
+                                            <button type="button" class="text-zinc-400 transition hover:text-zinc-700 dark:hover:text-zinc-100">&times;</button>
+                                        </span>
+                                        <span class="text-sm text-zinc-400 dark:text-zinc-500">Выберите улицы…</span>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="text-sm font-medium">Контроллеры</label>
+                                    <div class="mt-1 flex flex-wrap items-center gap-2 rounded-md border border-zinc-300 bg-white px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900">
+                                        <span class="inline-flex items-center gap-1 rounded bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">
+                                            Иванов И. (ivanov@example.kz)
+                                            <button type="button" class="text-zinc-400 transition hover:text-zinc-700 dark:hover:text-zinc-100">&times;</button>
+                                        </span>
+                                        <span class="text-sm text-zinc-400 dark:text-zinc-500">Выберите контроллеров…</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <p class="mt-3 text-xs text-zinc-500 dark:text-zinc-400">Смена города очищает район и улицы, смена района очищает улицы. Любое поле можно заполнить отдельно от остальных.</p>
+                        </div>
+
+                        <div class="flex flex-col gap-4">
+                            <div class="rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-950">
+                                <p class="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Индикаторы активного фильтра</p>
+                                <div class="mt-3 flex flex-wrap items-center gap-2">
+                                    <span class="inline-flex items-center gap-1 rounded-full bg-violet-100 px-3 py-1 text-xs font-medium text-violet-800 dark:bg-violet-950/60 dark:text-violet-200">
+                                        Город: Алматы
+                                        <button type="button" class="text-violet-500 transition hover:text-violet-700 dark:hover:text-violet-100">&times;</button>
+                                    </span>
+                                    <span class="inline-flex items-center gap-1 rounded-full bg-violet-100 px-3 py-1 text-xs font-medium text-violet-800 dark:bg-violet-950/60 dark:text-violet-200">
+                                        Район: Алмалинский
+                                        <button type="button" class="text-violet-500 transition hover:text-violet-700 dark:hover:text-violet-100">&times;</button>
+                                    </span>
+                                    <span class="inline-flex items-center gap-1 rounded-full bg-violet-100 px-3 py-1 text-xs font-medium text-violet-800 dark:bg-violet-950/60 dark:text-violet-200">
+                                        Улицы: Абая, Гоголя
+                                        <button type="button" class="text-violet-500 transition hover:text-violet-700 dark:hover:text-violet-100">&times;</button>
+                                    </span>
+                                    <span class="inline-flex items-center gap-1 rounded-full bg-violet-100 px-3 py-1 text-xs font-medium text-violet-800 dark:bg-violet-950/60 dark:text-violet-200">
+                                        Контроллеры: Иванов И. (ivanov@example.kz)
+                                        <button type="button" class="text-violet-500 transition hover:text-violet-700 dark:hover:text-violet-100">&times;</button>
+                                    </span>
+                                </div>
+                                <p class="mt-3 text-xs text-zinc-500 dark:text-zinc-400">Город, район и улицы снимаются по отдельности, хотя относятся к одному фильтру адреса.</p>
+                            </div>
+
+                            <div class="rounded-lg border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-900/60 dark:bg-emerald-950/30">
+                                <p class="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">XLSX по фильтру</p>
+                                <p class="mt-2 text-sm text-emerald-800/80 dark:text-emerald-200/80">
+                                    «Скачать Excel» выгружает те же строки, что видны на экране с теми же фильтрами: выгрузка ведомости повторяет применённые фильтры, включая дату установки. Отложенные значения, которые ещё не применены кнопкой, в выгрузку не попадают. Поиск по таблице на выгрузку по-прежнему не влияет.
+                                </p>
+                                <p class="mt-2 text-sm text-emerald-800/80 dark:text-emerald-200/80">
+                                    Строка остаётся при фильтре по контроллерам, если абонент попадает в зону хотя бы одного выбранного контроллера. Контроллер видит только свою зону, поэтому выбор коллеги не расширяет список.
+                                </p>
+                            </div>
                         </div>
                     </div>
                 </div>

@@ -129,13 +129,17 @@ class BuildReceiptPrintViewData
         return number_format((float) $value, 2, '.', ' ').' KZT';
     }
 
+    /**
+     * Объём печатается без незначащих нулей: по счётчику он равен сумме целых
+     * расходов, поэтому дробная часть выводится, только если она есть.
+     */
     private function decimal(mixed $value): string
     {
         if ($value === null || $value === '') {
             return '-';
         }
 
-        return number_format((float) $value, 4, '.', ' ');
+        return rtrim(rtrim(number_format((float) $value, 4, '.', ' '), '0'), '.');
     }
 
     private function value(mixed $value): string

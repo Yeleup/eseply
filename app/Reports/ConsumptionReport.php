@@ -62,15 +62,15 @@ class ConsumptionReport implements OrganizationReport
                     ->state(fn (): string => $billingPeriod?->label ?? '-'),
                 TextColumn::make('previous_reading')
                     ->label('Предыдущее')
-                    ->numeric(4)
+                    ->numeric(0)
                     ->sortable(),
                 TextColumn::make('current_reading')
                     ->label('Текущее')
-                    ->numeric(4)
+                    ->numeric(0)
                     ->sortable(),
                 TextColumn::make('consumption')
                     ->label('Потребление')
-                    ->numeric(4)
+                    ->numeric(0)
                     ->sortable(),
                 TextColumn::make('read_at')
                     ->label('Дата снятия')
@@ -188,9 +188,9 @@ class ConsumptionReport implements OrganizationReport
             new StringCell($this->formatClientAddress($meterReading->client), (new Style)->setShouldWrapText()),
             new StringCell((string) ($meterReading->meter?->number ?? ''), null),
             new StringCell($billingPeriod?->label ?? '', null),
-            new NumericCell((float) $meterReading->previous_reading, (new Style)->setFormat('0.0000')),
-            new NumericCell((float) $meterReading->current_reading, (new Style)->setFormat('0.0000')),
-            new NumericCell((float) $meterReading->consumption, (new Style)->setFormat('0.0000')),
+            new NumericCell((int) $meterReading->previous_reading, (new Style)->setFormat('0')),
+            new NumericCell((int) $meterReading->current_reading, (new Style)->setFormat('0')),
+            new NumericCell((int) $meterReading->consumption, (new Style)->setFormat('0')),
             new StringCell($meterReading->read_at?->format('d.m.Y') ?? '', null),
         ];
     }

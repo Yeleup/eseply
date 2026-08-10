@@ -88,7 +88,7 @@ class ReceiptResource extends Resource
                             }),
                         TextEntry::make('volume')
                             ->label(__('filament-receipts.fields.volume'))
-                            ->numeric(4)
+                            ->numeric(maxDecimalPlaces: 4)
                             ->placeholder('-'),
                         TextEntry::make('tariff_price')
                             ->label(__('filament-receipts.fields.tariff_price'))

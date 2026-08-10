@@ -67,7 +67,7 @@ class AccrualsRelationManager extends RelationManager
                     }),
                 TextColumn::make('volume')
                     ->label('Объём')
-                    ->numeric(4)
+                    ->numeric(maxDecimalPlaces: 4)
                     ->placeholder('-')
                     ->sortable()
                     ->toggleable(),

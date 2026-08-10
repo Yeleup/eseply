@@ -129,6 +129,8 @@ class Meter extends Model
                 $meter->initial_reading = $meter->getOriginal('initial_reading');
             }
 
+            $meter->initial_reading = MeterReading::wholeReading($meter->getAttributes()['initial_reading'] ?? null) ?? 0;
+
             if ($meter->organization_id) {
                 $meter->utility_service_id = UtilityService::query()
                     ->where('organization_id', $meter->organization_id)
@@ -165,7 +167,7 @@ class Meter extends Model
     {
         return [
             'installed_on' => 'date',
-            'initial_reading' => 'decimal:4',
+            'initial_reading' => 'integer',
             'removed_on' => 'date',
         ];
     }

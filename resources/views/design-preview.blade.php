@@ -530,7 +530,7 @@
                                 <td class="px-4 py-3 font-medium">MTR-001</td>
                                 <td class="px-4 py-3 text-zinc-500 dark:text-zinc-400">15.01.2024</td>
                                 <td class="px-4 py-3">06.2026</td>
-                                <td class="px-4 py-3 font-medium">21.7500</td>
+                                <td class="px-4 py-3 font-medium">22</td>
                             </tr>
                             <tr>
                                 <td class="px-4 py-3 font-medium">100001</td>
@@ -540,7 +540,7 @@
                                 <td class="px-4 py-3 font-medium">MTR-002</td>
                                 <td class="px-4 py-3 text-zinc-500 dark:text-zinc-400">-</td>
                                 <td class="px-4 py-3">06.2026</td>
-                                <td class="px-4 py-3 font-medium">20.0000</td>
+                                <td class="px-4 py-3 font-medium">20</td>
                             </tr>
                         </tbody>
                     </table>
@@ -723,9 +723,9 @@
                                 <td class="px-4 py-3">530001</td>
                                 <td class="px-4 py-3 font-medium">MTR-CONSUME</td>
                                 <td class="px-4 py-3">06.2026</td>
-                                <td class="px-4 py-3">10.0000</td>
-                                <td class="px-4 py-3">25.7500</td>
-                                <td class="px-4 py-3 font-semibold text-lime-700 dark:text-lime-300">15.7500</td>
+                                <td class="px-4 py-3">10</td>
+                                <td class="px-4 py-3">26</td>
+                                <td class="px-4 py-3 font-semibold text-lime-700 dark:text-lime-300">16</td>
                             </tr>
                         </tbody>
                     </table>
@@ -867,8 +867,8 @@
                                         <tr class="odd:bg-zinc-50/70 dark:odd:bg-zinc-950/60">
                                             <td class="border-r border-zinc-200 px-3 py-2 font-semibold dark:border-zinc-800">05.2026</td>
                                             <td class="border-r border-zinc-200 px-3 py-2 dark:border-zinc-800">MTR-100010</td>
-                                            <td class="border-r border-zinc-200 px-3 py-2 text-right dark:border-zinc-800">48.1200</td>
-                                            <td class="border-r border-zinc-200 px-3 py-2 text-right font-semibold dark:border-zinc-800">12.8700</td>
+                                            <td class="border-r border-zinc-200 px-3 py-2 text-right dark:border-zinc-800">48</td>
+                                            <td class="border-r border-zinc-200 px-3 py-2 text-right font-semibold dark:border-zinc-800">12</td>
                                             <td class="px-3 py-2">
                                                 <span class="inline-flex h-8 w-10 items-center justify-center rounded border border-zinc-300 bg-zinc-100 text-[10px] font-medium text-zinc-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400">Фото</span>
                                             </td>
@@ -1084,15 +1084,15 @@
                                             <tbody>
                                                 <tr>
                                                     <td class="border-r border-zinc-900 px-2 py-1.5 font-semibold">MTR-100010</td>
-                                                    <td class="border-r border-zinc-900 px-2 py-1.5 text-right">100.0000</td>
-                                                    <td class="border-r border-zinc-900 px-2 py-1.5 text-right">120.0000</td>
-                                                    <td class="border-r border-zinc-900 px-2 py-1.5 text-right">20.0000</td>
+                                                    <td class="border-r border-zinc-900 px-2 py-1.5 text-right">100</td>
+                                                    <td class="border-r border-zinc-900 px-2 py-1.5 text-right">120</td>
+                                                    <td class="border-r border-zinc-900 px-2 py-1.5 text-right">20</td>
                                                     <td class="border-r border-zinc-900 px-2 py-1.5 text-right">90.00 KZT</td>
                                                     <td class="px-2 py-1.5 text-right font-bold">1 800.00 KZT</td>
                                                 </tr>
                                                 <tr class="bg-zinc-50 font-bold">
                                                     <td class="border-t border-r border-zinc-900 px-2 py-1.5" colspan="3">Итого</td>
-                                                    <td class="border-t border-r border-zinc-900 px-2 py-1.5 text-right">20.0000</td>
+                                                    <td class="border-t border-r border-zinc-900 px-2 py-1.5 text-right">20</td>
                                                     <td class="border-t border-r border-zinc-900 px-2 py-1.5"></td>
                                                     <td class="border-t border-zinc-900 px-2 py-1.5 text-right">1 800.00 KZT</td>
                                                 </tr>

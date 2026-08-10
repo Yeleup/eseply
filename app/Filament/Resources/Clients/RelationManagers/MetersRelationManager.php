@@ -56,8 +56,7 @@ class MetersRelationManager extends RelationManager
                             ->scopedUnique(),
                         TextInput::make('initial_reading')
                             ->label('Начальное показание')
-                            ->numeric()
-                            ->step('0.0001')
+                            ->integer()
                             ->minValue(0)
                             ->default(0)
                             ->disabledOn('edit')
@@ -109,7 +108,7 @@ class MetersRelationManager extends RelationManager
                     ->placeholder('Не указана'),
                 TextColumn::make('initial_reading')
                     ->label('Начальное показание')
-                    ->numeric(4)
+                    ->numeric(0)
                     ->sortable(),
                 TextColumn::make('status')
                     ->label('Статус')
@@ -253,16 +252,14 @@ class MetersRelationManager extends RelationManager
                 ->schema([
                     TextInput::make('previous_reading')
                         ->label('Предыдущее показание')
-                        ->numeric()
-                        ->step('0.0001')
+                        ->integer()
                         ->minValue(0)
-                        ->default(fn (): float => $this->previousReadingForMeterAndPeriod($meter, $this->currentBillingPeriodId()))
+                        ->default(fn (): int => $this->previousReadingForMeterAndPeriod($meter, $this->currentBillingPeriodId()))
                         ->readOnly()
                         ->required(),
                     TextInput::make('current_reading')
                         ->label('Текущее показание')
-                        ->numeric()
-                        ->step('0.0001')
+                        ->integer()
                         ->minValue(0)
                         ->required(),
                     DatePicker::make('read_at')
@@ -276,7 +273,7 @@ class MetersRelationManager extends RelationManager
         ];
     }
 
-    protected function previousReadingForMeterAndPeriod(Meter $meter, mixed $billingPeriodId): float
+    protected function previousReadingForMeterAndPeriod(Meter $meter, mixed $billingPeriodId): int
     {
         return MeterReading::previousReadingForBillingPeriod($meter->getKey(), $billingPeriodId) ?? 0;
     }
@@ -289,7 +286,7 @@ class MetersRelationManager extends RelationManager
     }
 
     /**
-     * @return array{previous_reading: float, current_reading?: float|null, read_at?: string|null, note?: string|null, photo_path?: string|null}
+     * @return array{previous_reading: int, current_reading?: int|null, read_at?: string|null, note?: string|null, photo_path?: string|null}
      */
     private function readingActionFormData(Meter $meter): array
     {
@@ -298,8 +295,8 @@ class MetersRelationManager extends RelationManager
 
         if ($meterReading instanceof MeterReading) {
             return [
-                'previous_reading' => (float) $meterReading->previous_reading,
-                'current_reading' => (float) $meterReading->current_reading,
+                'previous_reading' => (int) $meterReading->previous_reading,
+                'current_reading' => (int) $meterReading->current_reading,
                 'read_at' => $meterReading->read_at?->toDateString(),
                 'note' => $meterReading->note,
                 'photo_path' => $meterReading->photo_path,

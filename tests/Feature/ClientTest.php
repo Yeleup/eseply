@@ -615,7 +615,7 @@ test('admin users can open a current tenant client card as a blade view', functi
         ->for($client)
         ->create([
             'number' => 'MTR-100010',
-            'initial_reading' => 15.25,
+            'initial_reading' => 15,
         ]);
 
     Payment::factory()
@@ -645,8 +645,8 @@ test('admin users can open a current tenant client card as a blade view', functi
         ->for($client)
         ->create([
             'period' => '202605',
-            'previous_reading' => 15.25,
-            'current_reading' => 48.12,
+            'previous_reading' => 15,
+            'current_reading' => 48,
             'read_at' => '2026-05-28',
             'note' => 'Контрольное показание',
         ]);
@@ -728,7 +728,7 @@ test('admin users can open a current tenant client card as a blade view', functi
             'Счётчики',
             'MTR-100010',
             'Показания счётчиков',
-            '48.1200',
+            '48',
             'Оплаты',
             '202605',
             '2 500.00 KZT',
@@ -1129,7 +1129,7 @@ test('client related tables can create meters, payments and balance adjustments 
     ])
         ->callTableAction('create', data: [
             'number' => 'MTR-REL-1',
-            'initial_reading' => 12.5,
+            'initial_reading' => 12,
             'installed_on' => '2026-05-01',
         ])
         ->assertHasNoTableActionErrors();

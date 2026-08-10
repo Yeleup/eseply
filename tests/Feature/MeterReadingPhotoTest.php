@@ -124,7 +124,7 @@ test('a meter reading can be created with a photo through the resource form', fu
     Livewire::test(CreateMeterReading::class)
         ->fillForm([
             'meter_id' => $meter->id,
-            'current_reading' => 137.125,
+            'current_reading' => 137,
             'photo_path' => UploadedFile::fake()->image('meter.jpg'),
         ])
         ->call('create')
@@ -193,7 +193,7 @@ test('creating a reading with a tampered foreign photo path is rejected', functi
     Livewire::test(CreateMeterReading::class)
         ->fillForm([
             'meter_id' => $meter->id,
-            'current_reading' => 137.125,
+            'current_reading' => 137,
             'photo_path' => [(string) Str::uuid() => $victimPhotoPath],
         ])
         ->call('create')
@@ -229,7 +229,7 @@ test('a photo path belonging to another meter of the same organization is reject
     Livewire::test(CreateMeterReading::class)
         ->fillForm([
             'meter_id' => $meter->id,
-            'current_reading' => 137.125,
+            'current_reading' => 137,
             'photo_path' => [(string) Str::uuid() => $otherPhotoPath],
         ])
         ->call('create')
@@ -283,7 +283,7 @@ test('the client card reading action rejects an injected meter_id pointing at an
         'pageClass' => EditClient::class,
     ])
         ->callTableAction('addReading', $meter, data: [
-            'current_reading' => 140.75,
+            'current_reading' => 140,
             'meter_id' => $otherMeter->id,
             'photo_path' => [(string) Str::uuid() => $otherPhotoPath],
         ])
@@ -329,7 +329,7 @@ test('the client card reading action keeps an existing photo path when resubmitt
         'pageClass' => EditClient::class,
     ])
         ->callTableAction('addReading', $meter, data: [
-            'current_reading' => 141.5,
+            'current_reading' => 141,
             'photo_path' => [(string) Str::uuid() => $photoPath],
         ])
         ->assertHasNoTableActionErrors();
@@ -365,7 +365,7 @@ test('the client card reading action saves a photo', function () {
         'pageClass' => EditClient::class,
     ])
         ->callTableAction('addReading', $meter, data: [
-            'current_reading' => 140.75,
+            'current_reading' => 140,
             'photo_path' => UploadedFile::fake()->image('meter.jpg'),
         ])
         ->assertHasNoTableActionErrors();
@@ -392,7 +392,7 @@ test('the meter card readings relation manager saves a photo through the create 
         'pageClass' => EditMeter::class,
     ])
         ->callTableAction('create', data: [
-            'current_reading' => 137.125,
+            'current_reading' => 137,
             'photo_path' => UploadedFile::fake()->image('meter.jpg'),
         ])
         ->assertHasNoTableActionErrors();
@@ -431,7 +431,7 @@ test('the meter card readings relation manager rejects a tampered photo path fro
         'pageClass' => EditMeter::class,
     ])
         ->callTableAction('create', data: [
-            'current_reading' => 137.125,
+            'current_reading' => 137,
             'photo_path' => [(string) Str::uuid() => $otherPhotoPath],
         ])
         ->assertHasTableActionErrors(['photo_path']);
@@ -473,7 +473,7 @@ test('the meter card readings relation manager create action rejects an injected
         'pageClass' => EditMeter::class,
     ])
         ->callTableAction('create', data: [
-            'current_reading' => 137.125,
+            'current_reading' => 137,
             'meter_id' => $otherMeter->id,
             'photo_path' => [(string) Str::uuid() => $otherPhotoPath],
         ])

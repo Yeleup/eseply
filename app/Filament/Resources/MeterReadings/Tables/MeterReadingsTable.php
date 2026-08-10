@@ -67,15 +67,15 @@ class MeterReadingsTable
                     ->placeholder('Не указана'),
                 TextColumn::make('previous_reading')
                     ->label('Предыдущее')
-                    ->numeric(4)
+                    ->numeric(0)
                     ->sortable(),
                 TextColumn::make('current_reading')
                     ->label('Текущее')
-                    ->numeric(4)
+                    ->numeric(0)
                     ->sortable(),
                 TextColumn::make('consumption')
                     ->label('Расход')
-                    ->numeric(4)
+                    ->numeric(0)
                     ->sortable(),
                 TextColumn::make('read_at')
                     ->label('Дата ввода')

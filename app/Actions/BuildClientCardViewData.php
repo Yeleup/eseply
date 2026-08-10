@@ -176,7 +176,7 @@ class BuildClientCardViewData
             'Номер' => $meter->number,
             'Услуга' => $meter->utilityService?->name,
             'Статус' => $this->meterStatusLabel($meter->status),
-            'Начальное показание' => $this->decimal($meter->initial_reading),
+            'Начальное показание' => $this->reading($meter->initial_reading),
             'Дата установки' => $this->date($meter->installed_on),
             'Дата снятия' => $this->date($meter->removed_on),
             'Примечание' => $meter->note,
@@ -194,7 +194,7 @@ class BuildClientCardViewData
             'number' => $this->value($meter->number),
             'utility_service' => $this->value($meter->utilityService?->name),
             'status' => $this->meterStatusLabel($meter->status),
-            'initial_reading' => $this->decimal($meter->initial_reading),
+            'initial_reading' => $this->reading($meter->initial_reading),
             'installed_on' => $this->date($meter->installed_on),
             'removed_on' => $this->date($meter->removed_on),
             'note' => $this->value($meter->note),
@@ -209,9 +209,9 @@ class BuildClientCardViewData
         return [
             'period' => $this->period($meterReading),
             'meter_number' => $this->value($meterReading->meter?->number),
-            'previous_reading' => $this->decimal($meterReading->previous_reading),
-            'current_reading' => $this->decimal($meterReading->current_reading),
-            'consumption' => $this->decimal($meterReading->consumption),
+            'previous_reading' => $this->reading($meterReading->previous_reading),
+            'current_reading' => $this->reading($meterReading->current_reading),
+            'consumption' => $this->reading($meterReading->consumption),
             'read_at' => $this->date($meterReading->read_at),
             'note' => $this->value($meterReading->note),
         ];
@@ -344,13 +344,29 @@ class BuildClientCardViewData
         return number_format((float) $value, 2, '.', ' ').' KZT';
     }
 
+    /**
+     * Показания счётчиков — целые числа и печатаются без дробной части.
+     */
+    private function reading(mixed $value): string
+    {
+        if ($value === null || $value === '') {
+            return '-';
+        }
+
+        return number_format((float) $value, 0, '.', ' ');
+    }
+
+    /**
+     * Объём печатается без незначащих нулей: по счётчику он всегда целый,
+     * поэтому дробная часть выводится, только если она действительно есть.
+     */
     private function decimal(mixed $value): string
     {
         if ($value === null || $value === '') {
             return '-';
         }
 
-        return number_format((float) $value, 4, '.', ' ');
+        return rtrim(rtrim(number_format((float) $value, 4, '.', ' '), '0'), '.');
     }
 
     private function date(mixed $value): string

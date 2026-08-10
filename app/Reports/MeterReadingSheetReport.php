@@ -72,8 +72,8 @@ class MeterReadingSheetReport implements OrganizationReport
                     ->sortable(),
                 TextColumn::make('previous_reading_for_report')
                     ->label('Предыдущее показание')
-                    ->state(fn (Meter $record): mixed => $record->getAttribute('previous_reading_for_report') ?? $record->initial_reading)
-                    ->numeric(4),
+                    ->state(fn (Meter $record): int => $this->previousReading($record))
+                    ->numeric(0),
                 TextColumn::make('reading_entry')
                     ->label('Показание')
                     ->state(fn (): string => '')
@@ -221,13 +221,15 @@ class MeterReadingSheetReport implements OrganizationReport
                 : new NumericCell($client->residents_count, null),
             new StringCell((string) $meter->number, null),
             new StringCell($meter->installed_on?->format('d.m.Y') ?? '', null),
-            new NumericCell($this->previousReading($meter), (new Style)->setFormat('0.0000')),
+            new NumericCell($this->previousReading($meter), (new Style)->setFormat('0')),
             new StringCell('', null),
         ];
     }
 
-    private function previousReading(Meter $meter): float
+    private function previousReading(Meter $meter): int
     {
-        return (float) ($meter->getAttribute('previous_reading_for_report') ?? $meter->initial_reading);
+        return MeterReading::wholeReading(
+            $meter->getAttribute('previous_reading_for_report') ?? $meter->initial_reading,
+        ) ?? 0;
     }
 }

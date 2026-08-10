@@ -53,8 +53,7 @@ class MeterForm
                             ->scopedUnique(),
                         TextInput::make('initial_reading')
                             ->label('Начальное показание')
-                            ->numeric()
-                            ->step('0.0001')
+                            ->integer()
                             ->minValue(0)
                             ->default(0)
                             ->disabledOn('edit')

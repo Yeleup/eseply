@@ -48,16 +48,14 @@ class ReadingsRelationManager extends RelationManager
                     ->schema([
                         TextInput::make('previous_reading')
                             ->label('Предыдущее показание')
-                            ->numeric()
-                            ->step('0.0001')
+                            ->integer()
                             ->minValue(0)
-                            ->default(fn (): float => $this->previousReadingForPeriod($this->currentBillingPeriodId()))
+                            ->default(fn (): int => $this->previousReadingForPeriod($this->currentBillingPeriodId()))
                             ->readOnly()
                             ->required(),
                         TextInput::make('current_reading')
                             ->label('Текущее показание')
-                            ->numeric()
-                            ->step('0.0001')
+                            ->integer()
                             ->minValue(0)
                             ->required(),
                         DatePicker::make('read_at')
@@ -92,15 +90,15 @@ class ReadingsRelationManager extends RelationManager
                     ->placeholder('-'),
                 TextColumn::make('previous_reading')
                     ->label('Предыдущее')
-                    ->numeric(4)
+                    ->numeric(0)
                     ->sortable(),
                 TextColumn::make('current_reading')
                     ->label('Текущее')
-                    ->numeric(4)
+                    ->numeric(0)
                     ->sortable(),
                 TextColumn::make('consumption')
                     ->label('Расход')
-                    ->numeric(4)
+                    ->numeric(0)
                     ->sortable(),
                 TextColumn::make('read_at')
                     ->label('Дата ввода')
@@ -151,7 +149,7 @@ class ReadingsRelationManager extends RelationManager
             ]);
     }
 
-    protected function previousReadingForPeriod(mixed $billingPeriodId): float
+    protected function previousReadingForPeriod(mixed $billingPeriodId): int
     {
         return MeterReading::previousReadingForBillingPeriod(
             $this->ownerRecord->getKey(),

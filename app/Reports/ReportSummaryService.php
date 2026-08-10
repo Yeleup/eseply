@@ -602,7 +602,7 @@ class ReportSummaryService
             ],
             'consumption' => [
                 ['key' => 'readings_count', 'label' => 'Показаний', 'type' => 'integer'],
-                ['key' => 'consumption', 'label' => 'Потребление', 'type' => 'decimal'],
+                ['key' => 'consumption', 'label' => 'Потребление', 'type' => 'integer'],
             ],
             default => throw new InvalidArgumentException("Unsupported summary report [{$reportSlug}]."),
         };

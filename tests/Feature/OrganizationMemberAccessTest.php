@@ -441,7 +441,7 @@ test('controller can add and edit readings from meter context without meter oper
         ->assertHasNoTableActionErrors()
         ->assertNotified();
 
-    expect($currentReading->refresh()->current_reading)->toBe('21.0000');
+    expect($currentReading->refresh()->current_reading)->toBe(21);
 });
 
 test('controller cannot access organization setup and non-reading operations', function () {

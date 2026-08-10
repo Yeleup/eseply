@@ -19,7 +19,7 @@ class MeterReadingFactory extends Factory
      */
     public function definition(): array
     {
-        $previousReading = fake()->randomFloat(4, 0, 1000);
+        $previousReading = fake()->numberBetween(0, 1000);
 
         return [
             'organization_id' => Organization::factory(),
@@ -34,7 +34,7 @@ class MeterReadingFactory extends Factory
                 ->utility_service_id,
             'period' => fake()->dateTimeBetween('-1 year', 'now')->format('Ym'),
             'previous_reading' => $previousReading,
-            'current_reading' => $previousReading + fake()->randomFloat(4, 1, 250),
+            'current_reading' => $previousReading + fake()->numberBetween(1, 250),
             'read_at' => fake()->dateTimeBetween('-1 year', 'now')->format('Y-m-d'),
             'note' => fake()->optional()->sentence(),
         ];

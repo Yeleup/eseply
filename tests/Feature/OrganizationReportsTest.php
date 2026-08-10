@@ -152,7 +152,7 @@ test('meter reading sheet report keeps client meters together and scopes records
         ->create([
             'period' => '202604',
             'previous_reading' => 10,
-            'current_reading' => 15.5,
+            'current_reading' => 15,
         ]);
     closedBillingPeriodFor($organization, '202604');
 
@@ -160,8 +160,8 @@ test('meter reading sheet report keeps client meters together and scopes records
         ->for($firstMeter)
         ->create([
             'period' => '202605',
-            'previous_reading' => 15.5,
-            'current_reading' => 21.75,
+            'previous_reading' => 15,
+            'current_reading' => 21,
         ]);
 
     actingAsReportsTenant($organization);
@@ -187,8 +187,8 @@ test('meter reading sheet report keeps client meters together and scopes records
         ->assertTableColumnStateSet('client_address', 'Алмалинский, Абая, д. 10, кв. 5', $firstMeter)
         ->assertTableColumnStateSet('client.residents_count', 3, $firstMeter)
         ->assertTableColumnStateSet('number', 'MTR-001', $firstMeter)
-        ->assertTableColumnStateSet('previous_reading_for_report', '21.7500', $firstMeter)
-        ->assertTableColumnStateSet('previous_reading_for_report', '20.0000', $secondMeter);
+        ->assertTableColumnStateSet('previous_reading_for_report', 21, $firstMeter)
+        ->assertTableColumnStateSet('previous_reading_for_report', 20, $secondMeter);
 
     $download = Livewire::test(ViewReport::class, ['report' => 'meter-reading-sheet'])
         ->assertOk()
@@ -219,7 +219,7 @@ test('meter reading sheet report keeps client meters together and scopes records
         3,
         'MTR-001',
         '15.01.2024',
-        21.75,
+        21,
     ]);
     expect(array_slice($rows[2], 0, 7))->toEqual([
         '100001',
@@ -305,7 +305,7 @@ test('missing meter readings report lists active meter clients without current p
         ->create([
             'number' => 'MISS-002',
             'installed_on' => null,
-            'initial_reading' => 17.5,
+            'initial_reading' => 17,
             'status' => 'active',
         ]);
     $recordedMeter = Meter::factory()
@@ -341,7 +341,7 @@ test('missing meter readings report lists active meter clients without current p
         ->create([
             'period' => '202605',
             'previous_reading' => 5,
-            'current_reading' => 9.25,
+            'current_reading' => 9,
         ]);
     closedBillingPeriodFor($organization, '202605');
 
@@ -373,8 +373,8 @@ test('missing meter readings report lists active meter clients without current p
         ->assertTableColumnStateSet('client.residents_count', 2, $missingMeter)
         ->assertTableColumnStateSet('number', 'MISS-001', $missingMeter)
         ->assertTableColumnStateSet('missing_period', '06.2026', $missingMeter)
-        ->assertTableColumnStateSet('previous_reading_for_report', '9.2500', $missingMeter)
-        ->assertTableColumnStateSet('previous_reading_for_report', '17.5000', $initialOnlyMissingMeter);
+        ->assertTableColumnStateSet('previous_reading_for_report', 9, $missingMeter)
+        ->assertTableColumnStateSet('previous_reading_for_report', 17, $initialOnlyMissingMeter);
 
     $download = Livewire::test(ViewReport::class, ['report' => 'missing-meter-readings'])
         ->assertOk()
@@ -405,7 +405,7 @@ test('missing meter readings report lists active meter clients without current p
         'MISS-001',
         '01.02.2024',
         '06.2026',
-        9.25,
+        9,
     ]);
     expect($rows[2])->toEqual([
         '200001',
@@ -415,7 +415,7 @@ test('missing meter readings report lists active meter clients without current p
         'MISS-002',
         '',
         '06.2026',
-        17.5,
+        17,
     ]);
     expect(collect($rows)->flatten()->contains('READ-001'))->toBeFalse();
     expect(collect($rows)->flatten()->contains('OTHER-001'))->toBeFalse();
@@ -1253,7 +1253,7 @@ test('meter installation replacement report lists installed and removed meters i
         ->create([
             'number' => 'MTR-INSTALL',
             'installed_on' => '2026-06-03',
-            'initial_reading' => 12.5,
+            'initial_reading' => 12,
             'note' => 'Новый счётчик',
         ]);
     $removedMeter = Meter::factory()
@@ -1319,7 +1319,7 @@ test('meter installation replacement report lists installed and removed meters i
         'Установка',
         '03.06.2026',
         '',
-        12.5,
+        12,
         'Активный',
         'Новый счётчик',
     ]);
@@ -1368,7 +1368,7 @@ test('consumption report lists meter readings for current billing period', funct
         ->create([
             'period' => '202606',
             'previous_reading' => 10,
-            'current_reading' => 25.75,
+            'current_reading' => 25,
             'read_at' => '2026-06-08',
         ]);
 
@@ -1398,7 +1398,7 @@ test('consumption report lists meter readings for current billing period', funct
         ->assertTableColumnStateSet('client_address', 'Бостандыкский, Тимирязева, д. 40, кв. 7', $meterReading)
         ->assertTableColumnStateSet('meter.number', 'MTR-CONSUME', $meterReading)
         ->assertTableColumnStateSet('consumption_period_for_report', '06.2026', $meterReading)
-        ->assertTableColumnStateSet('consumption', '15.7500', $meterReading);
+        ->assertTableColumnStateSet('consumption', 15, $meterReading);
 
     $download = Livewire::test(ViewReport::class, ['report' => 'consumption'])
         ->assertOk()
@@ -1427,9 +1427,9 @@ test('consumption report lists meter readings for current billing period', funct
         'Бостандыкский, Тимирязева, д. 40, кв. 7',
         'MTR-CONSUME',
         '06.2026',
-        10.0,
-        25.75,
-        15.75,
+        10,
+        25,
+        15,
         '08.06.2026',
     ]);
     expect(collect($rows)->flatten()->contains('MTR-OTHER-CONSUME'))->toBeFalse();

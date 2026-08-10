@@ -61,16 +61,14 @@ class MeterReadingForm
                             ->native(false),
                         TextInput::make('previous_reading')
                             ->label('Предыдущее показание')
-                            ->numeric()
-                            ->step('0.0001')
+                            ->integer()
                             ->minValue(0)
-                            ->default(fn (Get $get): float => MeterReading::previousReadingForBillingPeriod($get('meter_id'), self::currentBillingPeriodId()) ?? 0)
+                            ->default(fn (Get $get): int => MeterReading::previousReadingForBillingPeriod($get('meter_id'), self::currentBillingPeriodId()) ?? 0)
                             ->readOnly()
                             ->required(),
                         TextInput::make('current_reading')
                             ->label('Текущее показание')
-                            ->numeric()
-                            ->step('0.0001')
+                            ->integer()
                             ->minValue(0)
                             ->required(),
                         DatePicker::make('read_at')

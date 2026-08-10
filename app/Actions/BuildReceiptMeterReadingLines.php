@@ -27,13 +27,13 @@ class BuildReceiptMeterReadingLines
             ->orderBy('id')
             ->get()
             ->map(function (MeterReading $meterReading) use ($tariffPrice): array {
-                $consumption = (float) $meterReading->consumption;
+                $consumption = (int) $meterReading->consumption;
 
                 return [
                     'meter_number' => $meterReading->meter?->number ?? '-',
-                    'previous_reading' => $this->decimal($meterReading->previous_reading),
-                    'current_reading' => $this->decimal($meterReading->current_reading),
-                    'consumption' => $this->decimal($consumption),
+                    'previous_reading' => $this->reading($meterReading->previous_reading),
+                    'current_reading' => $this->reading($meterReading->current_reading),
+                    'consumption' => $this->reading($consumption),
                     'tariff_price' => $this->money($tariffPrice),
                     'amount' => $this->money($tariffPrice === null ? null : round($consumption * $tariffPrice, 2)),
                 ];
@@ -42,13 +42,13 @@ class BuildReceiptMeterReadingLines
             ->all();
     }
 
-    private function decimal(mixed $value): string
+    private function reading(mixed $value): string
     {
         if ($value === null || $value === '') {
             return '-';
         }
 
-        return number_format((float) $value, 4, '.', ' ');
+        return number_format((float) $value, 0, '.', ' ');
     }
 
     private function money(mixed $value): string

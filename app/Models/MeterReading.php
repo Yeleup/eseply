@@ -91,7 +91,7 @@ class MeterReading extends Model
         );
     }
 
-    public static function previousReadingFor(int|string|null $meterId, int|string|null $period = null): ?float
+    public static function previousReadingFor(int|string|null $meterId, int|string|null $period = null): ?int
     {
         if ($meterId === null || $meterId === '') {
             return null;
@@ -116,11 +116,11 @@ class MeterReading extends Model
             ->value('current_reading');
 
         return $previousReading === null
-            ? (float) $meter->initial_reading
-            : (float) $previousReading;
+            ? self::wholeReading($meter->initial_reading)
+            : self::wholeReading($previousReading);
     }
 
-    public static function previousReadingForBillingPeriod(int|string|null $meterId, int|string|null $billingPeriodId = null): ?float
+    public static function previousReadingForBillingPeriod(int|string|null $meterId, int|string|null $billingPeriodId = null): ?int
     {
         if ($billingPeriodId === null || $billingPeriodId === '') {
             return self::previousReadingFor($meterId);
@@ -157,6 +157,21 @@ class MeterReading extends Model
     }
 
     /**
+     * Readings are whole numbers: any fractional input is rounded before it is stored.
+     *
+     * Pass the raw attribute value, not the model accessor: the "integer" cast
+     * would already have truncated the fractional part.
+     */
+    public static function wholeReading(mixed $value): ?int
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return (int) round((float) $value);
+    }
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>
@@ -164,9 +179,9 @@ class MeterReading extends Model
     protected function casts(): array
     {
         return [
-            'previous_reading' => 'decimal:4',
-            'current_reading' => 'decimal:4',
-            'consumption' => 'decimal:4',
+            'previous_reading' => 'integer',
+            'current_reading' => 'integer',
+            'consumption' => 'integer',
             'read_at' => 'date',
         ];
     }
@@ -195,7 +210,12 @@ class MeterReading extends Model
             $meterReading->ensureBillingPeriodIsEditable();
             $meterReading->ensureUniqueForBillingPeriod();
 
-            $meterReading->consumption = (float) $meterReading->current_reading - (float) $meterReading->previous_reading;
+            $previousReading = self::wholeReading($meterReading->getAttributes()['previous_reading'] ?? null);
+            $currentReading = self::wholeReading($meterReading->getAttributes()['current_reading'] ?? null);
+
+            $meterReading->previous_reading = $previousReading;
+            $meterReading->current_reading = $currentReading;
+            $meterReading->consumption = ($currentReading ?? 0) - ($previousReading ?? 0);
         });
 
         static::deleting(function (MeterReading $meterReading): void {

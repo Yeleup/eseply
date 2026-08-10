@@ -36,7 +36,7 @@ class MeterFactory extends Factory
                 ->id,
             'number' => fake()->unique()->bothify('MTR-######'),
             'installed_on' => fake()->dateTimeBetween('-3 years', 'now')->format('Y-m-d'),
-            'initial_reading' => fake()->randomFloat(4, 0, 1000),
+            'initial_reading' => fake()->numberBetween(0, 1000),
             'removed_on' => null,
             'status' => 'active',
             'note' => fake()->optional()->sentence(),

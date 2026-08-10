@@ -535,7 +535,7 @@ test('billing month closure calculates meter accruals from all active meter read
         ->create([
             'period' => '202605',
             'previous_reading' => 100,
-            'current_reading' => 110.5,
+            'current_reading' => 110,
         ]);
 
     MeterReading::factory()
@@ -543,7 +543,7 @@ test('billing month closure calculates meter accruals from all active meter read
         ->create([
             'period' => '202605',
             'previous_reading' => 50,
-            'current_reading' => 52.25,
+            'current_reading' => 52,
         ]);
 
     $summary = app(CloseBillingMonth::class)->handle($organization, '202605');
@@ -563,12 +563,12 @@ test('billing month closure calculates meter accruals from all active meter read
         ->sole();
 
     expect($accrual->billing_type)->toBe('meter')
-        ->and($accrual->volume)->toBe('12.7500')
+        ->and($accrual->volume)->toBe('12.0000')
         ->and($accrual->tariff_price)->toBe('25.00')
-        ->and($accrual->amount)->toBe('318.75')
+        ->and($accrual->amount)->toBe('300.00')
         ->and($accrual->opening_balance)->toBe('0.00')
         ->and($accrual->adjustment_amount)->toBe('0.00')
-        ->and($accrual->closing_balance)->toBe('318.75');
+        ->and($accrual->closing_balance)->toBe('300.00');
 });
 
 test('billing month closure reports meter clients when any active meter has no reading', function () {
@@ -618,7 +618,7 @@ test('billing month closure reports meter clients when any active meter has no r
         ->create([
             'period' => '202605',
             'previous_reading' => 100,
-            'current_reading' => 110.5,
+            'current_reading' => 110,
         ]);
 
     $summary = app(CloseBillingMonth::class)->handle($organization, '202605');

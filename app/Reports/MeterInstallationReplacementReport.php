@@ -75,7 +75,7 @@ class MeterInstallationReplacementReport implements OrganizationReport
                     ->sortable(),
                 TextColumn::make('initial_reading')
                     ->label('Начальное показание')
-                    ->numeric(4)
+                    ->numeric(0)
                     ->sortable(),
                 TextColumn::make('meter_status_for_report')
                     ->label('Статус')
@@ -238,7 +238,7 @@ class MeterInstallationReplacementReport implements OrganizationReport
             new StringCell($this->operationLabel($meter, $billingPeriod), null),
             new StringCell($meter->installed_on?->format('d.m.Y') ?? '', null),
             new StringCell($meter->removed_on?->format('d.m.Y') ?? '', null),
-            new NumericCell((float) $meter->initial_reading, (new Style)->setFormat('0.0000')),
+            new NumericCell((int) $meter->initial_reading, (new Style)->setFormat('0')),
             new StringCell($this->meterStatusLabel($meter->status), null),
             new StringCell((string) ($meter->note ?? ''), null),
         ];

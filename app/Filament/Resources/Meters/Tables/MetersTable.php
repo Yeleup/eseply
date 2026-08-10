@@ -57,7 +57,7 @@ class MetersTable
                     ->placeholder('Не указана'),
                 TextColumn::make('initial_reading')
                     ->label('Начальное показание')
-                    ->numeric(4)
+                    ->numeric(0)
                     ->sortable(),
                 TextColumn::make('status')
                     ->label('Статус')

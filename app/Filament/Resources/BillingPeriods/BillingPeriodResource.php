@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\BillingPeriods;
 
+use App\Filament\Resources\BillingPeriods\Pages\ListBillingPeriodClosureErrors;
 use App\Filament\Resources\BillingPeriods\Pages\ListBillingPeriods;
 use App\Filament\Resources\BillingPeriods\Tables\BillingPeriodsTable;
 use App\Filament\Support\OrganizationMemberAccess;
@@ -47,6 +48,7 @@ class BillingPeriodResource extends Resource
     {
         return [
             'index' => ListBillingPeriods::route('/'),
+            'closureErrors' => ListBillingPeriodClosureErrors::route('/{record}/closure-errors'),
         ];
     }
 

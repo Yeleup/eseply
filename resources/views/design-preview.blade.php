@@ -1248,7 +1248,7 @@
                         <p class="text-sm text-rose-700 dark:text-rose-300">Расчётные месяцы</p>
                         <h2 class="text-base font-semibold">Отчёт ошибок закрытия</h2>
                         <p class="mt-2 max-w-2xl text-sm text-zinc-500 dark:text-zinc-400">
-                            Slide-over показывает причину, стабильный код ошибки и контекст по каждому абоненту.
+                            Отдельная страница показывает сводку, разбивку по стабильным кодам ошибок и постраничную таблицу по абонентам с выгрузкой в Excel.
                         </p>
                     </div>
                     <span class="w-fit rounded-md bg-rose-100 px-2 py-1 text-xs font-medium text-rose-700 ring-1 ring-rose-600/10 dark:bg-rose-400/10 dark:text-rose-300 dark:ring-rose-400/20">Ошибка закрытия</span>
@@ -1262,7 +1262,7 @@
                         </div>
                         <div class="rounded-xl border border-rose-200 bg-rose-50 p-4 dark:border-rose-900/50 dark:bg-rose-950/20">
                             <div class="text-xs font-medium text-rose-700 dark:text-rose-300">Ошибок данных</div>
-                            <div class="mt-1 text-lg font-semibold text-rose-700 dark:text-rose-300">2</div>
+                            <div class="mt-1 text-lg font-semibold text-rose-700 dark:text-rose-300">11 166</div>
                         </div>
                         <div class="rounded-xl border border-zinc-200 bg-zinc-50 p-4 dark:border-white/10 dark:bg-white/5">
                             <div class="text-xs font-medium text-zinc-500 dark:text-zinc-400">Статус</div>
@@ -1272,62 +1272,83 @@
                         </div>
                     </div>
 
+                    <div class="mt-5 rounded-xl border border-zinc-200 bg-white p-5 shadow-sm ring-1 ring-zinc-950/5 dark:border-white/10 dark:bg-zinc-900 dark:ring-white/10">
+                        <h3 class="text-sm font-semibold text-zinc-950 dark:text-white">Причины ошибок</h3>
+                        <p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Сколько абонентов остановились на каждой причине.</p>
+
+                        <ul class="mt-3 divide-y divide-zinc-200 dark:divide-white/10">
+                            <li class="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
+                                <div class="min-w-0">
+                                    <div class="text-sm font-medium text-zinc-950 dark:text-white">Не найдены активные счётчики по услуге организации.</div>
+                                    <div class="mt-1">
+                                        <span class="rounded-md bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700 ring-1 ring-amber-600/10 dark:bg-amber-400/10 dark:text-amber-300 dark:ring-amber-400/20">missing_active_meters</span>
+                                    </div>
+                                </div>
+                                <div class="text-lg font-semibold text-zinc-950 dark:text-white">11 164</div>
+                            </li>
+                            <li class="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
+                                <div class="min-w-0">
+                                    <div class="text-sm font-medium text-zinc-950 dark:text-white">Не указана фиксированная сумма.</div>
+                                    <div class="mt-1">
+                                        <span class="rounded-md bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700 ring-1 ring-amber-600/10 dark:bg-amber-400/10 dark:text-amber-300 dark:ring-amber-400/20">missing_fixed_amount</span>
+                                    </div>
+                                </div>
+                                <div class="text-lg font-semibold text-zinc-950 dark:text-white">2</div>
+                            </li>
+                        </ul>
+                    </div>
+
                     <div class="mt-5 overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm ring-1 ring-zinc-950/5 dark:border-white/10 dark:bg-zinc-900 dark:ring-white/10">
                         <div class="overflow-x-auto">
                             <table class="w-full min-w-200 divide-y divide-zinc-200 text-left text-sm dark:divide-white/5">
                                 <thead>
                                     <tr class="bg-zinc-50 dark:bg-white/5">
-                                        <th class="px-4 py-3 font-semibold text-zinc-950 dark:text-white">Абонент</th>
-                                        <th class="px-4 py-3 font-semibold text-zinc-950 dark:text-white">Тип</th>
+                                        <th class="px-4 py-3 font-semibold text-zinc-950 dark:text-white">Лицевой счёт</th>
+                                        <th class="px-4 py-3 font-semibold text-zinc-950 dark:text-white">ФИО</th>
+                                        <th class="px-4 py-3 font-semibold text-zinc-950 dark:text-white">Тип начисления</th>
+                                        <th class="px-4 py-3 font-semibold text-zinc-950 dark:text-white">Код ошибки</th>
                                         <th class="px-4 py-3 font-semibold text-zinc-950 dark:text-white">Причина</th>
-                                        <th class="px-4 py-3 font-semibold text-zinc-950 dark:text-white">Код</th>
+                                        <th class="px-4 py-3 font-semibold text-zinc-950 dark:text-white">Контекст</th>
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y divide-zinc-200 dark:divide-white/5">
                                     <tr class="transition hover:bg-zinc-50 dark:hover:bg-white/5">
+                                        <td class="px-4 py-4 align-top text-zinc-950 dark:text-white">80502</td>
+                                        <td class="px-4 py-4 align-top text-zinc-950 dark:text-white">Без суммы</td>
                                         <td class="px-4 py-4 align-top">
-                                            <div class="font-medium text-zinc-950 dark:text-white">Без суммы</div>
-                                            <div class="text-sm text-zinc-500 dark:text-zinc-400">Л/с: 80502</div>
-                                        </td>
-                                        <td class="px-4 py-4 align-top">
-                                            <span class="rounded-md bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-700 ring-1 ring-zinc-600/10 dark:bg-white/10 dark:text-zinc-200 dark:ring-white/20">Фиксированная</span>
-                                        </td>
-                                        <td class="min-w-80 whitespace-normal px-4 py-4 align-top">
-                                            <div class="font-medium text-zinc-950 dark:text-white">Не указана фиксированная сумма.</div>
+                                            <span class="rounded-md bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-700 ring-1 ring-zinc-600/10 dark:bg-white/10 dark:text-zinc-200 dark:ring-white/20">Фиксированная сумма</span>
                                         </td>
                                         <td class="px-4 py-4 align-top">
                                             <span class="rounded-md bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700 ring-1 ring-amber-600/10 dark:bg-amber-400/10 dark:text-amber-300 dark:ring-amber-400/20">missing_fixed_amount</span>
                                         </td>
+                                        <td class="min-w-80 whitespace-normal px-4 py-4 align-top text-zinc-700 dark:text-zinc-200">Не указана фиксированная сумма.</td>
+                                        <td class="px-4 py-4 align-top text-zinc-500 dark:text-zinc-400">-</td>
                                     </tr>
                                     <tr class="transition hover:bg-zinc-50 dark:hover:bg-white/5">
-                                        <td class="px-4 py-4 align-top">
-                                            <div class="font-medium text-zinc-950 dark:text-white">Иванов Иван</div>
-                                            <div class="text-sm text-zinc-500 dark:text-zinc-400">Л/с: 90002</div>
-                                        </td>
+                                        <td class="px-4 py-4 align-top text-zinc-950 dark:text-white">90002</td>
+                                        <td class="px-4 py-4 align-top text-zinc-950 dark:text-white">Иванов Иван</td>
                                         <td class="px-4 py-4 align-top">
                                             <span class="rounded-md bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-700 ring-1 ring-zinc-600/10 dark:bg-white/10 dark:text-zinc-200 dark:ring-white/20">По счётчику</span>
-                                        </td>
-                                        <td class="min-w-80 whitespace-normal px-4 py-4 align-top">
-                                            <div class="flex flex-col gap-3">
-                                                <div class="font-medium text-zinc-950 dark:text-white">Нет показания счётчика MTR-90002-2 за период.</div>
-                                                <dl class="grid gap-2 rounded-lg bg-zinc-50 p-3 text-xs dark:bg-white/5 sm:grid-cols-2">
-                                                    <div>
-                                                        <dt class="font-medium text-zinc-500 dark:text-zinc-400">meter_number</dt>
-                                                        <dd class="mt-0.5 text-zinc-700 dark:text-zinc-200">MTR-90002-2</dd>
-                                                    </div>
-                                                    <div>
-                                                        <dt class="font-medium text-zinc-500 dark:text-zinc-400">meter_id</dt>
-                                                        <dd class="mt-0.5 text-zinc-700 dark:text-zinc-200">42</dd>
-                                                    </div>
-                                                </dl>
-                                            </div>
                                         </td>
                                         <td class="px-4 py-4 align-top">
                                             <span class="rounded-md bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700 ring-1 ring-amber-600/10 dark:bg-amber-400/10 dark:text-amber-300 dark:ring-amber-400/20">missing_meter_reading</span>
                                         </td>
+                                        <td class="min-w-80 whitespace-normal px-4 py-4 align-top text-zinc-700 dark:text-zinc-200">Нет показания счётчика MTR-90002-2 за период.</td>
+                                        <td class="min-w-60 whitespace-normal px-4 py-4 align-top text-zinc-700 dark:text-zinc-200">meter_id: 42; meter_number: MTR-90002-2</td>
                                     </tr>
                                 </tbody>
                             </table>
+                        </div>
+
+                        <div class="flex flex-wrap items-center justify-between gap-3 border-t border-zinc-200 px-4 py-3 text-sm text-zinc-500 dark:border-white/10 dark:text-zinc-400">
+                            <span>Показано с 1 по 50 из 11 166</span>
+                            <div class="flex items-center gap-1">
+                                <span class="rounded-md bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700 ring-1 ring-amber-600/10 dark:bg-amber-400/10 dark:text-amber-300 dark:ring-amber-400/20">1</span>
+                                <span class="rounded-md px-2 py-1 text-xs font-medium ring-1 ring-zinc-950/10 dark:ring-white/20">2</span>
+                                <span class="rounded-md px-2 py-1 text-xs font-medium ring-1 ring-zinc-950/10 dark:ring-white/20">3</span>
+                                <span class="px-1 text-xs">…</span>
+                                <span class="rounded-md px-2 py-1 text-xs font-medium ring-1 ring-zinc-950/10 dark:ring-white/20">224</span>
+                            </div>
                         </div>
                     </div>
                 </div>

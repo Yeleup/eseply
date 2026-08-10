@@ -51,6 +51,12 @@ class AdminPanelProvider extends PanelProvider
             ->colors([
                 'primary' => Color::Amber,
             ])
+            /**
+             * Filament ships a prebuilt stylesheet that only contains its own
+             * component classes. Blade views of the panel use Tailwind
+             * utilities, so the panel needs its own compiled theme.
+             */
+            ->viteTheme('resources/css/filament/admin/theme.css')
             ->tenant(Organization::class)
             ->tenantRegistration(RegisterOrganization::class)
             ->tenantProfile(EditOrganizationProfile::class)

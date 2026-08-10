@@ -11,6 +11,7 @@ use App\Models\MeterReading;
 use App\Models\Organization;
 use App\Models\Payment;
 use App\Models\Receipt;
+use App\Models\Region;
 use App\Models\User;
 use App\OrganizationMemberRole;
 use App\Support\ControllerZoneMeterCounts;
@@ -202,6 +203,120 @@ final class DashboardMetrics
                 ];
             })
             ->all();
+    }
+
+    /**
+     * Per region totals of one billing period, biggest debt first.
+     *
+     * Only operators may see money, so the member is not a parameter.
+     *
+     * @return list<array{
+     *     region_id:int, region:string, city:string, clients:int,
+     *     readings_percent:float, charged:float, paid:float, debt:float
+     * }>
+     */
+    public function regionBreakdown(Organization $organization, BillingPeriod $billingPeriod): array
+    {
+        $chargeTable = $this->chargeTable($billingPeriod);
+        $organizationId = (int) $organization->getKey();
+        $billingPeriodId = (int) $billingPeriod->getKey();
+
+        $rows = Region::query()
+            ->select(['regions.id', 'regions.name'])
+            ->leftJoin('cities', 'cities.id', '=', 'regions.city_id')
+            ->addSelect(['cities.name as city_name'])
+            ->where('regions.organization_id', $organizationId)
+            ->selectSub($this->regionClientCountQuery(), 'clients_count')
+            ->selectSub($this->regionMeterCountQuery($organizationId), 'meters_total')
+            ->selectSub($this->regionMeterCountQuery($organizationId, $billingPeriodId), 'meters_taken')
+            ->selectSub($this->regionChargeQuery($chargeTable, $organizationId, $billingPeriodId, onlyDebt: false), 'charged')
+            ->selectSub($this->regionChargeQuery($chargeTable, $organizationId, $billingPeriodId, onlyDebt: true), 'debt')
+            ->selectSub($this->regionPaymentQuery($organizationId, $billingPeriodId), 'paid')
+            ->orderBy('regions.name')
+            ->get();
+
+        return $rows
+            ->filter(fn (Region $region): bool => (int) $region->getAttribute('clients_count') > 0)
+            ->map(fn (Region $region): array => [
+                'region_id' => (int) $region->getKey(),
+                'region' => (string) $region->name,
+                'city' => (string) ($region->getAttribute('city_name') ?? ''),
+                'clients' => (int) $region->getAttribute('clients_count'),
+                'readings_percent' => $this->percent(
+                    (int) $region->getAttribute('meters_taken'),
+                    (int) $region->getAttribute('meters_total'),
+                ),
+                'charged' => (float) $region->getAttribute('charged'),
+                'paid' => (float) $region->getAttribute('paid'),
+                'debt' => (float) $region->getAttribute('debt'),
+            ])
+            ->sortByDesc('debt')
+            ->values()
+            ->all();
+    }
+
+    private function regionClientCountQuery(): QueryBuilder
+    {
+        return DB::table('clients')
+            ->selectRaw('count(*)')
+            ->whereColumn('clients.region_id', 'regions.id')
+            ->where('clients.status', 'active');
+    }
+
+    private function regionMeterCountQuery(int $organizationId, ?int $billingPeriodId = null): QueryBuilder
+    {
+        $query = DB::table('meters')
+            ->selectRaw('count(*)')
+            ->join('clients', 'clients.id', '=', 'meters.client_id')
+            ->whereColumn('clients.region_id', 'regions.id')
+            ->where('meters.organization_id', $organizationId)
+            ->where('meters.status', 'active')
+            ->where('clients.status', 'active')
+            ->where('clients.billing_type', 'meter');
+
+        if ($billingPeriodId === null) {
+            return $query;
+        }
+
+        return $query->whereExists(function (QueryBuilder $query) use ($billingPeriodId): void {
+            $query
+                ->selectRaw('1')
+                ->from('meter_readings')
+                ->whereColumn('meter_readings.meter_id', 'meters.id')
+                ->where('meter_readings.billing_period_id', $billingPeriodId);
+        });
+    }
+
+    /**
+     * The table and column names come from this class only, so the raw select is
+     * not built from user input.
+     */
+    private function regionChargeQuery(string $chargeTable, int $organizationId, int $billingPeriodId, bool $onlyDebt): QueryBuilder
+    {
+        $column = $onlyDebt ? 'closing_balance' : 'amount';
+
+        $query = DB::table($chargeTable)
+            ->selectRaw("coalesce(sum({$chargeTable}.{$column}), 0)")
+            ->join('clients', 'clients.id', '=', $chargeTable.'.client_id')
+            ->whereColumn('clients.region_id', 'regions.id')
+            ->where($chargeTable.'.organization_id', $organizationId)
+            ->where($chargeTable.'.billing_period_id', $billingPeriodId);
+
+        if ($onlyDebt) {
+            $query->where($chargeTable.'.closing_balance', '>', 0);
+        }
+
+        return $query;
+    }
+
+    private function regionPaymentQuery(int $organizationId, int $billingPeriodId): QueryBuilder
+    {
+        return DB::table('payments')
+            ->selectRaw('coalesce(sum(payments.amount), 0)')
+            ->join('clients', 'clients.id', '=', 'payments.client_id')
+            ->whereColumn('clients.region_id', 'regions.id')
+            ->where('payments.organization_id', $organizationId)
+            ->where('payments.billing_period_id', $billingPeriodId);
     }
 
     /**

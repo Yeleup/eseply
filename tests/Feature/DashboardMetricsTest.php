@@ -535,3 +535,99 @@ it('учитывает счётчик один раз, когда абонент
 
     expect($progress[0]['total'])->toBe(1);
 });
+
+it('строит срез по районам и сортирует его по долгу по убыванию', function (): void {
+    $organization = dashboardOrganization();
+    $billingPeriod = BillingPeriod::openFor($organization, '202608');
+
+    $smallDebtRegion = dashboardRegion($organization, 'Алмалинский');
+    $bigDebtRegion = dashboardRegion($organization, 'Бостандыкский');
+    dashboardRegion($organization, 'Пустой');
+
+    $firstClient = dashboardMeteredClient($organization, $smallDebtRegion, '100001');
+    $secondClient = dashboardMeteredClient($organization, $bigDebtRegion, '100002');
+    $thirdClient = dashboardMeteredClient($organization, $bigDebtRegion, '100003');
+
+    dashboardReading(dashboardMeter($organization, $firstClient, 'MTR-001'), $billingPeriod, 5);
+    dashboardMeter($organization, $secondClient, 'MTR-002');
+    dashboardMeter($organization, $thirdClient, 'MTR-003');
+
+    Receipt::factory()->create([
+        'organization_id' => $organization->id,
+        'client_id' => $secondClient->id,
+        'billing_period_id' => $billingPeriod->id,
+        'period' => null,
+        'amount' => 900,
+        'closing_balance' => 900,
+    ]);
+
+    Payment::factory()->create([
+        'organization_id' => $organization->id,
+        'client_id' => $firstClient->id,
+        'billing_period_id' => $billingPeriod->id,
+        'period' => null,
+        'amount' => 40,
+    ]);
+
+    /** Saving a meter reading already issues a receipt, so this one is updated, not created. */
+    Receipt::query()
+        ->where('client_id', $firstClient->id)
+        ->where('billing_period_id', $billingPeriod->id)
+        ->update([
+            'amount' => 100,
+            'paid_amount' => 40,
+            'adjustment_amount' => 0,
+            'opening_balance' => 0,
+            'closing_balance' => 100,
+        ]);
+
+    $breakdown = app(DashboardMetrics::class)->regionBreakdown($organization, $billingPeriod);
+
+    expect($breakdown)->toHaveCount(2)
+        ->and($breakdown[0]['region'])->toBe('Бостандыкский')
+        ->and($breakdown[0]['city'])->toBe('Алматы')
+        ->and($breakdown[0]['clients'])->toBe(2)
+        ->and($breakdown[0]['charged'])->toBe(900.0)
+        ->and($breakdown[0]['paid'])->toBe(0.0)
+        ->and($breakdown[0]['debt'])->toBe(900.0)
+        ->and($breakdown[0]['readings_percent'])->toBe(0.0)
+        ->and($breakdown[1]['region'])->toBe('Алмалинский')
+        ->and($breakdown[1]['clients'])->toBe(1)
+        ->and($breakdown[1]['charged'])->toBe(100.0)
+        ->and($breakdown[1]['paid'])->toBe(40.0)
+        ->and($breakdown[1]['debt'])->toBe(100.0)
+        ->and($breakdown[1]['readings_percent'])->toBe(100.0);
+});
+
+it('берёт суммы среза по районам из начислений закрытого месяца', function (): void {
+    $organization = dashboardOrganization();
+    $billingPeriod = BillingPeriod::openFor($organization, '202608');
+    $region = dashboardRegion($organization, 'Алмалинский');
+    $client = dashboardFixedClient($organization, $region, '100001');
+
+    Receipt::factory()->create([
+        'organization_id' => $organization->id,
+        'client_id' => $client->id,
+        'billing_period_id' => $billingPeriod->id,
+        'period' => null,
+        'amount' => 111,
+        'closing_balance' => 111,
+    ]);
+
+    dashboardCloseBillingPeriod($billingPeriod);
+
+    Accrual::factory()->create([
+        'organization_id' => $organization->id,
+        'client_id' => $client->id,
+        'billing_period_id' => $billingPeriod->id,
+        'period' => null,
+        'amount' => 555,
+        'closing_balance' => 555,
+    ]);
+
+    $breakdown = app(DashboardMetrics::class)->regionBreakdown($organization, $billingPeriod->refresh());
+
+    expect($breakdown)->toHaveCount(1)
+        ->and($breakdown[0]['charged'])->toBe(555.0)
+        ->and($breakdown[0]['debt'])->toBe(555.0);
+});

@@ -456,3 +456,82 @@ it('строит динамику по месяцам от старого мес
         ->and($totals[1]['charged'])->toBe(700.0)
         ->and($totals[1]['paid'])->toBe(0.0);
 });
+
+it('считает прогресс снятия по каждому контроллеру организации', function (): void {
+    $organization = dashboardOrganization();
+    $billingPeriod = BillingPeriod::openFor($organization, '202608');
+
+    $firstRegion = dashboardRegion($organization, 'Алмалинский');
+    $secondRegion = dashboardRegion($organization, 'Бостандыкский');
+
+    $firstController = dashboardController($organization, $firstRegion);
+    $firstController->forceFill(['name' => 'Абаев Абай'])->save();
+
+    $secondController = dashboardController($organization, $secondRegion);
+    $secondController->forceFill(['name' => 'Букеев Букей'])->save();
+
+    $firstClient = dashboardMeteredClient($organization, $firstRegion, '100001');
+    $secondClient = dashboardMeteredClient($organization, $firstRegion, '100002');
+    $thirdClient = dashboardMeteredClient($organization, $secondRegion, '100003');
+
+    dashboardReading(dashboardMeter($organization, $firstClient, 'MTR-001'), $billingPeriod, 10);
+    dashboardMeter($organization, $secondClient, 'MTR-002');
+    dashboardReading(dashboardMeter($organization, $thirdClient, 'MTR-003'), $billingPeriod, 20);
+
+    $progress = app(DashboardMetrics::class)
+        ->controllerProgress($organization, $billingPeriod, dashboardOperator($organization));
+
+    expect($progress)->toHaveCount(2)
+        ->and($progress[0]['name'])->toBe('Абаев Абай')
+        ->and($progress[0]['total'])->toBe(2)
+        ->and($progress[0]['taken'])->toBe(1)
+        ->and($progress[0]['missing'])->toBe(1)
+        ->and($progress[0]['percent'])->toBe(50.0)
+        ->and($progress[1]['name'])->toBe('Букеев Букей')
+        ->and($progress[1]['percent'])->toBe(100.0);
+});
+
+it('показывает контроллеру только его собственную строку прогресса', function (): void {
+    $organization = dashboardOrganization();
+    $billingPeriod = BillingPeriod::openFor($organization, '202608');
+
+    $ownRegion = dashboardRegion($organization, 'Алмалинский');
+    $otherRegion = dashboardRegion($organization, 'Бостандыкский');
+
+    $controller = dashboardController($organization, $ownRegion);
+    dashboardController($organization, $otherRegion);
+
+    dashboardMeter($organization, dashboardMeteredClient($organization, $ownRegion, '100001'), 'MTR-001');
+
+    $progress = app(DashboardMetrics::class)
+        ->controllerProgress($organization, $billingPeriod, $controller);
+
+    expect($progress)->toHaveCount(1)
+        ->and($progress[0]['controller_id'])->toBe($controller->id)
+        ->and($progress[0]['total'])->toBe(1)
+        ->and($progress[0]['taken'])->toBe(0);
+});
+
+it('учитывает счётчик один раз, когда абонент попадает к контроллеру и по району, и по улице', function (): void {
+    $organization = dashboardOrganization();
+    $billingPeriod = BillingPeriod::openFor($organization, '202608');
+
+    $region = dashboardRegion($organization, 'Алмалинский');
+    $street = Street::factory()->create([
+        'organization_id' => $organization->id,
+        'region_id' => $region->id,
+        'name' => 'Абая',
+    ]);
+
+    $controller = dashboardController($organization, $region, $street);
+
+    $client = dashboardMeteredClient($organization, $region, '100001');
+    $client->forceFill(['street_id' => $street->id])->save();
+
+    dashboardMeter($organization, $client, 'MTR-001');
+
+    $progress = app(DashboardMetrics::class)
+        ->controllerProgress($organization, $billingPeriod, $controller);
+
+    expect($progress[0]['total'])->toBe(1);
+});

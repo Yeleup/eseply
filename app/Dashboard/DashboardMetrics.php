@@ -12,6 +12,8 @@ use App\Models\Organization;
 use App\Models\Payment;
 use App\Models\Receipt;
 use App\Models\User;
+use App\OrganizationMemberRole;
+use App\Support\ControllerZoneMeterCounts;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Query\Builder as QueryBuilder;
@@ -151,6 +153,52 @@ final class DashboardMetrics
                     'label' => $billingPeriod->label,
                     'charged' => (float) ($chargeTotals[$billingPeriod->getKey()] ?? 0),
                     'paid' => (float) ($paymentTotals[$billingPeriod->getKey()] ?? 0),
+                ];
+            })
+            ->all();
+    }
+
+    /**
+     * Meter reading progress of every controller of the organization.
+     *
+     * A controller only ever sees their own row.
+     *
+     * @return list<array{
+     *     controller_id:int, name:string, email:string,
+     *     total:int, taken:int, missing:int, percent:float
+     * }>
+     */
+    public function controllerProgress(Organization $organization, BillingPeriod $billingPeriod, User $user): array
+    {
+        $query = User::query()
+            ->select(['users.id', 'users.name', 'users.email'])
+            ->join('organization_user', 'organization_user.user_id', '=', 'users.id')
+            ->where('organization_user.organization_id', $organization->getKey())
+            ->where('organization_user.role', OrganizationMemberRole::Controller->value)
+            ->addSelect([
+                'zone_meters_total' => ControllerZoneMeterCounts::query($organization),
+                'zone_meters_taken' => ControllerZoneMeterCounts::query($organization, $billingPeriod),
+            ])
+            ->orderBy('users.name')
+            ->orderBy('users.id');
+
+        if ($user->isOrganizationController($organization)) {
+            $query->where('users.id', $user->getKey());
+        }
+
+        return $query->get()
+            ->map(function (User $controller): array {
+                $total = (int) $controller->getAttribute('zone_meters_total');
+                $taken = (int) $controller->getAttribute('zone_meters_taken');
+
+                return [
+                    'controller_id' => (int) $controller->getKey(),
+                    'name' => (string) $controller->name,
+                    'email' => (string) $controller->email,
+                    'total' => $total,
+                    'taken' => $taken,
+                    'missing' => max($total - $taken, 0),
+                    'percent' => $this->percent($taken, $total),
                 ];
             })
             ->all();

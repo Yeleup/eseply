@@ -3,7 +3,10 @@
 namespace App\Filament\Pages;
 
 use App\Filament\Support\DashboardBillingPeriod;
+use App\Filament\Widgets\DashboardChargesChartWidget;
+use App\Filament\Widgets\DashboardControllerProgressWidget;
 use App\Filament\Widgets\DashboardFinanceStatsWidget;
+use App\Filament\Widgets\DashboardRegionBreakdownWidget;
 use App\Filament\Widgets\DashboardStatsWidget;
 use App\Models\Organization;
 use BackedEnum;
@@ -48,6 +51,9 @@ class Dashboard extends BaseDashboard
         return [
             DashboardStatsWidget::class,
             DashboardFinanceStatsWidget::class,
+            DashboardChargesChartWidget::class,
+            DashboardControllerProgressWidget::class,
+            DashboardRegionBreakdownWidget::class,
         ];
     }
 

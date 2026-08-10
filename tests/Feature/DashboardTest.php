@@ -3,7 +3,10 @@
 use App\BillingPeriodStatus;
 use App\Filament\Pages\Dashboard;
 use App\Filament\Support\DashboardBillingPeriod;
+use App\Filament\Widgets\DashboardChargesChartWidget;
+use App\Filament\Widgets\DashboardControllerProgressWidget;
 use App\Filament\Widgets\DashboardFinanceStatsWidget;
+use App\Filament\Widgets\DashboardRegionBreakdownWidget;
 use App\Filament\Widgets\DashboardStatsWidget;
 use App\Models\BillingPeriod;
 use App\Models\City;
@@ -18,6 +21,7 @@ use App\OrganizationMemberRole;
 use Filament\Facades\Filament;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 
 uses(RefreshDatabase::class);
@@ -223,4 +227,106 @@ it('не падает без расчётного месяца', function (): vo
 
     Livewire::test(DashboardStatsWidget::class, ['pageFilters' => []])
         ->assertOk();
+});
+
+it('скрывает график и срез по районам от контроллера', function (): void {
+    $organization = dashboardPageOrganization();
+    BillingPeriod::openFor($organization, '202608');
+
+    actingAsDashboardMember($organization, OrganizationMemberRole::Controller);
+
+    expect(DashboardChargesChartWidget::canView())->toBeFalse()
+        ->and(DashboardRegionBreakdownWidget::canView())->toBeFalse()
+        ->and(DashboardControllerProgressWidget::canView())->toBeTrue();
+});
+
+it('показывает оператору график, прогресс контроллеров и срез по районам', function (): void {
+    $organization = dashboardPageOrganization();
+    $billingPeriod = BillingPeriod::openFor($organization, '202608');
+
+    $city = City::factory()->create(['organization_id' => $organization->id, 'name' => 'Алматы']);
+    $region = Region::factory()->create([
+        'organization_id' => $organization->id,
+        'city_id' => $city->id,
+        'name' => 'Алмалинский',
+    ]);
+
+    $controller = User::factory()->create(['name' => 'Абаев Абай']);
+    $controller->organizations()->attach($organization, [
+        'role' => OrganizationMemberRole::Controller->value,
+    ]);
+    DB::table('organization_user_regions')->insert([
+        'organization_id' => $organization->id,
+        'user_id' => $controller->id,
+        'region_id' => $region->id,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    $client = Client::factory()->create([
+        'organization_id' => $organization->id,
+        'account_number' => '100001',
+        'region_id' => $region->id,
+        'status' => 'active',
+        'billing_type' => 'meter',
+    ]);
+
+    Meter::factory()->create([
+        'organization_id' => $organization->id,
+        'client_id' => $client->id,
+        'utility_service_id' => $organization->utilityService?->id,
+        'number' => 'MTR-001',
+        'status' => 'active',
+    ]);
+
+    actingAsDashboardMember($organization, OrganizationMemberRole::Operator);
+
+    $pageFilters = ['pageFilters' => ['billing_period_id' => $billingPeriod->getKey()]];
+
+    Livewire::test(DashboardChargesChartWidget::class, $pageFilters)
+        ->assertOk()
+        ->assertSee('Начисления и оплаты по месяцам');
+
+    Livewire::test(DashboardControllerProgressWidget::class, $pageFilters)
+        ->assertOk()
+        ->assertSee('Абаев Абай');
+
+    Livewire::test(DashboardRegionBreakdownWidget::class, $pageFilters)
+        ->assertOk()
+        ->assertSee('Алмалинский');
+});
+
+it('показывает контроллеру в таблице прогресса только его строку', function (): void {
+    $organization = dashboardPageOrganization();
+    $billingPeriod = BillingPeriod::openFor($organization, '202608');
+
+    $city = City::factory()->create(['organization_id' => $organization->id, 'name' => 'Алматы']);
+    $region = Region::factory()->create([
+        'organization_id' => $organization->id,
+        'city_id' => $city->id,
+        'name' => 'Алмалинский',
+    ]);
+
+    $otherController = User::factory()->create(['name' => 'Букеев Букей']);
+    $otherController->organizations()->attach($organization, [
+        'role' => OrganizationMemberRole::Controller->value,
+    ]);
+
+    $controller = actingAsDashboardMember($organization, OrganizationMemberRole::Controller);
+    $controller->forceFill(['name' => 'Абаев Абай'])->save();
+
+    DB::table('organization_user_regions')->insert([
+        'organization_id' => $organization->id,
+        'user_id' => $controller->id,
+        'region_id' => $region->id,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    Livewire::test(DashboardControllerProgressWidget::class, [
+        'pageFilters' => ['billing_period_id' => $billingPeriod->getKey()],
+    ])
+        ->assertOk()
+        ->assertSee('Абаев Абай')
+        ->assertDontSee('Букеев Букей');
 });

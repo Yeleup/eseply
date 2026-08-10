@@ -46,6 +46,7 @@ FROM node:22-alpine AS frontend
 WORKDIR /app
 
 COPY . .
+COPY --from=vendor-prod /var/www/html/vendor ./vendor
 
 RUN if [ -f package-lock.json ]; then \
         npm ci; \

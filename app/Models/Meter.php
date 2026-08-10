@@ -167,7 +167,7 @@ class Meter extends Model
     {
         return [
             'installed_on' => 'date',
-            'initial_reading' => 'numeric',
+            'initial_reading' => 'integer',
             'removed_on' => 'date',
         ];
     }

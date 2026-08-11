@@ -6,8 +6,11 @@ use App\Models\Receipt;
 use App\Models\ReceiptTemplate;
 use App\Models\User;
 use App\OrganizationMemberRole;
+use App\Support\ReceiptTemplateImageStorage;
 use Filament\Facades\Filament;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Livewire\Livewire;
 
 uses(RefreshDatabase::class);
@@ -154,4 +157,76 @@ test('preview falls back to demo data when the tenant has no receipts', function
     Livewire::test(ReceiptTemplatePage::class)
         ->assertSee('data-receipt-copy')
         ->assertSee('100001');
+});
+
+test('a logo path tampered to point at another organization is rejected and its file survives a later reset', function () {
+    Storage::fake('public');
+
+    $victimOrganization = Organization::factory()->create();
+    $victimPath = ReceiptTemplateImageStorage::directoryFor($victimOrganization->getKey()).'/logo.png';
+    Storage::disk('public')->put($victimPath, 'victim-logo');
+
+    $organization = Organization::factory()->create();
+    $user = actingAsTemplatePageAdmin($organization);
+    $this->actingAs($user);
+
+    Livewire::test(ReceiptTemplatePage::class)
+        ->fillForm([
+            'logo_path' => [(string) Str::uuid() => $victimPath],
+        ])
+        ->call('save')
+        ->assertHasFormErrors(['logo_path'])
+        ->call('resetTemplate');
+
+    expect(ReceiptTemplate::query()->whereBelongsTo($organization)->exists())->toBeFalse();
+    Storage::disk('public')->assertExists($victimPath);
+});
+
+test('re-saving an existing template keeps its own logo path and file untouched', function () {
+    Storage::fake('public');
+
+    $organization = Organization::factory()->create();
+    $directory = ReceiptTemplateImageStorage::directoryFor($organization->getKey());
+    Storage::disk('public')->put("{$directory}/logo.png", 'logo');
+
+    ReceiptTemplate::factory()->for($organization)->create([
+        'logo_path' => "{$directory}/logo.png",
+    ]);
+
+    $user = actingAsTemplatePageAdmin($organization);
+    $this->actingAs($user);
+
+    Livewire::test(ReceiptTemplatePage::class)
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    Storage::disk('public')->assertExists("{$directory}/logo.png");
+    expect(ReceiptTemplate::query()->whereBelongsTo($organization)->sole()->logo_path)
+        ->toBe("{$directory}/logo.png");
+});
+
+test('replacing the logo through save deletes the old file from the tenant directory', function () {
+    Storage::fake('public');
+
+    $organization = Organization::factory()->create();
+    $directory = ReceiptTemplateImageStorage::directoryFor($organization->getKey());
+    Storage::disk('public')->put("{$directory}/old-logo.png", 'old');
+    Storage::disk('public')->put("{$directory}/new-logo.png", 'new');
+
+    ReceiptTemplate::factory()->for($organization)->create([
+        'logo_path' => "{$directory}/old-logo.png",
+    ]);
+
+    $user = actingAsTemplatePageAdmin($organization);
+    $this->actingAs($user);
+
+    Livewire::test(ReceiptTemplatePage::class)
+        ->set('data.logo_path', [(string) Str::uuid() => "{$directory}/new-logo.png"])
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    Storage::disk('public')->assertMissing("{$directory}/old-logo.png");
+    Storage::disk('public')->assertExists("{$directory}/new-logo.png");
+    expect(ReceiptTemplate::query()->whereBelongsTo($organization)->sole()->logo_path)
+        ->toBe("{$directory}/new-logo.png");
 });

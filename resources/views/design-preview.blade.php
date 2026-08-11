@@ -1437,7 +1437,7 @@
             <section class="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
                 <div class="flex flex-col gap-4 border-b border-zinc-200 p-6 dark:border-zinc-800 sm:flex-row sm:items-start sm:justify-between">
                     <div>
-                        <p class="text-sm font-semibold uppercase tracking-[0.22em] text-emerald-800 dark:text-emerald-300">ReceiptTemplateResource</p>
+                        <p class="text-sm font-semibold uppercase tracking-[0.22em] text-emerald-800 dark:text-emerald-300">ReceiptTemplatePage</p>
                         <h2 class="mt-2 text-3xl font-semibold tracking-tight">Конструктор шаблона квитанции</h2>
                         <p class="mt-3 max-w-2xl text-sm text-zinc-600 dark:text-zinc-300">
                             Страница «Шаблон квитанции» в панели организации: слева блоки с перетаскиванием и тумблерами,

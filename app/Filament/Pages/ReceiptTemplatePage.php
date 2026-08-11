@@ -30,6 +30,7 @@ use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Support\HtmlString;
+use Illuminate\Validation\ValidationException;
 use UnitEnum;
 
 /**
@@ -119,13 +120,15 @@ class ReceiptTemplatePage extends Page
                                 ->disk(ReceiptTemplateImageStorage::disk())
                                 ->directory(fn (): string => ReceiptTemplateImageStorage::directoryFor(Filament::getTenant()?->getKey() ?? 0))
                                 ->image()
-                                ->maxSize(1024),
+                                ->maxSize(1024)
+                                ->preventFilePathTampering(allowFilePathUsing: fn (string $file): bool => self::filePathBelongsToTenant($file)),
                             FileUpload::make('qr_path')
                                 ->label('QR-код для оплаты')
                                 ->disk(ReceiptTemplateImageStorage::disk())
                                 ->directory(fn (): string => ReceiptTemplateImageStorage::directoryFor(Filament::getTenant()?->getKey() ?? 0))
                                 ->image()
-                                ->maxSize(1024),
+                                ->maxSize(1024)
+                                ->preventFilePathTampering(allowFilePathUsing: fn (string $file): bool => self::filePathBelongsToTenant($file)),
                         ]),
                     Section::make('Внешний вид')
                         ->collapsible()
@@ -219,6 +222,8 @@ class ReceiptTemplatePage extends Page
     {
         $data = $this->form->getState();
         $tenant = $this->tenantOrFail();
+
+        $this->ensureFilePathsBelongToTenant($data, $tenant);
 
         $settings = ReceiptTemplateConfig::fromSettings($this->settingsFromForm($data))->settings();
 
@@ -391,5 +396,37 @@ class ReceiptTemplatePage extends Page
         abort_unless($tenant instanceof Organization, 404);
 
         return $tenant;
+    }
+
+    /**
+     * Серверная защита от подмены путей `logo_path`/`qr_path` в состоянии
+     * Livewire-формы (public-свойство `data`). Не полагается на валидацию
+     * FileUpload — является дополнительным рубежом перед записью в БД.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    protected function ensureFilePathsBelongToTenant(array $data, Organization $tenant): void
+    {
+        $errors = [];
+
+        if (! ReceiptTemplateImageStorage::belongsToOrganization($data['logo_path'] ?? null, $tenant->getKey())) {
+            $errors['data.logo_path'] = 'Недопустимый путь к файлу логотипа.';
+        }
+
+        if (! ReceiptTemplateImageStorage::belongsToOrganization($data['qr_path'] ?? null, $tenant->getKey())) {
+            $errors['data.qr_path'] = 'Недопустимый путь к файлу QR-кода.';
+        }
+
+        if ($errors !== []) {
+            throw ValidationException::withMessages($errors);
+        }
+    }
+
+    protected static function filePathBelongsToTenant(string $file): bool
+    {
+        $tenant = Filament::getTenant();
+
+        return $tenant instanceof Organization
+            && ReceiptTemplateImageStorage::belongsToOrganization($file, $tenant->getKey());
     }
 }

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\OrganizationMemberRole;
 use App\Support\MeterReadingPhotoStorage;
+use App\Support\ReceiptTemplateImageStorage;
 use Database\Factories\OrganizationFactory;
 use Filament\Models\Contracts\HasCurrentTenantLabel;
 use Filament\Models\Contracts\HasName;
@@ -128,6 +129,11 @@ class Organization extends Model implements HasCurrentTenantLabel, HasName
         return $this->hasMany(Receipt::class);
     }
 
+    public function receiptTemplate(): HasOne
+    {
+        return $this->hasOne(ReceiptTemplate::class);
+    }
+
     public function getFilamentName(): string
     {
         return $this->name;
@@ -142,6 +148,7 @@ class Organization extends Model implements HasCurrentTenantLabel, HasName
     {
         static::deleted(function (Organization $organization): void {
             MeterReadingPhotoStorage::deleteOrganizationDirectory($organization->getKey());
+            ReceiptTemplateImageStorage::deleteOrganizationDirectory($organization->getKey());
         });
     }
 

@@ -1,0 +1,45 @@
+<?php
+
+namespace App\Models;
+
+use App\Support\ReceiptTemplateImageStorage;
+use Database\Factories\ReceiptTemplateFactory;
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+#[Fillable([
+    'organization_id',
+    'settings',
+    'logo_path',
+    'qr_path',
+])]
+class ReceiptTemplate extends Model
+{
+    /** @use HasFactory<ReceiptTemplateFactory> */
+    use HasFactory;
+
+    public function organization(): BelongsTo
+    {
+        return $this->belongsTo(Organization::class);
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'settings' => 'array',
+        ];
+    }
+
+    protected static function booted(): void
+    {
+        static::deleted(function (ReceiptTemplate $template): void {
+            ReceiptTemplateImageStorage::delete($template->logo_path);
+            ReceiptTemplateImageStorage::delete($template->qr_path);
+        });
+    }
+}

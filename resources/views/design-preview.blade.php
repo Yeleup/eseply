@@ -1434,6 +1434,41 @@
                 </div>
             </section>
 
+            <section class="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+                <div class="flex flex-col gap-4 border-b border-zinc-200 p-6 dark:border-zinc-800 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                        <p class="text-sm font-semibold uppercase tracking-[0.22em] text-emerald-800 dark:text-emerald-300">ReceiptTemplateResource</p>
+                        <h2 class="mt-2 text-3xl font-semibold tracking-tight">Конструктор шаблона квитанции</h2>
+                        <p class="mt-3 max-w-2xl text-sm text-zinc-600 dark:text-zinc-300">
+                            Страница «Шаблон квитанции» в панели организации: слева блоки с перетаскиванием и тумблерами,
+                            тексты, логотип и QR-код, внешний вид; справа живой предпросмотр. Печать применяет шаблон:
+                            свой порядок блоков, выключенные блоки, свои тексты, один или два экземпляра на листе.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="grid gap-4 border-b border-zinc-200 p-6 dark:border-zinc-800 lg:grid-cols-2">
+                    <div class="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+                        <p class="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700 dark:text-emerald-300">Стандартный шаблон</p>
+                        <h3 class="mt-2 text-lg font-semibold tracking-tight">По умолчанию</h3>
+                        <p class="mt-2 text-sm leading-6 text-zinc-500 dark:text-zinc-400">
+                            Все блоки в стандартном порядке: шапка, абонент и реквизиты, счётчики, итоги.
+                            Два экземпляра на листе. Используется, пока организация не настроила свой шаблон.
+                        </p>
+                    </div>
+
+                    <div class="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+                        <p class="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700 dark:text-emerald-300">Настроенный шаблон</p>
+                        <h3 class="mt-2 text-lg font-semibold tracking-tight">С параметрами организации</h3>
+                        <p class="mt-2 text-sm leading-6 text-zinc-500 dark:text-zinc-400">
+                            Пример настроек: реквизиты выше абонента, таблица счётчиков выключена, свой заголовок
+                            «Счёт за воду», примечание «Оплатите до 25 числа», логотип в шапке, QR-код в примечании,
+                            один экземпляр на листе, крупный шрифт без рамок.
+                        </p>
+                    </div>
+                </div>
+            </section>
+
             <section class="overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
                 <div class="flex flex-col gap-3 border-b border-zinc-200 p-4 dark:border-zinc-800 sm:flex-row sm:items-center sm:justify-between">
                     <div>

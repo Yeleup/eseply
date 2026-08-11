@@ -2,6 +2,7 @@
 
 use App\Filament\Pages\ReceiptTemplatePage;
 use App\Models\Organization;
+use App\Models\Receipt;
 use App\Models\ReceiptTemplate;
 use App\Models\User;
 use App\OrganizationMemberRole;
@@ -116,4 +117,41 @@ test('reset deletes the template and returns the form to defaults', function () 
         ->assertHasNoErrors();
 
     expect(ReceiptTemplate::query()->whereBelongsTo($organization)->exists())->toBeFalse();
+});
+
+test('preview reflects unsaved form state', function () {
+    $organization = Organization::factory()->create();
+    $user = actingAsTemplatePageAdmin($organization);
+    $this->actingAs($user);
+
+    Livewire::test(ReceiptTemplatePage::class)
+        ->assertSee('data-receipt-copy')
+        ->assertSee('Предпросмотр')
+        ->fillForm([
+            'texts.title' => 'Счёт за воду',
+        ])
+        ->assertSee('Счёт за воду');
+});
+
+test('preview uses the latest tenant receipt when available', function () {
+    $organization = Organization::factory()->create();
+    Receipt::factory()->for($organization)->create([
+        'client_name' => 'Иванов Иван',
+        'account_number' => '100010',
+    ]);
+    $user = actingAsTemplatePageAdmin($organization);
+    $this->actingAs($user);
+
+    Livewire::test(ReceiptTemplatePage::class)
+        ->assertSee('Иванов Иван');
+});
+
+test('preview falls back to demo data when the tenant has no receipts', function () {
+    $organization = Organization::factory()->create();
+    $user = actingAsTemplatePageAdmin($organization);
+    $this->actingAs($user);
+
+    Livewire::test(ReceiptTemplatePage::class)
+        ->assertSee('data-receipt-copy')
+        ->assertSee('100001');
 });

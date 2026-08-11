@@ -2,7 +2,9 @@
 
 namespace App\Filament\Pages;
 
+use App\Actions\BuildReceiptPrintViewData;
 use App\Models\Organization;
+use App\Models\Receipt;
 use App\Models\ReceiptTemplate;
 use App\Models\User;
 use App\Support\ReceiptTemplateConfig;
@@ -27,6 +29,7 @@ use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
+use Illuminate\Support\HtmlString;
 use UnitEnum;
 
 /**
@@ -258,6 +261,63 @@ class ReceiptTemplatePage extends Page
             ->success()
             ->title('Шаблон сброшен к стандартному')
             ->send();
+    }
+
+    public function previewHtml(): HtmlString
+    {
+        $tenant = $this->tenantOrFail();
+        $saved = $this->getTemplate();
+
+        $config = ReceiptTemplateConfig::fromSettings(
+            $this->settingsFromForm(is_array($this->data) ? $this->data : []),
+            ReceiptTemplateImageStorage::url($saved?->logo_path),
+            ReceiptTemplateImageStorage::url($saved?->qr_path),
+        );
+
+        $viewData = app(BuildReceiptPrintViewData::class)->handle($this->previewReceipt($tenant), $config);
+
+        return new HtmlString(
+            view('receipts.partials.print-copy', array_merge($viewData, ['copyTitle' => 'Предпросмотр']))->render(),
+        );
+    }
+
+    /**
+     * Последняя квитанция организации; если квитанций ещё нет — несохранённая
+     * демонстрационная модель, чтобы предпросмотр работал у новой организации.
+     */
+    protected function previewReceipt(Organization $tenant): Receipt
+    {
+        $receipt = Receipt::query()
+            ->whereBelongsTo($tenant)
+            ->latest('id')
+            ->first();
+
+        if ($receipt) {
+            return $receipt;
+        }
+
+        $receipt = new Receipt([
+            'receipt_number' => '202608-100001',
+            'account_number' => '100001',
+            'client_name' => 'Иванов Иван',
+            'utility_service_name' => $tenant->utilityService?->name ?? 'Коммунальная услуга',
+            'billing_type' => 'fixed',
+            'volume' => 20,
+            'tariff_price' => 90,
+            'amount' => 1800,
+            'paid_amount' => 0,
+            'adjustment_amount' => 0,
+            'opening_balance' => 0,
+            'closing_balance' => 1800,
+            'issued_at' => now(),
+            'period' => now()->format('Ym'),
+        ]);
+
+        $receipt->setRelation('organization', $tenant->loadMissing(['utilityService', 'receiptTemplate']));
+        $receipt->setRelation('billingPeriod', null);
+        $receipt->setRelation('client', null);
+
+        return $receipt;
     }
 
     /**

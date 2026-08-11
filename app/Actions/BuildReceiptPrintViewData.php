@@ -3,6 +3,8 @@
 namespace App\Actions;
 
 use App\Models\Receipt;
+use App\Support\ReceiptTemplateConfig;
+use App\Support\ReceiptTemplateImageStorage;
 use DateTimeInterface;
 use Illuminate\Support\Carbon;
 
@@ -15,6 +17,7 @@ class BuildReceiptPrintViewData
     /**
      * @return array{
      *     receipt: Receipt,
+     *     template: ReceiptTemplateConfig,
      *     generatedAt: Carbon,
      *     organizationDetails: list<array{label: string, value: string}>,
      *     clientDetails: list<array{label: string, value: string}>,
@@ -25,33 +28,37 @@ class BuildReceiptPrintViewData
      *     clientAddress: string
      * }
      */
-    public function handle(Receipt $receipt): array
+    public function handle(Receipt $receipt, ?ReceiptTemplateConfig $template = null): array
     {
-        $receipt->load([
+        $receipt->loadMissing([
             'billingPeriod',
             'client.region',
             'client.street',
             'organization.utilityService',
+            'organization.receiptTemplate',
         ]);
+
+        $template ??= $this->templateFor($receipt);
 
         return [
             'receipt' => $receipt,
+            'template' => $template,
             'generatedAt' => now(),
             'organizationDetails' => $this->details([
-                'Организация' => $receipt->organization?->name,
-                'БИН / ИИН' => $receipt->organization?->bin_iin,
-                'Телефон' => $receipt->organization?->phone,
-                'Адрес' => $receipt->organization?->address,
-                'Банк' => $receipt->organization?->bank,
-                'IBAN' => $receipt->organization?->iban,
+                $template->label('organization') => $receipt->organization?->name,
+                $template->label('bin_iin') => $receipt->organization?->bin_iin,
+                $template->label('phone') => $receipt->organization?->phone,
+                $template->label('organization_address') => $receipt->organization?->address,
+                $template->label('bank') => $receipt->organization?->bank,
+                $template->label('iban') => $receipt->organization?->iban,
             ]),
             'clientDetails' => $this->details([
-                'Лицевой счёт' => $receipt->account_number,
-                'Абонент' => $receipt->client_name,
-                'Адрес' => $this->clientAddress($receipt),
-                'Период' => $receipt->billingPeriod?->label ?? $receipt->period,
-                'Услуга' => $receipt->utility_service_name,
-                'Тип расчёта' => $this->billingTypeLabel($receipt->billing_type),
+                $template->label('account_number') => $receipt->account_number,
+                $template->label('client_name') => $receipt->client_name,
+                $template->label('client_address') => $this->clientAddress($receipt),
+                $template->label('period') => $receipt->billingPeriod?->label ?? $receipt->period,
+                $template->label('service') => $receipt->utility_service_name,
+                $template->label('billing_type') => $this->billingTypeLabel($receipt->billing_type),
             ]),
             'calculationDetails' => $this->details([
                 'Объём' => $this->decimal($receipt->volume),
@@ -72,6 +79,21 @@ class BuildReceiptPrintViewData
             'paymentDue' => $this->money(max(0, (float) $receipt->closing_balance)),
             'clientAddress' => $this->clientAddress($receipt),
         ];
+    }
+
+    private function templateFor(Receipt $receipt): ReceiptTemplateConfig
+    {
+        $model = $receipt->organization?->receiptTemplate;
+
+        if (! $model) {
+            return ReceiptTemplateConfig::default();
+        }
+
+        return ReceiptTemplateConfig::fromSettings(
+            is_array($model->settings) ? $model->settings : [],
+            ReceiptTemplateImageStorage::url($model->logo_path),
+            ReceiptTemplateImageStorage::url($model->qr_path),
+        );
     }
 
     /**

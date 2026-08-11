@@ -634,6 +634,7 @@ test('admin users can open a current tenant receipt print view', function () {
         ->assertViewIs('receipts.print')
         ->assertViewHasAll([
             'receipt',
+            'template',
             'generatedAt',
             'organizationDetails',
             'clientDetails',

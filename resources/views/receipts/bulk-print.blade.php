@@ -33,8 +33,8 @@
             </div>
 
             @forelse ($receiptPrintData as $printData)
-                <section class="receipt-sheet receipt-sheet-bulk">
-                    @foreach (['Для организации', 'Для абонента'] as $copyTitle)
+                <section class="receipt-sheet receipt-sheet-bulk {{ $printData['template']->copiesPerPage() === 1 ? 'receipt-sheet-single' : '' }}">
+                    @foreach ($printData['template']->copyTitles() as $copyTitle)
                         @include('receipts.partials.print-copy', array_merge($printData, ['copyTitle' => $copyTitle]))
                     @endforeach
                 </section>

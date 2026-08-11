@@ -16,7 +16,9 @@
                 <div>
                     <p class="text-sm font-semibold uppercase tracking-[0.22em] text-teal-800">PDF</p>
                     <h1 class="mt-1 text-2xl font-semibold tracking-tight">Квитанция {{ $receipt->receipt_number }}</h1>
-                    <p class="mt-1 text-sm text-zinc-600">На одном листе A5 печатаются два экземпляра: для организации и для абонента.</p>
+                    <p class="mt-1 text-sm text-zinc-600">
+                        {{ $template->copiesPerPage() === 1 ? 'На листе A5 печатается один экземпляр для абонента.' : 'На одном листе A5 печатаются два экземпляра: для организации и для абонента.' }}
+                    </p>
                 </div>
 
                 <button
@@ -28,8 +30,8 @@
                 </button>
             </div>
 
-            <section class="receipt-sheet">
-                @foreach (['Для организации', 'Для абонента'] as $copyTitle)
+            <section class="receipt-sheet {{ $template->copiesPerPage() === 1 ? 'receipt-sheet-single' : '' }}">
+                @foreach ($template->copyTitles() as $copyTitle)
                     @include('receipts.partials.print-copy', ['copyTitle' => $copyTitle])
                 @endforeach
             </section>

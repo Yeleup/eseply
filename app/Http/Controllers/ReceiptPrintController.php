@@ -73,6 +73,7 @@ class ReceiptPrintController extends Controller
                 'client.region',
                 'client.street',
                 'organization.utilityService',
+                'organization.receiptTemplate',
             ])
             ->orderBy('account_number')
             ->orderBy('receipt_number');

@@ -211,6 +211,27 @@ test('bulk print applies the organization html template', function () {
         ->and($content)->toContain('100011');
 });
 
+test('css style breakout is neutralized in print output', function () {
+    $organization = Organization::factory()->create();
+    $receipt = Receipt::factory()->for($organization)->create();
+    ReceiptTemplate::factory()->for($organization)->create([
+        'html' => '<p>{{client_name}}</p>',
+        'css' => 'body{color:red}</style><script>alert(1)</script>',
+    ]);
+
+    $user = actingAsTemplateTenant($organization);
+    $this->actingAs($user);
+
+    $content = $this->get(route('filament.admin.receipts.print', [
+        'tenant' => $organization,
+        'receipt' => $receipt,
+    ]))->getContent();
+
+    // внутри <style> не должно быть закрывающего тега и скрипта
+    expect($content)->not->toContain('</style><script>')
+        ->and($content)->not->toContain('<script>alert(1)</script>');
+});
+
 test('receipt template stores html css and copies per page', function () {
     $template = ReceiptTemplate::factory()->create([
         'html' => '<p>{{client_name}}</p>',

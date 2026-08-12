@@ -113,3 +113,14 @@ test('css filter keeps legitimate rules intact', function () {
         ->and($clean)->toContain('1px solid #000')
         ->and($clean)->toContain('Итого');
 });
+
+test('css filter neutralizes style tag breakout', function () {
+    $css = 'body { color: red; } </style><script>alert(document.cookie)</script>';
+    $clean = ReceiptTemplateHtmlSanitizer::sanitizeCss($css);
+
+    expect($clean)->not->toContain('</style>')
+        ->and($clean)->not->toContain('<script>')
+        ->and($clean)->not->toContain('<')
+        ->and($clean)->not->toContain('>')
+        ->and($clean)->toContain('color: red');
+});

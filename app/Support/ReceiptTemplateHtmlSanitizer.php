@@ -75,8 +75,17 @@ final class ReceiptTemplateHtmlSanitizer
         $css = (string) preg_replace('/url\s*\([^)]*\)/i', 'none', $css);
         $css = (string) preg_replace('/expression\s*\([^)]*\)/i', '', $css);
         $css = (string) preg_replace('/behavior\s*:[^;}]*/i', '', $css);
+        $css = str_ireplace('javascript:', '', $css);
 
-        return str_ireplace('javascript:', '', $css);
+        /*
+         * Валидный CSS не содержит угловых скобок: селекторы, значения и
+         * @-правила обходятся без "<"/">" . Строка `$templateCss` выводится
+         * сырым текстом внутри <style>...</style> (print.blade,
+         * bulk-print.blade, previewHtml) — без этого фильтра сохранённый CSS
+         * вида "...}</style><script>...</script>" закрывает тег style и
+         * исполняется браузером как хранимый XSS.
+         */
+        return str_replace(['<', '>'], '', $css);
     }
 
     /**

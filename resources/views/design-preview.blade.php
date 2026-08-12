@@ -1440,9 +1440,7 @@
                         <p class="text-sm font-semibold uppercase tracking-[0.22em] text-emerald-800 dark:text-emerald-300">ReceiptTemplatePage</p>
                         <h2 class="mt-2 text-3xl font-semibold tracking-tight">Конструктор шаблона квитанции</h2>
                         <p class="mt-3 max-w-2xl text-sm text-zinc-600 dark:text-zinc-300">
-                            Страница «Шаблон квитанции» в панели организации: слева блоки с перетаскиванием и тумблерами,
-                            тексты, логотип и QR-код, внешний вид; справа живой предпросмотр. Печать применяет шаблон:
-                            свой порядок блоков, выключенные блоки, свои тексты, один или два экземпляра на листе.
+                            Страница «Шаблон квитанции» в панели организации с визуальным редактором GrapesJS: перетаскивание элементов и переменных из палитры, правка текста на холсте, свои стили. Палитра содержит все данные квитанции (организация, абонент, суммы), таблицу счётчиков, логотип и QR-код; предпросмотр показывает шаблон на реальных данных.
                         </p>
                     </div>
                 </div>
@@ -1450,20 +1448,17 @@
                 <div class="grid gap-4 border-b border-zinc-200 p-6 dark:border-zinc-800 lg:grid-cols-2">
                     <div class="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
                         <p class="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700 dark:text-emerald-300">Стандартный шаблон</p>
-                        <h3 class="mt-2 text-lg font-semibold tracking-tight">По умолчанию</h3>
+                        <h3 class="mt-2 text-lg font-semibold tracking-tight">Стандартный шаблон</h3>
                         <p class="mt-2 text-sm leading-6 text-zinc-500 dark:text-zinc-400">
-                            Все блоки в стандартном порядке: шапка, абонент и реквизиты, счётчики, итоги.
-                            Два экземпляра на листе. Используется, пока организация не настроила свой шаблон.
+                            HTML-шаблон по умолчанию с плейсхолдерами {{переменная}}: шапка, абонент и реквизиты, таблица счётчиков, итоги. Используется, пока организация не сохранила свой шаблон, и служит стартовым содержимым редактора.
                         </p>
                     </div>
 
                     <div class="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-                        <p class="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700 dark:text-emerald-300">Настроенный шаблон</p>
-                        <h3 class="mt-2 text-lg font-semibold tracking-tight">С параметрами организации</h3>
+                        <p class="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700 dark:text-emerald-300">Свой шаблон</p>
+                        <h3 class="mt-2 text-lg font-semibold tracking-tight">Свой шаблон</h3>
                         <p class="mt-2 text-sm leading-6 text-zinc-500 dark:text-zinc-400">
-                            Пример настроек: реквизиты выше абонента, таблица счётчиков выключена, свой заголовок
-                            «Счёт за воду», примечание «Оплатите до 25 числа», логотип в шапке, QR-код в примечании,
-                            один экземпляр на листе, крупный шрифт без рамок.
+                            Визуальный редактор GrapesJS на странице «Шаблон квитанции» (ReceiptTemplatePage): перетаскивание элементов и переменных из палитры, правка текста на холсте, свои стили. Сервер санитизирует HTML и подставляет значения с экранированием; предпросмотр — на последней квитанции организации.
                         </p>
                     </div>
                 </div>

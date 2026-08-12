@@ -37,6 +37,7 @@ class ReportSummaryService
         'meter-installation-replacement',
         'debts',
         'consumption',
+        'turnover-balance-sheet',
     ];
 
     public function supports(string $reportSlug): bool
@@ -50,8 +51,9 @@ class ReportSummaryService
         ReportSummaryGroup $group,
         Organization $organization,
         User $user,
+        ?BillingPeriod $billingPeriod = null,
     ): Table {
-        $billingPeriod = BillingPeriod::currentEditableFor($organization);
+        $billingPeriod ??= BillingPeriod::currentEditableFor($organization);
 
         return $table
             ->records(fn (): array => $this->records($reportSlug, $group, $organization, $user, $billingPeriod))
@@ -68,8 +70,9 @@ class ReportSummaryService
         ReportSummaryGroup $group,
         Organization $organization,
         User $user,
+        ?BillingPeriod $billingPeriod = null,
     ): StreamedResponse {
-        $billingPeriod = BillingPeriod::currentEditableFor($organization);
+        $billingPeriod ??= BillingPeriod::currentEditableFor($organization);
 
         return $this->downloadXlsx(
             $this->excelFileName($reportSlug, $group, $organization, $billingPeriod),
@@ -102,7 +105,57 @@ class ReportSummaryService
             $records[$this->recordKey($group, $row)] = $this->recordFromRow($reportSlug, $group, $row);
         }
 
+        if ($records === []) {
+            return $records;
+        }
+
+        $records['total'] = $this->totalRecord($reportSlug, $records);
+
         return $records;
+    }
+
+    /**
+     * Totals of the summary table.
+     *
+     * The row repeats the sum of the visible rows. In the summary by controllers a subscriber
+     * belongs to every controller whose zone matches, so the totals count such a subscriber
+     * once per controller row.
+     *
+     * @param  array<string, array<string, float|int|string>>  $records
+     * @return array<string, float|int|string>
+     */
+    private function totalRecord(string $reportSlug, array $records): array
+    {
+        $total = [
+            'group_label' => 'Итого',
+            'clients_count' => 0,
+            'records_count' => 0,
+        ];
+
+        foreach ($records as $record) {
+            $total['clients_count'] += (int) $record['clients_count'];
+            $total['records_count'] += (int) $record['records_count'];
+        }
+
+        foreach ($this->metricDefinitions($reportSlug) as $metric) {
+            $key = $metric['key'];
+
+            if (($metric['aggregate'] ?? 'sum') === 'computed') {
+                $total[$key] = $this->computedMetricValue($key, $total);
+
+                continue;
+            }
+
+            $sum = 0.0;
+
+            foreach ($records as $record) {
+                $sum += (float) $record[$key];
+            }
+
+            $total[$key] = $metric['type'] === 'integer' ? (int) round($sum) : $sum;
+        }
+
+        return $total;
     }
 
     /**
@@ -183,6 +236,7 @@ class ReportSummaryService
             ReportSummaryGroup::Controller => $this->applyControllerGrouping($query, $organization, $user),
             ReportSummaryGroup::Region => $this->applyRegionGrouping($query),
             ReportSummaryGroup::Street => $this->applyStreetGrouping($query),
+            ReportSummaryGroup::City => $this->applyCityGrouping($query),
         };
     }
 
@@ -255,6 +309,19 @@ class ReportSummaryService
             ->orderBy('streets.name');
     }
 
+    private function applyCityGrouping(QueryBuilder $query): void
+    {
+        $query
+            ->leftJoin('regions', 'regions.id', '=', 'report_rows.region_id')
+            ->leftJoin('cities', 'cities.id', '=', 'regions.city_id')
+            ->select([
+                'cities.id as group_id',
+                'cities.name as city_name',
+            ])
+            ->groupBy('cities.id', 'cities.name')
+            ->orderBy('cities.name');
+    }
+
     private function baseRowsQuery(
         string $reportSlug,
         Organization $organization,
@@ -271,8 +338,65 @@ class ReportSummaryService
             'meter-installation-replacement' => $this->meterInstallationReplacementRows($organization, $user, $billingPeriod),
             'debts' => $this->debtRows($organization, $user, $billingPeriod),
             'consumption' => $this->consumptionRows($organization, $user, $billingPeriod),
+            'turnover-balance-sheet' => $this->turnoverBalanceSheetRows($organization, $user, $billingPeriod),
             default => throw new InvalidArgumentException("Unsupported summary report [{$reportSlug}]."),
         };
+    }
+
+    /**
+     * The detail report and the summary select the same four values from `clients`,
+     * then split them into debit and credit per subscriber before they are summed.
+     */
+    private function turnoverBalanceSheetRows(
+        Organization $organization,
+        User $user,
+        ?BillingPeriod $billingPeriod,
+    ): QueryBuilder {
+        $values = DB::table('clients')
+            ->selectRaw('clients.id as row_key')
+            ->selectRaw('clients.id as client_id')
+            ->selectRaw('clients.region_id as region_id')
+            ->selectRaw('clients.street_id as street_id');
+
+        $this->applyClientVisibility($values, $user, $organization);
+
+        if (! $billingPeriod instanceof BillingPeriod) {
+            $values->whereRaw('1 = 0');
+
+            foreach ([
+                TurnoverBalanceValues::OPENING_BALANCE,
+                TurnoverBalanceValues::ACCRUED_AMOUNT,
+                TurnoverBalanceValues::PAID_AMOUNT,
+                TurnoverBalanceValues::ADJUSTMENT_AMOUNT,
+            ] as $alias) {
+                $values->selectRaw("0 as {$alias}");
+            }
+        } elseif (TurnoverBalanceValues::isClosed($billingPeriod)) {
+            $values
+                ->join('accruals', function (JoinClause $join) use ($billingPeriod): void {
+                    TurnoverBalanceValues::joinAccrual($join, $billingPeriod);
+                })
+                ->addSelect(TurnoverBalanceValues::closedPeriodColumns());
+        } else {
+            $values
+                ->where('clients.status', 'active')
+                ->addSelect(TurnoverBalanceValues::openPeriodSubQueries($organization, $billingPeriod));
+        }
+
+        $rows = DB::query()
+            ->fromSub($values, 'turnover_values')
+            ->select([
+                'turnover_values.row_key',
+                'turnover_values.client_id',
+                'turnover_values.region_id',
+                'turnover_values.street_id',
+            ]);
+
+        foreach (TurnoverBalanceValues::metricExpressions('turnover_values.') as $key => $expression) {
+            $rows->selectRaw("{$expression} as {$key}");
+        }
+
+        return $rows;
     }
 
     private function meterReadingSheetRows(Organization $organization, User $user): QueryBuilder
@@ -604,6 +728,17 @@ class ReportSummaryService
                 ['key' => 'readings_count', 'label' => 'Показаний', 'type' => 'integer'],
                 ['key' => 'consumption', 'label' => 'Потребление', 'type' => 'integer'],
             ],
+            'turnover-balance-sheet' => [
+                ['key' => 'opening_debit', 'label' => 'Сальдо нач. Дебет', 'type' => 'money'],
+                ['key' => 'opening_credit', 'label' => 'Сальдо нач. Кредит', 'type' => 'money'],
+                ['key' => 'turnover_debit', 'label' => 'Оборот Дебет', 'type' => 'money'],
+                ['key' => 'turnover_credit', 'label' => 'Оборот Кредит', 'type' => 'money'],
+                ['key' => 'closing_debit', 'label' => 'Сальдо кон. Дебет', 'type' => 'money'],
+                ['key' => 'closing_credit', 'label' => 'Сальдо кон. Кредит', 'type' => 'money'],
+                ['key' => 'accrued_amount', 'label' => 'Начислено', 'type' => 'money'],
+                ['key' => 'adjustment_amount', 'label' => 'Корректировка', 'type' => 'money'],
+                ['key' => 'paid_amount', 'label' => 'Оплачено', 'type' => 'money'],
+            ],
             default => throw new InvalidArgumentException("Unsupported summary report [{$reportSlug}]."),
         };
     }
@@ -673,6 +808,7 @@ class ReportSummaryService
             ReportSummaryGroup::Controller => (string) ($row->controller_name ?: 'Без имени'),
             ReportSummaryGroup::Region => (string) ($row->region_name ?: 'Без района'),
             ReportSummaryGroup::Street => $this->streetLabel($row),
+            ReportSummaryGroup::City => (string) ($row->city_name ?: 'Без города'),
         };
     }
 

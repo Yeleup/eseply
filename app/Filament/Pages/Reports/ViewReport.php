@@ -2,15 +2,18 @@
 
 namespace App\Filament\Pages\Reports;
 
+use App\Models\BillingPeriod;
 use App\Models\Organization;
 use App\Models\User;
 use App\Reports\Contracts\FiltersExcelExport;
 use App\Reports\Contracts\OrganizationReport;
+use App\Reports\Contracts\SelectsBillingPeriod;
 use App\Reports\ReportRegistry;
 use App\Reports\ReportSummaryGroup;
 use App\Reports\ReportSummaryService;
 use Filament\Actions\Action;
 use Filament\Facades\Filament;
+use Filament\Forms\Components\Select;
 use Filament\Pages\Page;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Concerns\InteractsWithTable;
@@ -39,13 +42,20 @@ class ViewReport extends Page implements HasTable
 
     public string $summaryGroup = ReportSummaryGroup::Controller->value;
 
-    public function mount(string $report, ?string $mode = null, ?string $group = null): void
+    public ?int $billingPeriodId = null;
+
+    private ?BillingPeriod $cachedBillingPeriod = null;
+
+    private bool $billingPeriodResolved = false;
+
+    public function mount(string $report, ?string $mode = null, ?string $group = null, ?string $period = null): void
     {
         abort_unless(app(ReportRegistry::class)->find($report) instanceof OrganizationReport, 404);
 
         $this->report = $report;
         $this->mode = $this->normalizeMode($mode ?? request()->query('mode'));
         $this->summaryGroup = $this->normalizeSummaryGroup($group ?? request()->query('group'))->value;
+        $this->billingPeriodId = $this->normalizeBillingPeriodId($period ?? request()->query('period'));
 
         if ($this->isSummaryMode() && ! $this->summaryService()->supports($this->report)) {
             $this->mode = self::MODE_DETAIL;
@@ -83,6 +93,7 @@ class ViewReport extends Page implements HasTable
                 $this->currentSummaryGroup(),
                 $tenant,
                 $user,
+                $this->resolvedBillingPeriod(),
             );
         }
 
@@ -103,6 +114,7 @@ class ViewReport extends Page implements HasTable
                 $this->currentSummaryGroup(),
                 $tenant,
                 $user,
+                $this->resolvedBillingPeriod(),
             );
         }
 
@@ -134,13 +146,15 @@ class ViewReport extends Page implements HasTable
     protected function getHeaderActions(): array
     {
         return [
+            $this->billingPeriodAction(),
             Action::make('detailMode')
                 ->label('Детально')
                 ->color($this->isSummaryMode() ? 'gray' : 'primary')
                 ->url($this->reportModeUrl(self::MODE_DETAIL)),
-            $this->summaryGroupAction(ReportSummaryGroup::Controller),
+            $this->summaryGroupAction(ReportSummaryGroup::City),
             $this->summaryGroupAction(ReportSummaryGroup::Region),
             $this->summaryGroupAction(ReportSummaryGroup::Street),
+            $this->summaryGroupAction(ReportSummaryGroup::Controller),
             Action::make('downloadExcel')
                 ->label('Скачать Excel')
                 ->icon(Heroicon::OutlinedArrowDownTray)
@@ -155,7 +169,96 @@ class ViewReport extends Page implements HasTable
 
     private function getReport(): OrganizationReport
     {
-        return app(ReportRegistry::class)->find($this->report) ?? abort(404);
+        $report = app(ReportRegistry::class)->find($this->report) ?? abort(404);
+
+        if ($report instanceof SelectsBillingPeriod) {
+            return $report->forBillingPeriod($this->resolvedBillingPeriod());
+        }
+
+        return $report;
+    }
+
+    private function billingPeriodAction(): Action
+    {
+        $billingPeriod = $this->selectsBillingPeriod() ? $this->resolvedBillingPeriod() : null;
+
+        return Action::make('selectBillingPeriod')
+            ->label('Расчётный месяц: '.($billingPeriod?->label ?? 'не выбран'))
+            ->icon(Heroicon::OutlinedCalendarDays)
+            ->color('gray')
+            ->visible(fn (): bool => $this->selectsBillingPeriod())
+            ->modalHeading('Расчётный месяц отчёта')
+            ->modalSubmitActionLabel('Показать')
+            ->schema([
+                Select::make('billing_period_id')
+                    ->label('Расчётный месяц')
+                    ->options(fn (): array => $this->billingPeriodOptions())
+                    ->default($billingPeriod?->getKey())
+                    ->native(false)
+                    ->required(),
+            ])
+            ->action(function (array $data): void {
+                $this->redirect($this->reportModeUrl(
+                    $this->mode,
+                    $this->currentSummaryGroup(),
+                    (int) $data['billing_period_id'],
+                ));
+            });
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function billingPeriodOptions(): array
+    {
+        $tenant = Filament::getTenant();
+
+        if (! $tenant instanceof Organization) {
+            return [];
+        }
+
+        return BillingPeriod::query()
+            ->forOrganization($tenant)
+            ->orderByDesc('starts_on')
+            ->get()
+            ->mapWithKeys(fn (BillingPeriod $billingPeriod): array => [
+                $billingPeriod->getKey() => $billingPeriod->label.' — '.$billingPeriod->status->getLabel(),
+            ])
+            ->all();
+    }
+
+    private function selectsBillingPeriod(): bool
+    {
+        return app(ReportRegistry::class)->find($this->report) instanceof SelectsBillingPeriod;
+    }
+
+    private function resolvedBillingPeriod(): ?BillingPeriod
+    {
+        if ($this->billingPeriodResolved) {
+            return $this->cachedBillingPeriod;
+        }
+
+        $this->billingPeriodResolved = true;
+
+        $tenant = Filament::getTenant();
+        $report = app(ReportRegistry::class)->find($this->report);
+
+        if (! $tenant instanceof Organization || ! $report instanceof SelectsBillingPeriod) {
+            return $this->cachedBillingPeriod = null;
+        }
+
+        if ($this->billingPeriodId !== null) {
+            $selected = BillingPeriod::query()
+                ->forOrganization($tenant)
+                ->whereKey($this->billingPeriodId)
+                ->first();
+
+            if ($selected instanceof BillingPeriod) {
+                return $this->cachedBillingPeriod = $selected;
+            }
+        }
+
+        return $this->cachedBillingPeriod = $report->defaultBillingPeriodFor($tenant);
     }
 
     private function summaryGroupAction(ReportSummaryGroup $group): Action
@@ -197,13 +300,34 @@ class ViewReport extends Page implements HasTable
             : ReportSummaryGroup::Controller;
     }
 
-    private function reportModeUrl(string $mode, ?ReportSummaryGroup $group = null): string
+    /**
+     * The identifier comes from the URL, so only a positive integer is kept.
+     * The tenant of the identifier is checked while the billing period is resolved.
+     */
+    private function normalizeBillingPeriodId(mixed $billingPeriodId): ?int
+    {
+        if (! is_numeric($billingPeriodId)) {
+            return null;
+        }
+
+        $identifier = (int) $billingPeriodId;
+
+        return $identifier > 0 ? $identifier : null;
+    }
+
+    private function reportModeUrl(string $mode, ?ReportSummaryGroup $group = null, ?int $billingPeriodId = null): string
     {
         $parameters = ['report' => $this->report];
 
         if ($mode === self::MODE_SUMMARY) {
             $parameters['mode'] = self::MODE_SUMMARY;
             $parameters['group'] = ($group ?? ReportSummaryGroup::Controller)->value;
+        }
+
+        $selectedBillingPeriodId = $billingPeriodId ?? $this->resolvedBillingPeriod()?->getKey();
+
+        if ($selectedBillingPeriodId !== null) {
+            $parameters['period'] = $selectedBillingPeriodId;
         }
 
         return static::getUrl($parameters);

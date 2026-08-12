@@ -14,9 +14,10 @@ final class ControllerZoneFilter
     /**
      * Keeps rows whose client falls into the responsibility zone of at least one selected controller.
      *
-     * @param  string  $clientRelationship  Relationship from the filtered model to its client.
+     * @param  string|null  $clientRelationship  Relationship from the filtered model to its client,
+     *                                           or `null` when the filtered model is the client itself.
      */
-    public static function make(Organization $organization, string $clientRelationship = 'client'): SelectFilter
+    public static function make(Organization $organization, ?string $clientRelationship = 'client'): SelectFilter
     {
         return SelectFilter::make('controller_ids')
             ->label('Контроллеры')
@@ -50,7 +51,7 @@ final class ControllerZoneFilter
      * @param  list<int>  $controllerIds
      * @return Builder<TModel>
      */
-    private static function apply(Builder $query, Organization $organization, string $clientRelationship, array $controllerIds): Builder
+    private static function apply(Builder $query, Organization $organization, ?string $clientRelationship, array $controllerIds): Builder
     {
         if ($controllerIds === []) {
             return $query;
@@ -62,18 +63,21 @@ final class ControllerZoneFilter
             return $query->whereRaw('1 = 0');
         }
 
-        return $query->whereHas(
-            $clientRelationship,
-            function (Builder $clientQuery) use ($controllers, $organization): void {
-                $clientQuery->where(function (Builder $zoneGroupQuery) use ($controllers, $organization): void {
-                    foreach ($controllers as $controller) {
-                        $zoneGroupQuery->orWhere(
-                            fn (Builder $zoneQuery): Builder => $zoneQuery->visibleToOrganizationMember($controller, $organization),
-                        );
-                    }
-                });
-            },
-        );
+        $zones = function (Builder $clientQuery) use ($controllers, $organization): void {
+            $clientQuery->where(function (Builder $zoneGroupQuery) use ($controllers, $organization): void {
+                foreach ($controllers as $controller) {
+                    $zoneGroupQuery->orWhere(
+                        fn (Builder $zoneQuery): Builder => $zoneQuery->visibleToOrganizationMember($controller, $organization),
+                    );
+                }
+            });
+        };
+
+        if ($clientRelationship === null) {
+            return $query->where($zones);
+        }
+
+        return $query->whereHas($clientRelationship, $zones);
     }
 
     /**

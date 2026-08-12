@@ -3,6 +3,9 @@
 use App\ClientType;
 use App\Filament\Pages\Reports\ListReports;
 use App\Filament\Pages\Reports\ViewReport;
+use App\Models\Accrual;
+use App\Models\BalanceAdjustment;
+use App\Models\BillingPeriod;
 use App\Models\City;
 use App\Models\Client;
 use App\Models\Meter;
@@ -2238,4 +2241,491 @@ test('unpaid receipts report filters receipts by issued_at date range', function
         ->filterTable('issued_at', ['start_date' => '2026-06-10', 'end_date' => '2026-06-20'])
         ->assertCanSeeTableRecords([$lateReceipt])
         ->assertCanNotSeeTableRecords([$earlyReceipt]);
+});
+
+/**
+ * One organization with two cities, an accrued closed month and an open month.
+ *
+ * @return array{
+ *     organization: Organization,
+ *     utilityService: UtilityService,
+ *     city: City,
+ *     otherCity: City,
+ *     almalinsky: Region,
+ *     esil: Region,
+ *     abay: Street,
+ *     kabanbay: Street,
+ *     closedPeriod: BillingPeriod,
+ *     debtor: Client,
+ *     overpaid: Client,
+ * }
+ */
+function turnoverBalanceSheetFixture(): array
+{
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create();
+
+    $city = City::factory()->for($organization)->create(['name' => 'Алматы']);
+    $otherCity = City::factory()->for($organization)->create(['name' => 'Астана']);
+
+    $almalinsky = Region::factory()->for($organization)->for($city)->create(['name' => 'Алмалинский']);
+    $esil = Region::factory()->for($organization)->for($otherCity)->create(['name' => 'Есильский']);
+
+    $abay = Street::factory()->for($almalinsky)->create(['name' => 'Абая']);
+    $kabanbay = Street::factory()->for($esil)->create(['name' => 'Кабанбай батыра']);
+
+    $closedPeriod = closedBillingPeriodFor($organization, '202605');
+
+    $debtor = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'account_number' => '800001',
+            'name' => 'Должник',
+            'region_id' => $almalinsky->id,
+            'street_id' => $abay->id,
+            'house' => '10',
+            'apartment' => '1',
+        ]);
+    $overpaid = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'account_number' => '800002',
+            'name' => 'Переплатил',
+            'region_id' => $esil->id,
+            'street_id' => $kabanbay->id,
+            'house' => '20',
+            'apartment' => '2',
+        ]);
+
+    Accrual::factory()
+        ->for($organization)
+        ->for($debtor)
+        ->create([
+            'period' => '202605',
+            'account_number' => '800001',
+            'client_name' => 'Должник',
+            'opening_balance' => 1000,
+            'amount' => 5000,
+            'paid_amount' => 2000,
+            'adjustment_amount' => 500,
+            'closing_balance' => 4500,
+        ]);
+    Accrual::factory()
+        ->for($organization)
+        ->for($overpaid)
+        ->create([
+            'period' => '202605',
+            'account_number' => '800002',
+            'client_name' => 'Переплатил',
+            'opening_balance' => -300,
+            'amount' => 1000,
+            'paid_amount' => 2500,
+            'adjustment_amount' => -200,
+            'closing_balance' => -2000,
+        ]);
+
+    return [
+        'organization' => $organization,
+        'utilityService' => $utilityService,
+        'city' => $city,
+        'otherCity' => $otherCity,
+        'almalinsky' => $almalinsky,
+        'esil' => $esil,
+        'abay' => $abay,
+        'kabanbay' => $kabanbay,
+        'closedPeriod' => $closedPeriod,
+        'debtor' => $debtor,
+        'overpaid' => $overpaid,
+    ];
+}
+
+test('turnover balance sheet splits a closed billing period into debit and credit', function () {
+    $fixture = turnoverBalanceSheetFixture();
+    $organization = $fixture['organization'];
+
+    $withoutAccrual = Client::factory()
+        ->for($organization)
+        ->for($fixture['utilityService'])
+        ->create(['account_number' => '800003', 'name' => 'Без начисления']);
+
+    actingAsReportsTenant($organization);
+
+    Livewire::test(ViewReport::class, ['report' => 'turnover-balance-sheet'])
+        ->assertOk()
+        ->assertCanSeeTableRecords([$fixture['debtor'], $fixture['overpaid']])
+        ->assertCanNotSeeTableRecords([$withoutAccrual])
+        ->assertTableColumnStateSet('opening_debit', 1000.0, $fixture['debtor'])
+        ->assertTableColumnStateSet('opening_credit', 0.0, $fixture['debtor'])
+        ->assertTableColumnStateSet('turnover_debit', 5500.0, $fixture['debtor'])
+        ->assertTableColumnStateSet('turnover_credit', 2000.0, $fixture['debtor'])
+        ->assertTableColumnStateSet('closing_debit', 4500.0, $fixture['debtor'])
+        ->assertTableColumnStateSet('closing_credit', 0.0, $fixture['debtor'])
+        ->assertTableColumnStateSet('accrued_amount', 5000.0, $fixture['debtor'])
+        ->assertTableColumnStateSet('adjustment_amount', 500.0, $fixture['debtor'])
+        ->assertTableColumnStateSet('paid_amount', 2000.0, $fixture['debtor'])
+        ->assertTableColumnStateSet('opening_debit', 0.0, $fixture['overpaid'])
+        ->assertTableColumnStateSet('opening_credit', 300.0, $fixture['overpaid'])
+        ->assertTableColumnStateSet('turnover_debit', 1000.0, $fixture['overpaid'])
+        ->assertTableColumnStateSet('turnover_credit', 2700.0, $fixture['overpaid'])
+        ->assertTableColumnStateSet('closing_debit', 0.0, $fixture['overpaid'])
+        ->assertTableColumnStateSet('closing_credit', 2000.0, $fixture['overpaid'])
+        ->assertTableColumnSummarySet('opening_debit', 'total', 1000.0)
+        ->assertTableColumnSummarySet('opening_credit', 'total', 300.0)
+        ->assertTableColumnSummarySet('turnover_debit', 'total', 6500.0)
+        ->assertTableColumnSummarySet('turnover_credit', 'total', 4700.0)
+        ->assertTableColumnSummarySet('closing_debit', 'total', 4500.0)
+        ->assertTableColumnSummarySet('closing_credit', 'total', 2000.0)
+        ->assertTableColumnSummarySet('accrued_amount', 'total', 6000.0)
+        ->assertTableColumnSummarySet('adjustment_amount', 'total', 300.0)
+        ->assertTableColumnSummarySet('paid_amount', 'total', 4500.0);
+});
+
+test('turnover balance sheet builds an open billing period from receipts payments and adjustments', function () {
+    $fixture = turnoverBalanceSheetFixture();
+    $organization = $fixture['organization'];
+    $client = $fixture['debtor'];
+
+    $openPeriod = billingPeriodFor($organization, '202606');
+
+    Receipt::factory()
+        ->for($organization)
+        ->for($client)
+        ->create([
+            'period' => '202606',
+            'receipt_number' => '202606-800001',
+            'account_number' => '800001',
+            'client_name' => 'Должник',
+            'amount' => 3000,
+            'paid_amount' => 500,
+            'issued_at' => '2026-06-05 09:00:00',
+        ]);
+    Payment::factory()
+        ->for($organization)
+        ->for($client)
+        ->create([
+            'period' => '202606',
+            'amount' => 500,
+            'paid_at' => '2026-06-09',
+        ]);
+    BalanceAdjustment::factory()
+        ->for($organization)
+        ->for($client)
+        ->create([
+            'period' => '202606',
+            'amount' => -100,
+        ]);
+
+    $inactive = Client::factory()
+        ->for($organization)
+        ->for($fixture['utilityService'])
+        ->create(['account_number' => '800009', 'name' => 'Неактивный', 'status' => 'inactive']);
+
+    actingAsReportsTenant($organization);
+
+    Livewire::test(ViewReport::class, [
+        'report' => 'turnover-balance-sheet',
+        'period' => (string) $openPeriod->getKey(),
+    ])
+        ->assertOk()
+        ->assertCanSeeTableRecords([$client, $fixture['overpaid']])
+        ->assertCanNotSeeTableRecords([$inactive])
+        ->assertTableColumnStateSet('opening_debit', 4500.0, $client)
+        ->assertTableColumnStateSet('accrued_amount', 3000.0, $client)
+        ->assertTableColumnStateSet('paid_amount', 500.0, $client)
+        ->assertTableColumnStateSet('adjustment_amount', -100.0, $client)
+        ->assertTableColumnStateSet('turnover_debit', 3000.0, $client)
+        ->assertTableColumnStateSet('turnover_credit', 600.0, $client)
+        ->assertTableColumnStateSet('closing_debit', 6900.0, $client)
+        ->assertTableColumnStateSet('closing_credit', 0.0, $client)
+        ->assertTableColumnStateSet('opening_credit', 2000.0, $fixture['overpaid'])
+        ->assertTableColumnStateSet('accrued_amount', 0.0, $fixture['overpaid'])
+        ->assertTableColumnStateSet('closing_credit', 2000.0, $fixture['overpaid']);
+});
+
+test('turnover balance sheet excel export repeats the two level heading and totals', function () {
+    $fixture = turnoverBalanceSheetFixture();
+
+    actingAsReportsTenant($fixture['organization']);
+
+    $download = Livewire::test(ViewReport::class, ['report' => 'turnover-balance-sheet'])
+        ->assertOk()
+        ->callAction('downloadExcel')
+        ->assertFileDownloaded(
+            'turnover-balance-sheet-'.$fixture['organization']->getKey().'-202605-'.today()->format('Y-m-d').'.xlsx',
+            contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        );
+
+    $rows = downloadedXlsxRows($download->effects['download']);
+
+    expect($rows[0][0])->toBe('Лицевой счёт');
+    expect($rows[0][4])->toBe('Сальдо на начало периода');
+    expect($rows[0][6])->toBe('Обороты за период');
+    expect($rows[0][8])->toBe('Сальдо на конец периода');
+    expect($rows[0][10])->toBe('Расшифровка оборотов');
+    expect($rows[1][4])->toBe('Дебет');
+    expect($rows[1][5])->toBe('Кредит');
+    expect($rows[1][10])->toBe('Начислено');
+    expect($rows[1][11])->toBe('Корректировка');
+    expect($rows[1][12])->toBe('Оплачено');
+
+    expect($rows[2][0])->toBe('800001');
+    expect($rows[2][3])->toBe('05.2026');
+    expect(array_slice($rows[2], 4, 9))->toEqual([1000.0, 0.0, 5500.0, 2000.0, 4500.0, 0.0, 5000.0, 500.0, 2000.0]);
+    expect($rows[3][0])->toBe('800002');
+    expect(array_slice($rows[3], 4, 9))->toEqual([0.0, 300.0, 1000.0, 2700.0, 0.0, 2000.0, 1000.0, -200.0, 2500.0]);
+
+    expect($rows[4][0])->toBe('Итого');
+    expect(array_slice($rows[4], 4, 9))->toEqual([1000.0, 300.0, 6500.0, 4700.0, 4500.0, 2000.0, 6000.0, 300.0, 4500.0]);
+
+    $totals = array_slice($rows[4], 4, 6);
+
+    expect($totals[0] - $totals[1] + $totals[2] - $totals[3])->toEqual($totals[4] - $totals[5]);
+});
+
+test('turnover balance sheet summarizes by city region street and controller with totals', function () {
+    $fixture = turnoverBalanceSheetFixture();
+    $organization = $fixture['organization'];
+
+    $controller = User::factory()->create(['name' => 'Контроллер Алматы']);
+    $organization->users()->attach($controller, ['role' => OrganizationMemberRole::Controller->value]);
+    DB::table('organization_user_regions')->insert([
+        'organization_id' => $organization->id,
+        'user_id' => $controller->id,
+        'region_id' => $fixture['almalinsky']->id,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    $operator = actingAsReportsTenant($organization);
+    $summaryService = app(ReportSummaryService::class);
+
+    $cityRecords = collect($summaryService->records(
+        'turnover-balance-sheet',
+        ReportSummaryGroup::City,
+        $organization,
+        $operator,
+        $fixture['closedPeriod'],
+    ))->keyBy('group_label');
+
+    expect($cityRecords->get('Алматы'))->toMatchArray([
+        'clients_count' => 1,
+        'records_count' => 1,
+        'opening_debit' => 1000.0,
+        'opening_credit' => 0.0,
+        'turnover_debit' => 5500.0,
+        'turnover_credit' => 2000.0,
+        'closing_debit' => 4500.0,
+        'closing_credit' => 0.0,
+    ]);
+    expect($cityRecords->get('Астана'))->toMatchArray([
+        'opening_credit' => 300.0,
+        'turnover_debit' => 1000.0,
+        'turnover_credit' => 2700.0,
+        'closing_credit' => 2000.0,
+    ]);
+    expect($cityRecords->get('Итого'))->toMatchArray([
+        'clients_count' => 2,
+        'records_count' => 2,
+        'opening_debit' => 1000.0,
+        'opening_credit' => 300.0,
+        'turnover_debit' => 6500.0,
+        'turnover_credit' => 4700.0,
+        'closing_debit' => 4500.0,
+        'closing_credit' => 2000.0,
+        'accrued_amount' => 6000.0,
+        'adjustment_amount' => 300.0,
+        'paid_amount' => 4500.0,
+    ]);
+
+    $regionRecords = collect($summaryService->records(
+        'turnover-balance-sheet',
+        ReportSummaryGroup::Region,
+        $organization,
+        $operator,
+        $fixture['closedPeriod'],
+    ))->keyBy('group_label');
+    $streetRecords = collect($summaryService->records(
+        'turnover-balance-sheet',
+        ReportSummaryGroup::Street,
+        $organization,
+        $operator,
+        $fixture['closedPeriod'],
+    ))->keyBy('group_label');
+    $controllerRecords = collect($summaryService->records(
+        'turnover-balance-sheet',
+        ReportSummaryGroup::Controller,
+        $organization,
+        $operator,
+        $fixture['closedPeriod'],
+    ))->keyBy('group_label');
+
+    expect($regionRecords->get('Алмалинский'))->toMatchArray(['closing_debit' => 4500.0]);
+    expect($streetRecords->get('Алмалинский / Абая'))->toMatchArray(['closing_debit' => 4500.0]);
+    expect($controllerRecords->get('Контроллер Алматы'))->toMatchArray([
+        'clients_count' => 1,
+        'closing_debit' => 4500.0,
+        'closing_credit' => 0.0,
+    ]);
+
+    Livewire::test(ViewReport::class, [
+        'report' => 'turnover-balance-sheet',
+        'mode' => 'summary',
+        'group' => ReportSummaryGroup::City->value,
+    ])
+        ->assertOk()
+        ->assertActionExists('summaryByCity')
+        ->assertActionExists('summaryByRegion')
+        ->assertActionExists('summaryByStreet')
+        ->assertActionExists('summaryByController')
+        ->assertSee('Алматы')
+        ->assertSee('Астана')
+        ->assertSee('Итого');
+});
+
+test('turnover balance sheet shows a controller only the subscribers of the assigned zone', function () {
+    $fixture = turnoverBalanceSheetFixture();
+    $organization = $fixture['organization'];
+
+    $controller = actingAsReportsController($organization);
+    DB::table('organization_user_regions')->insert([
+        'organization_id' => $organization->id,
+        'user_id' => $controller->id,
+        'region_id' => $fixture['almalinsky']->id,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    Livewire::test(ViewReport::class, ['report' => 'turnover-balance-sheet'])
+        ->assertOk()
+        ->assertCanSeeTableRecords([$fixture['debtor']])
+        ->assertCanNotSeeTableRecords([$fixture['overpaid']]);
+});
+
+test('turnover balance sheet excel export repeats the address and controller filters', function () {
+    $fixture = turnoverBalanceSheetFixture();
+    $organization = $fixture['organization'];
+
+    actingAsReportsTenant($organization);
+
+    $download = Livewire::test(ViewReport::class, ['report' => 'turnover-balance-sheet'])
+        ->assertOk()
+        ->filterTable('address', ['city_id' => $fixture['city']->id, 'region_id' => null, 'street_ids' => []])
+        ->assertCanSeeTableRecords([$fixture['debtor']])
+        ->assertCanNotSeeTableRecords([$fixture['overpaid']])
+        ->callAction('downloadExcel');
+
+    $rows = downloadedXlsxRows($download->effects['download']);
+
+    expect($rows)->toHaveCount(4);
+    expect($rows[2][0])->toBe('800001');
+    expect($rows[3][0])->toBe('Итого');
+    expect(array_slice($rows[3], 4, 6))->toEqual([1000.0, 0.0, 5500.0, 2000.0, 4500.0, 0.0]);
+});
+
+test('turnover balance sheet keeps the selected billing period across modes', function () {
+    $fixture = turnoverBalanceSheetFixture();
+    $organization = $fixture['organization'];
+    $openPeriod = billingPeriodFor($organization, '202606');
+
+    actingAsReportsTenant($organization);
+
+    Livewire::test(ViewReport::class, ['report' => 'turnover-balance-sheet'])
+        ->assertOk()
+        ->assertSee('Расчётный месяц: 05.2026');
+
+    Livewire::test(ViewReport::class, [
+        'report' => 'turnover-balance-sheet',
+        'period' => (string) $openPeriod->getKey(),
+    ])
+        ->assertOk()
+        ->assertSee('Расчётный месяц: 06.2026')
+        ->assertSee('period='.$openPeriod->getKey());
+
+    Livewire::test(ViewReport::class, [
+        'report' => 'turnover-balance-sheet',
+        'period' => '999999',
+    ])
+        ->assertOk()
+        ->assertSee('Расчётный месяц: 05.2026');
+});
+
+test('report summaries add a totals row', function () {
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create();
+    $region = Region::factory()->for($organization)->create(['name' => 'Алмалинский']);
+    $street = Street::factory()->for($region)->create(['name' => 'Абая']);
+
+    $billingPeriod = billingPeriodFor($organization, '202606');
+
+    $client = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'account_number' => '810001',
+            'name' => 'Плательщик',
+            'region_id' => $region->id,
+            'street_id' => $street->id,
+        ]);
+    Payment::factory()
+        ->for($organization)
+        ->for($client)
+        ->create(['period' => '202606', 'amount' => 2500, 'paid_at' => '2026-06-09']);
+
+    $operator = actingAsReportsTenant($organization);
+
+    $records = collect(app(ReportSummaryService::class)->records(
+        'payments',
+        ReportSummaryGroup::Region,
+        $organization,
+        $operator,
+        $billingPeriod,
+    ));
+
+    expect($records->keys()->last())->toBe('total');
+    expect($records->get('total'))->toMatchArray([
+        'group_label' => 'Итого',
+        'clients_count' => 1,
+        'records_count' => 1,
+        'payments_count' => 1,
+        'payment_amount' => 2500.0,
+    ]);
+});
+
+test('turnover balance sheet totals an open billing period on screen', function () {
+    $fixture = turnoverBalanceSheetFixture();
+    $organization = $fixture['organization'];
+    $openPeriod = billingPeriodFor($organization, '202606');
+
+    Receipt::factory()
+        ->for($organization)
+        ->for($fixture['debtor'])
+        ->create([
+            'period' => '202606',
+            'receipt_number' => '202606-800001',
+            'account_number' => '800001',
+            'client_name' => 'Должник',
+            'amount' => 3000,
+            'paid_amount' => 500,
+            'issued_at' => '2026-06-05 09:00:00',
+        ]);
+    Payment::factory()
+        ->for($organization)
+        ->for($fixture['debtor'])
+        ->create(['period' => '202606', 'amount' => 500, 'paid_at' => '2026-06-09']);
+
+    actingAsReportsTenant($organization);
+
+    Livewire::test(ViewReport::class, [
+        'report' => 'turnover-balance-sheet',
+        'period' => (string) $openPeriod->getKey(),
+    ])
+        ->assertOk()
+        ->assertTableColumnSummarySet('opening_debit', 'total', 4500.0)
+        ->assertTableColumnSummarySet('opening_credit', 'total', 2000.0)
+        ->assertTableColumnSummarySet('turnover_debit', 'total', 3000.0)
+        ->assertTableColumnSummarySet('turnover_credit', 'total', 500.0)
+        ->assertTableColumnSummarySet('closing_debit', 'total', 7000.0)
+        ->assertTableColumnSummarySet('closing_credit', 'total', 2000.0);
 });

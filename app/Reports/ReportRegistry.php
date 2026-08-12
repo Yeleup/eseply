@@ -19,6 +19,7 @@ class ReportRegistry
         MeterInstallationReplacementReport::class,
         DebtsReport::class,
         ConsumptionReport::class,
+        TurnoverBalanceSheetReport::class,
     ];
 
     /**

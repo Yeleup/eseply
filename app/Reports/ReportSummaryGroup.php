@@ -7,6 +7,7 @@ enum ReportSummaryGroup: string
     case Controller = 'controller';
     case Region = 'region';
     case Street = 'street';
+    case City = 'city';
 
     public function label(): string
     {
@@ -14,6 +15,7 @@ enum ReportSummaryGroup: string
             self::Controller => 'По контроллерам',
             self::Region => 'По районам',
             self::Street => 'По улицам',
+            self::City => 'По городам',
         };
     }
 
@@ -23,6 +25,7 @@ enum ReportSummaryGroup: string
             self::Controller => 'Контроллер',
             self::Region => 'Район',
             self::Street => 'Улица',
+            self::City => 'Город',
         };
     }
 }

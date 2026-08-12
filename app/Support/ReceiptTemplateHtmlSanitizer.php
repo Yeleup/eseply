@@ -1,0 +1,101 @@
+<?php
+
+namespace App\Support;
+
+use Symfony\Component\HtmlSanitizer\HtmlSanitizer;
+use Symfony\Component\HtmlSanitizer\HtmlSanitizerConfig;
+
+/**
+ * Санитизация HTML/CSS шаблона квитанции. Вызывается при сохранении шаблона
+ * и повторно при рендере печати: в БД и в печать попадает только чистый HTML.
+ */
+final class ReceiptTemplateHtmlSanitizer
+{
+    public const MAX_HTML_BYTES = 65536;
+
+    public const MAX_CSS_BYTES = 32768;
+
+    private const ALLOWED_ELEMENTS = [
+        'div' => ['class', 'style'],
+        'section' => ['class', 'style'],
+        'header' => ['class', 'style'],
+        'footer' => ['class', 'style'],
+        'p' => ['class', 'style'],
+        'span' => ['class', 'style'],
+        'h1' => ['class', 'style'],
+        'h2' => ['class', 'style'],
+        'h3' => ['class', 'style'],
+        'h4' => ['class', 'style'],
+        'h5' => ['class', 'style'],
+        'h6' => ['class', 'style'],
+        'strong' => ['class', 'style'],
+        'em' => ['class', 'style'],
+        'u' => ['class', 'style'],
+        's' => ['class', 'style'],
+        'small' => ['class', 'style'],
+        'br' => [],
+        'hr' => ['class', 'style'],
+        'table' => ['class', 'style'],
+        'thead' => ['class', 'style'],
+        'tbody' => ['class', 'style'],
+        'tfoot' => ['class', 'style'],
+        'tr' => ['class', 'style'],
+        'td' => ['class', 'style', 'colspan', 'rowspan'],
+        'th' => ['class', 'style', 'colspan', 'rowspan'],
+        'ul' => ['class', 'style'],
+        'ol' => ['class', 'style'],
+        'li' => ['class', 'style'],
+        'dl' => ['class', 'style'],
+        'dt' => ['class', 'style'],
+        'dd' => ['class', 'style'],
+        'img' => ['src', 'alt', 'width', 'height', 'class', 'style'],
+    ];
+
+    public static function sanitizeHtml(string $html): string
+    {
+        $config = (new HtmlSanitizerConfig)
+            ->allowRelativeMedias()
+            ->withMaxInputLength(self::MAX_HTML_BYTES);
+
+        foreach (self::ALLOWED_ELEMENTS as $element => $attributes) {
+            $config = $config->allowElement($element, $attributes);
+        }
+
+        $clean = (new HtmlSanitizer($config))->sanitize($html);
+
+        return self::restrictImageSources($clean);
+    }
+
+    public static function sanitizeCss(string $css): string
+    {
+        $css = (string) preg_replace('#/\*.*?\*/#s', '', $css);
+        $css = (string) preg_replace('/@import[^;]*;?/i', '', $css);
+        $css = (string) preg_replace('/url\s*\([^)]*\)/i', 'none', $css);
+        $css = (string) preg_replace('/expression\s*\([^)]*\)/i', '', $css);
+        $css = (string) preg_replace('/behavior\s*:[^;}]*/i', '', $css);
+
+        return str_ireplace('javascript:', '', $css);
+    }
+
+    /**
+     * Симфони-санитайзер уже отфильтровал схемы, но абсолютные и data-URL
+     * могли выжить в зависимости от конфигурации — оставляем только
+     * относительные пути внутри /storage/.
+     */
+    private static function restrictImageSources(string $html): string
+    {
+        return (string) preg_replace_callback(
+            '/(<img\b[^>]*\bsrc=")([^"]*)(")/iu',
+            function (array $matches): string {
+                $src = html_entity_decode($matches[2], ENT_QUOTES | ENT_HTML5);
+
+                if (str_starts_with($src, '/storage/') && ! str_contains($src, '..')) {
+                    return $matches[0];
+                }
+
+                return $matches[1].$matches[3];
+            },
+            $html,
+        );
+    }
+}

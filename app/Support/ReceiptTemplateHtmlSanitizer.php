@@ -70,6 +70,7 @@ final class ReceiptTemplateHtmlSanitizer
     public static function sanitizeCss(string $css): string
     {
         $css = (string) preg_replace('#/\*.*?\*/#s', '', $css);
+        $css = self::resolveCssHexEscapes($css);
         $css = (string) preg_replace('/@import[^;]*;?/i', '', $css);
         $css = (string) preg_replace('/url\s*\([^)]*\)/i', 'none', $css);
         $css = (string) preg_replace('/expression\s*\([^)]*\)/i', '', $css);
@@ -82,8 +83,11 @@ final class ReceiptTemplateHtmlSanitizer
      * Симфони-санитайзер уже отфильтровал схемы, но абсолютные и data-URL
      * могли выжить в зависимости от конфигурации — оставляем только
      * относительные пути внутри /storage/. Значение декодируется как из
-     * HTML-сущностей, так и из URL-кодирования (%2e и т.п.), иначе
-     * traversal вида /storage/%2e%2e/../etc/passwd проходит проверку.
+     * HTML-сущностей, так и из URL-кодирования (в цикле, чтобы поймать
+     * двойное кодирование вида %252e), иначе traversal вида
+     * /storage/%2e%2e/../etc/passwd или /storage/%252e%252e/... проходит
+     * проверку. Легитимные пути логотипа/QR символов "%" не содержат, поэтому
+     * любой оставшийся "%" после декодирования — повод отклонить src.
      */
     private static function restrictImageSources(string $html): string
     {
@@ -91,9 +95,13 @@ final class ReceiptTemplateHtmlSanitizer
             '/(<img\b[^>]*\bsrc=")([^"]*)(")/iu',
             function (array $matches): string {
                 $src = html_entity_decode($matches[2], ENT_QUOTES | ENT_HTML5);
-                $src = rawurldecode($src);
+                $src = self::fullyUrlDecode($src);
 
-                if (str_starts_with($src, '/storage/') && ! str_contains($src, '..')) {
+                if (
+                    str_starts_with($src, '/storage/')
+                    && ! str_contains($src, '..')
+                    && ! str_contains($src, '%')
+                ) {
                     return $matches[0];
                 }
 
@@ -101,6 +109,50 @@ final class ReceiptTemplateHtmlSanitizer
             },
             $html,
         );
+    }
+
+    /**
+     * Декодирует percent-encoding в цикле до стабилизации строки, чтобы
+     * поймать двойное (и более) URL-кодирование. Ограничено пятью
+     * итерациями — легитимные пути не требуют более одного декодирования,
+     * лимит защищает только от искусственно вложенного кодирования.
+     */
+    private static function fullyUrlDecode(string $value): string
+    {
+        for ($i = 0; $i < 5; $i++) {
+            $decoded = rawurldecode($value);
+
+            if ($decoded === $value) {
+                break;
+            }
+
+            $value = $decoded;
+        }
+
+        return $value;
+    }
+
+    /**
+     * CSS позволяет экранировать любой символ шестнадцатеричным кодом
+     * (\75 === "u"), из-за чего "\75rl(...)" эквивалентно "url(...)", но не
+     * матчится регэкспами ниже без предварительного разворачивания. Разворачиваем
+     * каждый \XX{1,6}[пробел] в реальный символ, затем убираем одиночные
+     * обратные слэши (символьное экранирование вроде "\." не несёт риска
+     * для этого фильтра, но не должно засорять вывод).
+     */
+    private static function resolveCssHexEscapes(string $css): string
+    {
+        $css = (string) preg_replace_callback(
+            '/\\\\([0-9a-fA-F]{1,6})\s?/',
+            static function (array $matches): string {
+                $char = mb_chr((int) hexdec($matches[1]), 'UTF-8');
+
+                return $char !== false ? $char : '';
+            },
+            $css,
+        );
+
+        return str_replace('\\', '', $css);
     }
 
     /**

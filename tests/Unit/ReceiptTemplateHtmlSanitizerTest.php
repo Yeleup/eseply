@@ -93,3 +93,23 @@ test('sanitizer blocks url encoded traversal in image sources', function () {
     expect($clean)->not->toContain('%2e')
         ->and($clean)->not->toContain('/etc/passwd');
 });
+
+test('sanitizer blocks double encoded traversal in image sources', function () {
+    $clean = ReceiptTemplateHtmlSanitizer::sanitizeHtml('<img src="/storage/%252e%252e/%252e%252e/etc/passwd">');
+    expect($clean)->not->toContain('%252e')
+        ->and($clean)->not->toContain('/etc/passwd');
+});
+
+test('css filter neutralizes hex escape obfuscation', function () {
+    $css = '.a { background: \75rl(https://evil.example/x.png); }';
+    $clean = ReceiptTemplateHtmlSanitizer::sanitizeCss($css);
+    expect($clean)->not->toContain('evil.example');
+});
+
+test('css filter keeps legitimate rules intact', function () {
+    $css = ".rt-header { color: #111; border-bottom: 1px solid #000; } .x::before { content: 'Итого'; }";
+    $clean = ReceiptTemplateHtmlSanitizer::sanitizeCss($css);
+    expect($clean)->toContain('#111')
+        ->and($clean)->toContain('1px solid #000')
+        ->and($clean)->toContain('Итого');
+});

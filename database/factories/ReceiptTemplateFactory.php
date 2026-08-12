@@ -22,6 +22,9 @@ class ReceiptTemplateFactory extends Factory
             'settings' => ReceiptTemplateDefaults::settings(),
             'logo_path' => null,
             'qr_path' => null,
+            'html' => null,
+            'css' => null,
+            'copies_per_page' => 2,
         ];
     }
 }

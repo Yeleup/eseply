@@ -14,6 +14,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'settings',
     'logo_path',
     'qr_path',
+    'html',
+    'css',
+    'copies_per_page',
 ])]
 class ReceiptTemplate extends Model
 {
@@ -32,6 +35,7 @@ class ReceiptTemplate extends Model
     {
         return [
             'settings' => 'array',
+            'copies_per_page' => 'integer',
         ];
     }
 

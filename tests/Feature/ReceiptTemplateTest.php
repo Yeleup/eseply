@@ -263,3 +263,17 @@ test('logo and qr render on print when enabled and uploaded', function () {
     expect($content)->toContain("{$directory}/logo.png")
         ->and($content)->toContain("{$directory}/qr.png");
 });
+
+test('receipt template stores html css and copies per page', function () {
+    $template = ReceiptTemplate::factory()->create([
+        'html' => '<p>{{client_name}}</p>',
+        'css' => '.rt-copy { color: #000; }',
+        'copies_per_page' => 1,
+    ]);
+
+    $template->refresh();
+
+    expect($template->html)->toBe('<p>{{client_name}}</p>')
+        ->and($template->css)->toBe('.rt-copy { color: #000; }')
+        ->and($template->copies_per_page)->toBe(1);
+});

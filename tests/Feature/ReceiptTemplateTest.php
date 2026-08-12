@@ -4,7 +4,6 @@ use App\Models\Organization;
 use App\Models\Receipt;
 use App\Models\ReceiptTemplate;
 use App\Models\User;
-use App\Support\ReceiptTemplateDefaults;
 use App\Support\ReceiptTemplateImageStorage;
 use Filament\Facades\Filament;
 use Illuminate\Database\QueryException;
@@ -32,7 +31,7 @@ test('receipt template belongs to an organization and stores settings json', fun
     $template = ReceiptTemplate::factory()->create();
 
     expect($template->organization)->toBeInstanceOf(Organization::class)
-        ->and($template->settings)->toBe(ReceiptTemplateDefaults::settings())
+        ->and($template->html)->toBeNull()
         ->and($template->logo_path)->toBeNull()
         ->and($template->qr_path)->toBeNull();
 });
@@ -79,7 +78,7 @@ test('deleting an organization deletes its receipt template directory', function
     expect(Storage::disk('public')->allFiles($directory))->toBe([]);
 });
 
-test('print without a template renders default blocks in default order', function () {
+test('print without a template renders the default html template', function () {
     $organization = Organization::factory()->create(['name' => 'ТОО Водоканал']);
     $receipt = Receipt::factory()->for($organization)->create([
         'account_number' => '100010',
@@ -94,7 +93,7 @@ test('print without a template renders default blocks in default order', functio
         'receipt' => $receipt,
     ]))
         ->assertSuccessful()
-        ->assertViewHas('template')
+        ->assertViewHas('renderedCopies')
         ->assertSeeTextInOrder([
             'Для организации',
             'Квитанция на оплату коммунальной услуги',
@@ -108,58 +107,16 @@ test('print without a template renders default blocks in default order', functio
         ]);
 });
 
-test('template controls block order visibility and texts on print', function () {
+test('custom html template controls print output with escaped values', function () {
     $organization = Organization::factory()->create();
-    $receipt = Receipt::factory()->for($organization)->create();
-    ReceiptTemplate::factory()->for($organization)->create([
-        'settings' => [
-            'blocks' => [
-                ['type' => 'header', 'enabled' => true],
-                ['type' => 'organization_details', 'enabled' => true],
-                ['type' => 'client_details', 'enabled' => true],
-                ['type' => 'meters_table', 'enabled' => false],
-                ['type' => 'totals', 'enabled' => true],
-                ['type' => 'footer_note', 'enabled' => true],
-            ],
-            'texts' => [
-                'title' => 'Счёт за воду',
-                'footer_note' => 'Оплатите до 25 числа <b>без пени</b>',
-                'labels' => ['account_number' => 'Абонентский номер'],
-            ],
-        ],
+    $receipt = Receipt::factory()->for($organization)->create([
+        'client_name' => 'Иванов <b>Иван</b>',
+        'account_number' => '100010',
     ]);
-
-    $user = actingAsTemplateTenant($organization);
-    $this->actingAs($user);
-
-    $response = $this->get(route('filament.admin.receipts.print', [
-        'tenant' => $organization,
-        'receipt' => $receipt,
-    ]));
-
-    $response
-        ->assertSuccessful()
-        ->assertSeeTextInOrder([
-            'Счёт за воду',
-            'Реквизиты',
-            'Абонентский номер',
-            'К оплате',
-            'Оплатите до 25 числа',
-        ])
-        ->assertDontSeeText('Счётчики')
-        ->assertDontSeeText('Квитанция на оплату коммунальной услуги')
-        ->assertSeeText('Оплатите до 25 числа <b>без пени</b>');
-
-    expect($response->getContent())->not->toContain('<b>без пени</b>');
-});
-
-test('single copy template prints only the client copy', function () {
-    $organization = Organization::factory()->create();
-    $receipt = Receipt::factory()->for($organization)->create();
     ReceiptTemplate::factory()->for($organization)->create([
-        'settings' => [
-            'appearance' => ['copies_per_page' => 1],
-        ],
+        'html' => '<h1>Счёт за воду</h1><p>{{copy_title}}: {{client_name}} ({{account_number}})</p><div>{{meters_table}}</div>',
+        'css' => '.mine { color: #000; }',
+        'copies_per_page' => 1,
     ]);
 
     $user = actingAsTemplateTenant($organization);
@@ -172,19 +129,24 @@ test('single copy template prints only the client copy', function () {
 
     $content = $response->getContent();
 
+    $response->assertSeeText('Счёт за воду')
+        ->assertSeeText('Иванов <b>Иван</b>')
+        ->assertDontSeeText('Квитанция на оплату коммунальной услуги')
+        ->assertDontSeeText('Реквизиты');
+
     expect(substr_count($content, 'data-receipt-copy='))->toBe(1)
         ->and($content)->toContain('Для абонента')
         ->and($content)->toContain('receipt-sheet-single')
-        ->and($content)->not->toContain('Для организации');
+        ->and($content)->toContain('.mine { color: #000; }')
+        ->and($content)->toContain('Счётчики')
+        ->and($content)->not->toContain('<b>Иван</b>');
 });
 
-test('appearance settings add css classes to receipt copies', function () {
+test('stored template html is sanitized again at print time', function () {
     $organization = Organization::factory()->create();
     $receipt = Receipt::factory()->for($organization)->create();
     ReceiptTemplate::factory()->for($organization)->create([
-        'settings' => [
-            'appearance' => ['font_size' => 'large', 'density' => 'compact', 'borders' => false],
-        ],
+        'html' => '<p>ok</p><script>alert(1)</script><img src="https://evil.example/x.png">',
     ]);
 
     $user = actingAsTemplateTenant($organization);
@@ -195,61 +157,18 @@ test('appearance settings add css classes to receipt copies', function () {
         'receipt' => $receipt,
     ]))->getContent();
 
-    expect($content)->toContain('receipt-font-large')
-        ->and($content)->toContain('receipt-density-compact')
-        ->and($content)->toContain('receipt-no-borders');
+    expect($content)->not->toContain('<script>alert(1)</script>')
+        ->and($content)->not->toContain('evil.example')
+        ->and($content)->toContain('ok');
 });
 
-test('bulk print applies each organization template', function () {
-    $organization = Organization::factory()->create();
-    $billingPeriod = $organization->billingPeriods()->create([
-        'starts_on' => '2026-05-01',
-        'status' => 'open',
-        'opened_at' => now(),
-    ]);
-    Receipt::factory()->for($organization)->create([
-        'account_number' => '100010',
-        'period' => '202605',
-    ]);
-    Receipt::factory()->for($organization)->create([
-        'account_number' => '100011',
-        'period' => '202605',
-    ]);
-    ReceiptTemplate::factory()->for($organization)->create([
-        'settings' => [
-            'texts' => ['title' => 'Счёт за воду'],
-            'appearance' => ['copies_per_page' => 1],
-        ],
-    ]);
-
-    $user = actingAsTemplateTenant($organization);
-    $this->actingAs($user);
-
-    $response = $this->get(route('filament.admin.receipts.print-bulk', [
-        'tenant' => $organization,
-        'billing_period_id' => $billingPeriod->getKey(),
-    ]));
-
-    $content = $response->getContent();
-
-    expect(substr_count($content, 'data-receipt-copy='))->toBe(2)
-        ->and(substr_count($content, 'Счёт за воду'))->toBe(2);
-});
-
-test('logo and qr render on print when enabled and uploaded', function () {
+test('logo fragment renders in print when uploaded', function () {
     $organization = Organization::factory()->create();
     $receipt = Receipt::factory()->for($organization)->create();
     $directory = 'receipt-templates/'.$organization->getKey();
     ReceiptTemplate::factory()->for($organization)->create([
+        'html' => '<div>{{logo}}{{qr}}</div><p>{{client_name}}</p>',
         'logo_path' => "{$directory}/logo.png",
-        'qr_path' => "{$directory}/qr.png",
-        'settings' => [
-            'blocks' => [
-                ['type' => 'header', 'enabled' => true],
-                ['type' => 'footer_note', 'enabled' => true],
-            ],
-            'appearance' => ['show_logo' => true, 'show_qr' => true],
-        ],
     ]);
 
     $user = actingAsTemplateTenant($organization);
@@ -261,7 +180,35 @@ test('logo and qr render on print when enabled and uploaded', function () {
     ]))->getContent();
 
     expect($content)->toContain("{$directory}/logo.png")
-        ->and($content)->toContain("{$directory}/qr.png");
+        ->and($content)->not->toContain('rt-qr');
+});
+
+test('bulk print applies the organization html template', function () {
+    $organization = Organization::factory()->create();
+    $billingPeriod = $organization->billingPeriods()->create([
+        'starts_on' => '2026-05-01',
+        'status' => 'open',
+        'opened_at' => now(),
+    ]);
+    Receipt::factory()->for($organization)->create(['account_number' => '100010', 'period' => '202605']);
+    Receipt::factory()->for($organization)->create(['account_number' => '100011', 'period' => '202605']);
+    ReceiptTemplate::factory()->for($organization)->create([
+        'html' => '<h1>Счёт за воду</h1><p>{{account_number}}</p>',
+        'copies_per_page' => 1,
+    ]);
+
+    $user = actingAsTemplateTenant($organization);
+    $this->actingAs($user);
+
+    $content = $this->get(route('filament.admin.receipts.print-bulk', [
+        'tenant' => $organization,
+        'billing_period_id' => $billingPeriod->getKey(),
+    ]))->getContent();
+
+    expect(substr_count($content, 'data-receipt-copy='))->toBe(2)
+        ->and(substr_count($content, 'Счёт за воду'))->toBe(2)
+        ->and($content)->toContain('100010')
+        ->and($content)->toContain('100011');
 });
 
 test('receipt template stores html css and copies per page', function () {

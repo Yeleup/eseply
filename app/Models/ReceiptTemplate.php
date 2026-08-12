@@ -11,7 +11,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable([
     'organization_id',
-    'settings',
     'logo_path',
     'qr_path',
     'html',
@@ -34,7 +33,6 @@ class ReceiptTemplate extends Model
     protected function casts(): array
     {
         return [
-            'settings' => 'array',
             'copies_per_page' => 'integer',
         ];
     }

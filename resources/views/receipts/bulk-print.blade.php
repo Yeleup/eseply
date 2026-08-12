@@ -9,6 +9,8 @@
         @if (file_exists(public_path('build/manifest.json')) || file_exists(public_path('hot')))
             @vite(['resources/css/app.css', 'resources/js/app.js'])
         @endif
+
+        <style>{!! $receiptPrintData[0]['templateCss'] ?? '' !!}</style>
     </head>
     <body class="bg-stone-100 text-zinc-950 antialiased print:bg-white">
         <main class="receipt-print-main mx-auto min-h-screen w-full max-w-5xl px-4 py-6 sm:px-6 lg:px-8 print:min-h-0 print:max-w-none print:p-0">
@@ -33,9 +35,9 @@
             </div>
 
             @forelse ($receiptPrintData as $printData)
-                <section class="receipt-sheet receipt-sheet-bulk {{ $printData['template']->copiesPerPage() === 1 ? 'receipt-sheet-single' : '' }}">
-                    @foreach ($printData['template']->copyTitles() as $copyTitle)
-                        @include('receipts.partials.print-copy', array_merge($printData, ['copyTitle' => $copyTitle]))
+                <section class="receipt-sheet receipt-sheet-bulk {{ $printData['copiesPerPage'] === 1 ? 'receipt-sheet-single' : '' }}">
+                    @foreach ($printData['renderedCopies'] as $copyTitle => $renderedCopy)
+                        @include('receipts.partials.print-copy', ['copyTitle' => $copyTitle, 'renderedCopy' => $renderedCopy])
                     @endforeach
                 </section>
             @empty

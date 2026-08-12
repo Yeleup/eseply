@@ -6,6 +6,7 @@ use App\Models\Receipt;
 use App\Models\ReceiptTemplate;
 use App\Models\User;
 use App\OrganizationMemberRole;
+use App\Support\ReceiptTemplateDefaults;
 use App\Support\ReceiptTemplateImageStorage;
 use Filament\Facades\Filament;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -56,61 +57,44 @@ test('controller cannot open the receipt template page', function () {
     $this->get('/admin/'.$organization->getKey().'/receipt-template')->assertForbidden();
 });
 
-test('saving the form creates a template for the current tenant', function () {
+test('saving stores sanitized html css and copies per page', function () {
     $organization = Organization::factory()->create();
     $user = actingAsTemplatePageAdmin($organization);
     $this->actingAs($user);
 
     Livewire::test(ReceiptTemplatePage::class)
-        ->fillForm([
-            'texts.title' => 'Счёт за воду',
-            'appearance.copies_per_page' => 1,
-        ])
+        ->set('templateHtml', '<p>{{client_name}}</p><script>alert(1)</script>')
+        ->set('templateCss', '.mine { color: red; } @import url(https://evil.example/x.css);')
+        ->fillForm(['copies_per_page' => 1])
         ->call('save')
-        ->assertHasNoFormErrors();
+        ->assertHasNoErrors();
 
     $template = ReceiptTemplate::query()->whereBelongsTo($organization)->sole();
 
-    expect($template->settings['texts']['title'])->toBe('Счёт за воду')
-        ->and($template->settings['appearance']['copies_per_page'])->toBe(1);
+    expect($template->html)->toContain('{{client_name}}')
+        ->and($template->html)->not->toContain('script')
+        ->and($template->css)->toContain('.mine')
+        ->and($template->css)->not->toContain('@import')
+        ->and($template->copies_per_page)->toBe(1);
 });
 
-test('saving reordered and disabled blocks persists them in order', function () {
+test('saving rejects templates over the size limit', function () {
     $organization = Organization::factory()->create();
     $user = actingAsTemplatePageAdmin($organization);
     $this->actingAs($user);
 
     Livewire::test(ReceiptTemplatePage::class)
-        ->fillForm([
-            'blocks' => [
-                ['type' => 'header', 'enabled' => true],
-                ['type' => 'organization_details', 'enabled' => true],
-                ['type' => 'client_details', 'enabled' => true],
-                ['type' => 'meters_table', 'enabled' => false],
-                ['type' => 'totals', 'enabled' => true],
-                ['type' => 'footer_note', 'enabled' => false],
-            ],
-        ])
+        ->set('templateHtml', '<p>'.str_repeat('а', 70000).'</p>')
         ->call('save')
-        ->assertHasNoFormErrors();
+        ->assertHasErrors(['templateHtml']);
 
-    $template = ReceiptTemplate::query()->whereBelongsTo($organization)->sole();
-
-    expect(array_column($template->settings['blocks'], 'type'))->toBe([
-        'header',
-        'organization_details',
-        'client_details',
-        'meters_table',
-        'totals',
-        'footer_note',
-    ])
-        ->and($template->settings['blocks'][3]['enabled'])->toBeFalse();
+    expect(ReceiptTemplate::query()->whereBelongsTo($organization)->exists())->toBeFalse();
 });
 
 test('reset deletes the template and returns the form to defaults', function () {
     $organization = Organization::factory()->create();
     ReceiptTemplate::factory()->for($organization)->create([
-        'settings' => ['texts' => ['title' => 'Счёт за воду']],
+        'html' => '<h1>Счёт за воду</h1>',
     ]);
     $user = actingAsTemplatePageAdmin($organization);
     $this->actingAs($user);
@@ -122,18 +106,24 @@ test('reset deletes the template and returns the form to defaults', function () 
     expect(ReceiptTemplate::query()->whereBelongsTo($organization)->exists())->toBeFalse();
 });
 
-test('preview reflects unsaved form state', function () {
+test('preview reflects unsaved template html', function () {
     $organization = Organization::factory()->create();
     $user = actingAsTemplatePageAdmin($organization);
     $this->actingAs($user);
 
     Livewire::test(ReceiptTemplatePage::class)
-        ->assertSee('data-receipt-copy')
-        ->assertSee('Предпросмотр')
-        ->fillForm([
-            'texts.title' => 'Счёт за воду',
-        ])
-        ->assertSee('Счёт за воду');
+        ->set('templateHtml', '<h1>Мой заголовок квитанции</h1>')
+        ->assertSee('Мой заголовок квитанции');
+});
+
+test('page opens with the default template in the editor state', function () {
+    $organization = Organization::factory()->create();
+    $user = actingAsTemplatePageAdmin($organization);
+    $this->actingAs($user);
+
+    Livewire::test(ReceiptTemplatePage::class)
+        ->assertSet('templateHtml', ReceiptTemplateDefaults::html())
+        ->assertSee('Квитанция на оплату коммунальной услуги');
 });
 
 test('preview uses the latest tenant receipt when available', function () {

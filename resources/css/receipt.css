@@ -47,24 +47,3 @@
         break-inside: avoid;
     }
 }
-
-.receipt-copy.receipt-font-compact {
-    zoom: 0.85;
-}
-
-.receipt-copy.receipt-font-large {
-    zoom: 1.15;
-}
-
-.receipt-copy.receipt-density-compact :is(th, td) {
-    padding: 2px 4px;
-}
-
-.receipt-copy.receipt-density-large :is(th, td) {
-    padding: 8px 10px;
-}
-
-.receipt-copy.receipt-no-borders,
-.receipt-copy.receipt-no-borders :is(th, td, header, section, div, table, thead, tbody, tr) {
-    border-color: transparent;
-}

@@ -2,31 +2,26 @@
 
 namespace App\Filament\Pages;
 
-use App\Actions\BuildReceiptPrintViewData;
+use App\Actions\BuildReceiptMeterReadingLines;
 use App\Models\Organization;
 use App\Models\Receipt;
 use App\Models\ReceiptTemplate;
 use App\Models\User;
-use App\Support\ReceiptTemplateConfig;
 use App\Support\ReceiptTemplateDefaults;
+use App\Support\ReceiptTemplateHtmlSanitizer;
 use App\Support\ReceiptTemplateImageStorage;
+use App\Support\ReceiptTemplateRenderer;
+use App\Support\ReceiptTemplateVariables;
 use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\FileUpload;
-use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Radio;
-use Filament\Forms\Components\Repeater;
-use Filament\Forms\Components\Select;
-use Filament\Forms\Components\Textarea;
-use Filament\Forms\Components\TextInput;
-use Filament\Forms\Components\Toggle;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Filament\Schemas\Components\Actions;
 use Filament\Schemas\Components\Form;
 use Filament\Schemas\Components\Section;
-use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Support\HtmlString;
@@ -57,6 +52,10 @@ class ReceiptTemplatePage extends Page
      */
     public ?array $data = [];
 
+    public ?string $templateHtml = null;
+
+    public ?string $templateCss = null;
+
     public static function canAccess(): bool
     {
         $tenant = Filament::getTenant();
@@ -69,7 +68,19 @@ class ReceiptTemplatePage extends Page
 
     public function mount(): void
     {
-        $this->fillFormFromTemplate($this->getTemplate());
+        $this->fillFromTemplate($this->getTemplate());
+    }
+
+    protected function fillFromTemplate(?ReceiptTemplate $template): void
+    {
+        $this->templateHtml = filled($template?->html) ? $template->html : ReceiptTemplateDefaults::html();
+        $this->templateCss = filled($template?->html) ? (string) $template->css : ReceiptTemplateDefaults::css();
+
+        $this->form->fill([
+            'copies_per_page' => $template?->copies_per_page === 1 ? 1 : 2,
+            'logo_path' => $template?->logo_path,
+            'qr_path' => $template?->qr_path,
+        ]);
     }
 
     public function form(Schema $schema): Schema
@@ -77,43 +88,18 @@ class ReceiptTemplatePage extends Page
         return $schema
             ->components([
                 Form::make([
-                    Section::make('Блоки квитанции')
-                        ->description('Перетащите блоки, чтобы поменять порядок. Шапку выключить нельзя.')
+                    Section::make('Настройки печати')
                         ->schema([
-                            Repeater::make('blocks')
-                                ->hiddenLabel()
-                                ->schema([
-                                    Hidden::make('type'),
-                                    Toggle::make('enabled')
-                                        ->label('Показывать')
-                                        ->disabled(fn (Get $get): bool => $get('type') === 'header')
-                                        ->dehydrated()
-                                        ->live(),
+                            Radio::make('copies_per_page')
+                                ->label('Экземпляров на листе')
+                                ->options([
+                                    2 => 'Два: для организации и для абонента',
+                                    1 => 'Один: только для абонента',
                                 ])
-                                ->itemLabel(fn (array $state): string => ReceiptTemplateDefaults::blockLabel((string) ($state['type'] ?? '')))
-                                ->reorderable()
-                                ->addable(false)
-                                ->deletable(false)
                                 ->live(),
                         ]),
-                    Section::make('Тексты')
-                        ->collapsible()
-                        ->schema([
-                            TextInput::make('texts.title')
-                                ->label('Заголовок квитанции')
-                                ->maxLength(255)
-                                ->live(onBlur: true),
-                            Textarea::make('texts.footer_note')
-                                ->label('Примечание внизу квитанции')
-                                ->helperText('Выводится в блоке «Примечание», если он включён.')
-                                ->maxLength(1000)
-                                ->live(onBlur: true),
-                            Section::make('Подписи полей')
-                                ->collapsed()
-                                ->schema($this->labelInputs()),
-                        ]),
                     Section::make('Изображения')
-                        ->collapsible()
+                        ->description('Вставляются в шаблон плейсхолдерами {{logo}} и {{qr}}.')
                         ->schema([
                             FileUpload::make('logo_path')
                                 ->label('Логотип')
@@ -130,45 +116,6 @@ class ReceiptTemplatePage extends Page
                                 ->maxSize(1024)
                                 ->preventFilePathTampering(allowFilePathUsing: fn (string $file): bool => self::filePathBelongsToTenant($file)),
                         ]),
-                    Section::make('Внешний вид')
-                        ->collapsible()
-                        ->columns(2)
-                        ->schema([
-                            Select::make('appearance.font_size')
-                                ->label('Размер шрифта')
-                                ->options([
-                                    'compact' => 'Компактный',
-                                    'normal' => 'Обычный',
-                                    'large' => 'Крупный',
-                                ])
-                                ->selectablePlaceholder(false)
-                                ->live(),
-                            Select::make('appearance.density')
-                                ->label('Плотность')
-                                ->options([
-                                    'compact' => 'Компактная',
-                                    'normal' => 'Обычная',
-                                    'large' => 'Просторная',
-                                ])
-                                ->selectablePlaceholder(false)
-                                ->live(),
-                            Radio::make('appearance.copies_per_page')
-                                ->label('Экземпляров на листе')
-                                ->options([
-                                    2 => 'Два: для организации и для абонента',
-                                    1 => 'Один: только для абонента',
-                                ])
-                                ->live(),
-                            Toggle::make('appearance.borders')
-                                ->label('Рамки')
-                                ->live(),
-                            Toggle::make('appearance.show_logo')
-                                ->label('Показывать логотип')
-                                ->live(),
-                            Toggle::make('appearance.show_qr')
-                                ->label('Показывать QR-код')
-                                ->live(),
-                        ]),
                 ])
                     ->livewireSubmitHandler('save')
                     ->footer([
@@ -181,24 +128,6 @@ class ReceiptTemplatePage extends Page
                     ]),
             ])
             ->statePath('data');
-    }
-
-    /**
-     * @return array<int, TextInput>
-     */
-    protected function labelInputs(): array
-    {
-        $inputs = [];
-
-        foreach (ReceiptTemplateDefaults::labels() as $key => $label) {
-            $inputs[] = TextInput::make("texts.labels.{$key}")
-                ->label($label)
-                ->placeholder($label)
-                ->maxLength(100)
-                ->live(onBlur: true);
-        }
-
-        return $inputs;
     }
 
     /**
@@ -225,7 +154,22 @@ class ReceiptTemplatePage extends Page
 
         $this->ensureFilePathsBelongToTenant($data, $tenant);
 
-        $settings = ReceiptTemplateConfig::fromSettings($this->settingsFromForm($data))->settings();
+        $rawHtml = (string) $this->templateHtml;
+        $rawCss = (string) $this->templateCss;
+
+        $errors = [];
+
+        if (strlen($rawHtml) > ReceiptTemplateHtmlSanitizer::MAX_HTML_BYTES) {
+            $errors['templateHtml'] = 'Шаблон слишком большой: HTML не может превышать 64 КБ.';
+        }
+
+        if (strlen($rawCss) > ReceiptTemplateHtmlSanitizer::MAX_CSS_BYTES) {
+            $errors['templateCss'] = 'Стили слишком большие: CSS не может превышать 32 КБ.';
+        }
+
+        if ($errors !== []) {
+            throw ValidationException::withMessages($errors);
+        }
 
         $existing = $this->getTemplate();
         $oldLogoPath = $existing?->logo_path;
@@ -234,7 +178,9 @@ class ReceiptTemplatePage extends Page
         $template = ReceiptTemplate::query()->updateOrCreate(
             ['organization_id' => $tenant->getKey()],
             [
-                'settings' => $settings,
+                'html' => ReceiptTemplateHtmlSanitizer::sanitizeHtml($rawHtml),
+                'css' => ReceiptTemplateHtmlSanitizer::sanitizeCss($rawCss),
+                'copies_per_page' => ((int) ($data['copies_per_page'] ?? 2)) === 1 ? 1 : 2,
                 'logo_path' => $data['logo_path'] ?? null,
                 'qr_path' => $data['qr_path'] ?? null,
             ],
@@ -248,7 +194,7 @@ class ReceiptTemplatePage extends Page
             ReceiptTemplateImageStorage::delete($oldQrPath);
         }
 
-        $this->fillFormFromTemplate($template);
+        $this->fillFromTemplate($template);
 
         Notification::make()
             ->success()
@@ -260,7 +206,7 @@ class ReceiptTemplatePage extends Page
     {
         $this->getTemplate()?->delete();
 
-        $this->fillFormFromTemplate(null);
+        $this->fillFromTemplate(null);
 
         Notification::make()
             ->success()
@@ -271,19 +217,23 @@ class ReceiptTemplatePage extends Page
     public function previewHtml(): HtmlString
     {
         $tenant = $this->tenantOrFail();
-        $saved = $this->getTemplate();
+        $generatedAt = now();
+        $receipt = $this->previewReceipt($tenant);
 
-        $config = ReceiptTemplateConfig::fromSettings(
-            $this->settingsFromForm(is_array($this->data) ? $this->data : []),
-            ReceiptTemplateImageStorage::url($saved?->logo_path),
-            ReceiptTemplateImageStorage::url($saved?->qr_path),
+        $html = ReceiptTemplateHtmlSanitizer::sanitizeHtml((string) $this->templateHtml);
+        $css = ReceiptTemplateHtmlSanitizer::sanitizeCss((string) $this->templateCss);
+
+        $rendered = ReceiptTemplateRenderer::render(
+            $html,
+            ReceiptTemplateVariables::values($receipt, 'Предпросмотр', $generatedAt),
+            ReceiptTemplateVariables::fragments(
+                $receipt,
+                app(BuildReceiptMeterReadingLines::class)->handle($receipt),
+                $generatedAt,
+            ),
         );
 
-        $viewData = app(BuildReceiptPrintViewData::class)->handle($this->previewReceipt($tenant), $config);
-
-        return new HtmlString(
-            view('receipts.partials.print-copy', array_merge($viewData, ['copyTitle' => 'Предпросмотр']))->render(),
-        );
+        return new HtmlString('<style>'.$css.'</style><article class="receipt-copy" data-receipt-copy="Предпросмотр">'.$rendered.'</article>');
     }
 
     /**
@@ -323,63 +273,6 @@ class ReceiptTemplatePage extends Page
         $receipt->setRelation('client', null);
 
         return $receipt;
-    }
-
-    /**
-     * Преобразует состояние формы в структуру settings. Терпит сырое
-     * состояние Livewire (используется и предпросмотром до валидации).
-     *
-     * @param  array<string, mixed>  $state
-     * @return array<string, mixed>
-     */
-    protected function settingsFromForm(array $state): array
-    {
-        $blocks = [];
-
-        foreach (is_array($state['blocks'] ?? null) ? $state['blocks'] : [] as $block) {
-            if (! is_array($block)) {
-                continue;
-            }
-
-            $blocks[] = [
-                'type' => (string) ($block['type'] ?? ''),
-                'enabled' => (bool) ($block['enabled'] ?? false),
-            ];
-        }
-
-        $texts = is_array($state['texts'] ?? null) ? $state['texts'] : [];
-        $appearance = is_array($state['appearance'] ?? null) ? $state['appearance'] : [];
-        $copiesPerPage = $appearance['copies_per_page'] ?? null;
-
-        return [
-            'blocks' => $blocks,
-            'texts' => [
-                'title' => (string) ($texts['title'] ?? ''),
-                'footer_note' => (string) ($texts['footer_note'] ?? ''),
-                'labels' => is_array($texts['labels'] ?? null) ? $texts['labels'] : [],
-            ],
-            'appearance' => [
-                'copies_per_page' => is_numeric($copiesPerPage) ? (int) $copiesPerPage : null,
-                'font_size' => $appearance['font_size'] ?? null,
-                'density' => $appearance['density'] ?? null,
-                'borders' => (bool) ($appearance['borders'] ?? true),
-                'show_logo' => (bool) ($appearance['show_logo'] ?? true),
-                'show_qr' => (bool) ($appearance['show_qr'] ?? false),
-            ],
-        ];
-    }
-
-    protected function fillFormFromTemplate(?ReceiptTemplate $template): void
-    {
-        $settings = ReceiptTemplateConfig::fromSettings($template->settings ?? [])->settings();
-
-        $this->form->fill([
-            'blocks' => $settings['blocks'],
-            'texts' => $settings['texts'],
-            'appearance' => $settings['appearance'],
-            'logo_path' => $template?->logo_path,
-            'qr_path' => $template?->qr_path,
-        ]);
     }
 
     protected function getTemplate(): ?ReceiptTemplate

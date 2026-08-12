@@ -9,6 +9,8 @@
         @if (file_exists(public_path('build/manifest.json')) || file_exists(public_path('hot')))
             @vite(['resources/css/app.css', 'resources/js/app.js'])
         @endif
+
+        <style>{!! $templateCss !!}</style>
     </head>
     <body class="bg-stone-100 text-zinc-950 antialiased print:bg-white">
         <main class="receipt-print-main mx-auto min-h-screen w-full max-w-5xl px-4 py-6 sm:px-6 lg:px-8 print:min-h-0 print:max-w-none print:p-0">
@@ -17,7 +19,7 @@
                     <p class="text-sm font-semibold uppercase tracking-[0.22em] text-teal-800">PDF</p>
                     <h1 class="mt-1 text-2xl font-semibold tracking-tight">Квитанция {{ $receipt->receipt_number }}</h1>
                     <p class="mt-1 text-sm text-zinc-600">
-                        {{ $template->copiesPerPage() === 1 ? 'На листе A5 печатается один экземпляр для абонента.' : 'На одном листе A5 печатаются два экземпляра: для организации и для абонента.' }}
+                        {{ $copiesPerPage === 1 ? 'На листе A5 печатается один экземпляр для абонента.' : 'На одном листе A5 печатаются два экземпляра: для организации и для абонента.' }}
                     </p>
                 </div>
 
@@ -30,9 +32,9 @@
                 </button>
             </div>
 
-            <section class="receipt-sheet {{ $template->copiesPerPage() === 1 ? 'receipt-sheet-single' : '' }}">
-                @foreach ($template->copyTitles() as $copyTitle)
-                    @include('receipts.partials.print-copy', ['copyTitle' => $copyTitle])
+            <section class="receipt-sheet {{ $copiesPerPage === 1 ? 'receipt-sheet-single' : '' }}">
+                @foreach ($renderedCopies as $copyTitle => $renderedCopy)
+                    @include('receipts.partials.print-copy', ['copyTitle' => $copyTitle, 'renderedCopy' => $renderedCopy])
                 @endforeach
             </section>
         </main>

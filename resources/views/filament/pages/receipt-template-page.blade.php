@@ -1,11 +1,17 @@
 <x-filament-panels::page>
-    <div class="grid gap-6 xl:grid-cols-[minmax(0,28rem)_minmax(0,1fr)]">
+    <div class="grid gap-6 xl:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]">
         <div>
             {{ $this->form }}
         </div>
 
-        <div>
-            <div class="sticky top-20">
+        <div class="space-y-6">
+            <div
+                id="receipt-template-editor"
+                wire:ignore
+                class="min-h-[24rem] rounded-xl border border-gray-200 bg-white dark:border-white/10 dark:bg-gray-900"
+            ></div>
+
+            <div>
                 <h2 class="mb-3 text-sm font-semibold text-gray-500 dark:text-gray-400">
                     Предпросмотр — как квитанция будет выглядеть при печати
                 </h2>

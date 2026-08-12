@@ -4,7 +4,6 @@ namespace Database\Factories;
 
 use App\Models\Organization;
 use App\Models\ReceiptTemplate;
-use App\Support\ReceiptTemplateDefaults;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -19,7 +18,6 @@ class ReceiptTemplateFactory extends Factory
     {
         return [
             'organization_id' => Organization::factory(),
-            'settings' => ReceiptTemplateDefaults::settings(),
             'logo_path' => null,
             'qr_path' => null,
             'html' => null,

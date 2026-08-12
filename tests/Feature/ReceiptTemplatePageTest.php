@@ -116,6 +116,19 @@ test('preview reflects unsaved template html', function () {
         ->assertSee('Мой заголовок квитанции');
 });
 
+test('preview neutralizes script and style breakout in unsaved template', function () {
+    $organization = Organization::factory()->create();
+    $user = actingAsTemplatePageAdmin($organization);
+    $this->actingAs($user);
+
+    Livewire::test(ReceiptTemplatePage::class)
+        ->set('templateHtml', '<p>ok</p><script>alert(1)</script>')
+        ->set('templateCss', 'body{color:red}</style><script>alert(2)</script>')
+        ->assertDontSee('<script>alert(1)</script>', false)
+        ->assertDontSee('</style><script>', false)
+        ->assertSee('ok');
+});
+
 test('page opens with the default template in the editor state', function () {
     $organization = Organization::factory()->create();
     $user = actingAsTemplatePageAdmin($organization);

@@ -1,0 +1,157 @@
+.rt-copy {
+    font-size: 10px;
+    line-height: 1.3;
+    color: #09090b;
+}
+
+.rt-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    border-bottom: 1px solid #18181b;
+    padding-bottom: 8px;
+}
+
+.rt-copy-title,
+.rt-doc-title {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: #71717a;
+    margin: 0 0 4px;
+}
+
+.rt-org-name {
+    font-size: 14px;
+    font-weight: 700;
+    margin: 4px 0 2px;
+}
+
+.rt-org-address {
+    color: #52525b;
+    margin: 0;
+}
+
+.rt-header-aside {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+}
+
+.rt-logo,
+.rt-qr {
+    width: 40px;
+    height: 40px;
+    object-fit: contain;
+}
+
+.rt-meta {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 2px 6px;
+    margin: 0;
+    min-width: 130px;
+}
+
+.rt-meta dt,
+.rt-details dt {
+    color: #71717a;
+}
+
+.rt-meta dd,
+.rt-details dd {
+    font-weight: 600;
+    margin: 0;
+}
+
+.rt-columns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    border-bottom: 1px solid #d4d4d8;
+    padding: 8px 0;
+}
+
+.rt-details h3,
+.rt-meters-title {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 0 0 4px;
+}
+
+.rt-details dl {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 2px 6px;
+    font-size: 9px;
+    margin: 0;
+}
+
+.rt-meters {
+    margin-top: 8px;
+}
+
+.rt-meters-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+}
+
+.rt-meters-generated {
+    font-size: 8px;
+    color: #71717a;
+    margin: 0;
+}
+
+.rt-table-wrap {
+    margin-top: 4px;
+    border: 1px solid #18181b;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.rt-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 9px;
+    text-align: left;
+}
+
+.rt-table th,
+.rt-table td {
+    border: 1px solid #18181b;
+    padding: 3px 6px;
+}
+
+.rt-table thead th {
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #52525b;
+    background: #f4f4f5;
+}
+
+.rt-num {
+    text-align: right;
+}
+
+.rt-strong {
+    font-weight: 700;
+}
+
+.rt-empty {
+    text-align: center;
+    color: #71717a;
+}
+
+.rt-row-total td {
+    font-weight: 700;
+    background: #fafafa;
+}
+
+.rt-totals {
+    margin-top: 8px;
+}

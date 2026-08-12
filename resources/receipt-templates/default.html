@@ -1,0 +1,80 @@
+<div class="rt-copy">
+    <header class="rt-header">
+        <div class="rt-header-main">
+            <p class="rt-copy-title">{{copy_title}}</p>
+            <p class="rt-doc-title">Квитанция на оплату коммунальной услуги</p>
+            <h2 class="rt-org-name">{{organization_name}}</h2>
+            <p class="rt-org-address">{{organization_address}}</p>
+        </div>
+        <div class="rt-header-aside">
+            {{logo}}
+            <dl class="rt-meta">
+                <dt>Номер</dt>
+                <dd>{{receipt_number}}</dd>
+                <dt>Период</dt>
+                <dd>{{period}}</dd>
+                <dt>Дата</dt>
+                <dd>{{issued_date}}</dd>
+            </dl>
+        </div>
+    </header>
+
+    <div class="rt-columns">
+        <section class="rt-details">
+            <h3>Абонент</h3>
+            <dl>
+                <dt>Лицевой счёт</dt>
+                <dd>{{account_number}}</dd>
+                <dt>Абонент</dt>
+                <dd>{{client_name}}</dd>
+                <dt>Адрес</dt>
+                <dd>{{client_address}}</dd>
+                <dt>Период</dt>
+                <dd>{{period}}</dd>
+                <dt>Услуга</dt>
+                <dd>{{service_name}}</dd>
+                <dt>Тип расчёта</dt>
+                <dd>{{billing_type}}</dd>
+            </dl>
+        </section>
+
+        <section class="rt-details">
+            <h3>Реквизиты</h3>
+            <dl>
+                <dt>Организация</dt>
+                <dd>{{organization_name}}</dd>
+                <dt>БИН / ИИН</dt>
+                <dd>{{organization_bin}}</dd>
+                <dt>Телефон</dt>
+                <dd>{{organization_phone}}</dd>
+                <dt>Адрес</dt>
+                <dd>{{organization_address}}</dd>
+                <dt>Банк</dt>
+                <dd>{{organization_bank}}</dd>
+                <dt>IBAN</dt>
+                <dd>{{organization_iban}}</dd>
+            </dl>
+        </section>
+    </div>
+
+    {{meters_table}}
+
+    <section class="rt-table-wrap rt-totals">
+        <table class="rt-table">
+            <tbody>
+                <tr>
+                    <td>Долг</td>
+                    <td class="rt-num rt-totals-value">{{opening_balance}}</td>
+                </tr>
+                <tr>
+                    <td>Оплачено</td>
+                    <td class="rt-num">{{paid_amount}}</td>
+                </tr>
+                <tr class="rt-row-total">
+                    <td>К оплате</td>
+                    <td class="rt-num">{{amount_due}}</td>
+                </tr>
+            </tbody>
+        </table>
+    </section>
+</div>

@@ -8,8 +8,36 @@
             <div
                 id="receipt-template-editor"
                 wire:ignore
-                class="min-h-[24rem] rounded-xl border border-gray-200 bg-white dark:border-white/10 dark:bg-gray-900"
-            ></div>
+                x-data="{
+                    editor: null,
+                    init() {
+                        this.editor = window.initReceiptTemplateEditor(
+                            this.$refs.canvas,
+                            @js($this->editorConfig()),
+                            () => ({ html: @js($this->templateHtml), css: @js($this->templateCss) }),
+                        );
+                    },
+                    async apply() {
+                        await this.$wire.set('templateHtml', this.editor.getHtml(), false);
+                        await this.$wire.set('templateCss', this.editor.getCss(), false);
+                    },
+                    async applyAndSave() {
+                        await this.apply();
+                        await this.$wire.call('save');
+                    },
+                    async applyAndPreview() {
+                        await this.apply();
+                        await this.$wire.$refresh();
+                    },
+                }"
+            >
+                <div class="mb-3 flex flex-wrap gap-3">
+                    <x-filament::button x-on:click="applyAndSave">Сохранить шаблон</x-filament::button>
+                    <x-filament::button color="gray" x-on:click="applyAndPreview">Обновить предпросмотр</x-filament::button>
+                </div>
+
+                <div x-ref="canvas" class="rounded-xl border border-gray-200 dark:border-white/10"></div>
+            </div>
 
             <div>
                 <h2 class="mb-3 text-sm font-semibold text-gray-500 dark:text-gray-400">
@@ -22,4 +50,8 @@
             </div>
         </div>
     </div>
+
+    @push('scripts')
+        @vite('resources/js/receipt-template-editor.js')
+    @endpush
 </x-filament-panels::page>

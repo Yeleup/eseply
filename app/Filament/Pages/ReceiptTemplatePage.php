@@ -202,6 +202,26 @@ class ReceiptTemplatePage extends Page
             ->send();
     }
 
+    /**
+     * Конфигурация редактора для JS: переменные и стартовое содержимое.
+     *
+     * @return array{variables: list<array{key: string, label: string}>, defaultHtml: string, defaultCss: string}
+     */
+    public function editorConfig(): array
+    {
+        $variables = [];
+
+        foreach (ReceiptTemplateVariables::labels() as $key => $label) {
+            $variables[] = ['key' => $key, 'label' => $label];
+        }
+
+        return [
+            'variables' => $variables,
+            'defaultHtml' => ReceiptTemplateDefaults::html(),
+            'defaultCss' => ReceiptTemplateDefaults::css(),
+        ];
+    }
+
     public function resetTemplate(): void
     {
         $this->getTemplate()?->delete();

@@ -126,6 +126,17 @@ test('page opens with the default template in the editor state', function () {
         ->assertSee('Квитанция на оплату коммунальной услуги');
 });
 
+test('page exposes the editor container and config', function () {
+    $organization = Organization::factory()->create();
+    $user = actingAsTemplatePageAdmin($organization);
+    $this->actingAs($user);
+
+    Livewire::test(ReceiptTemplatePage::class)
+        ->assertSee('receipt-template-editor', false)
+        ->assertSee('Лицевой счёт')
+        ->assertSee('Таблица счётчиков');
+});
+
 test('preview uses the latest tenant receipt when available', function () {
     $organization = Organization::factory()->create();
     Receipt::factory()->for($organization)->create([

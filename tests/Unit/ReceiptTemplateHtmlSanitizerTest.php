@@ -74,3 +74,22 @@ test('css filter strips imports urls and expressions but keeps rules', function 
         ->and($clean)->not->toContain('behavior:')
         ->and($clean)->not->toContain('javascript:');
 });
+
+test('sanitizer filters dangerous css inside style attributes', function () {
+    $html = '<div style="color:red;background:url(https://evil.example/x.png)">a</div>'
+        .'<p style="width:expression(alert(1));behavior:url(x.htc)">b</p>';
+
+    $clean = ReceiptTemplateHtmlSanitizer::sanitizeHtml($html);
+
+    expect($clean)->toContain('color:red')
+        ->and($clean)->not->toContain('evil.example')
+        ->and($clean)->not->toContain('expression(')
+        ->and($clean)->not->toContain('behavior:');
+});
+
+test('sanitizer blocks url encoded traversal in image sources', function () {
+    $clean = ReceiptTemplateHtmlSanitizer::sanitizeHtml('<img src="/storage/%2e%2e/%2e%2e/etc/passwd">');
+
+    expect($clean)->not->toContain('%2e')
+        ->and($clean)->not->toContain('/etc/passwd');
+});

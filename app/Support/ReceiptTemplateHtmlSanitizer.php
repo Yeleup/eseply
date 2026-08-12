@@ -62,8 +62,9 @@ final class ReceiptTemplateHtmlSanitizer
         }
 
         $clean = (new HtmlSanitizer($config))->sanitize($html);
+        $clean = self::restrictImageSources($clean);
 
-        return self::restrictImageSources($clean);
+        return self::restrictStyleAttributes($clean);
     }
 
     public static function sanitizeCss(string $css): string
@@ -80,7 +81,9 @@ final class ReceiptTemplateHtmlSanitizer
     /**
      * Симфони-санитайзер уже отфильтровал схемы, но абсолютные и data-URL
      * могли выжить в зависимости от конфигурации — оставляем только
-     * относительные пути внутри /storage/.
+     * относительные пути внутри /storage/. Значение декодируется как из
+     * HTML-сущностей, так и из URL-кодирования (%2e и т.п.), иначе
+     * traversal вида /storage/%2e%2e/../etc/passwd проходит проверку.
      */
     private static function restrictImageSources(string $html): string
     {
@@ -88,12 +91,38 @@ final class ReceiptTemplateHtmlSanitizer
             '/(<img\b[^>]*\bsrc=")([^"]*)(")/iu',
             function (array $matches): string {
                 $src = html_entity_decode($matches[2], ENT_QUOTES | ENT_HTML5);
+                $src = rawurldecode($src);
 
                 if (str_starts_with($src, '/storage/') && ! str_contains($src, '..')) {
                     return $matches[0];
                 }
 
                 return $matches[1].$matches[3];
+            },
+            $html,
+        );
+    }
+
+    /**
+     * У symfony/html-sanitizer нет CSS-санитайзера для значений атрибута
+     * style — опасные конструкции (url(javascript:...), expression(...),
+     * behavior:...) проходят насквозь. Прогоняем значение через
+     * sanitizeCss() как список деклараций; пустое после фильтра значение —
+     * атрибут убирается целиком.
+     */
+    private static function restrictStyleAttributes(string $html): string
+    {
+        return (string) preg_replace_callback(
+            '/\bstyle=(["\'])(.*?)\1/is',
+            function (array $matches): string {
+                $decoded = html_entity_decode($matches[2], ENT_QUOTES | ENT_HTML5);
+                $filtered = trim(self::sanitizeCss($decoded));
+
+                if ($filtered === '') {
+                    return '';
+                }
+
+                return 'style="'.htmlspecialchars($filtered, ENT_QUOTES, 'UTF-8').'"';
             },
             $html,
         );

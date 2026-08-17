@@ -7,6 +7,7 @@ use App\Filament\Support\BillingPeriodOptions;
 use App\Filament\Support\CurrentBillingPeriod;
 use App\Filament\Support\OrganizationMemberAccess;
 use App\Models\BalanceAdjustment;
+use Closure;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
@@ -60,6 +61,21 @@ class BalanceAdjustmentsRelationManager extends RelationManager
                             ->options(BalanceAdjustmentType::class)
                             ->default(BalanceAdjustmentType::ManualAdjustment->value)
                             ->required()
+                            ->rules([
+                                fn (?BalanceAdjustment $record): Closure => function (string $attribute, mixed $value, Closure $fail) use ($record): void {
+                                    if ($value !== BalanceAdjustmentType::OpeningBalance->value) {
+                                        return;
+                                    }
+
+                                    if ($record?->type === BalanceAdjustmentType::OpeningBalance) {
+                                        return;
+                                    }
+
+                                    if (BalanceAdjustment::openingBalanceLockedFor($this->ownerRecord->getKey())) {
+                                        $fail(BalanceAdjustment::OPENING_BALANCE_LOCKED_MESSAGE);
+                                    }
+                                },
+                            ])
                             ->native(false),
                         TextInput::make('amount')
                             ->label('Сумма')

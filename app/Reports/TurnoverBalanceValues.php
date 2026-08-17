@@ -2,34 +2,57 @@
 
 namespace App\Reports;
 
+use App\BalanceAdjustmentType;
 use App\BillingPeriodStatus;
 use App\Models\BillingPeriod;
 use App\Models\Organization;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Query\Builder as QueryBuilder;
+use Illuminate\Database\Query\Expression;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Facades\DB;
 
 /**
  * Opening balance, accrual, payment and adjustment of one client for one billing period.
  *
- * A closed billing period is fixed, so the four values come from the stored accrual.
+ * A closed billing period is fixed, so the values come from the stored accrual.
  * Any other billing period is still being collected, so they come from the closing
- * balance of the previous accrual, the receipt, the payments and the balance
- * adjustments of the period.
+ * balance of the previous accrual, the opening balance adjustments of the period,
+ * the receipt, the payments and the remaining balance adjustments of the period.
  *
- * Both consumers select the same four aliases from the `clients` table, so the
+ * Opening balance adjustments are the once-per-client incoming balances, so they
+ * belong to the opening balance of the period they are entered in, not to its
+ * turnover. A closed accrual already stores them inside `opening_balance`, which
+ * is why the closed branch selects a literal zero for the opening adjustments.
+ *
+ * Both consumers select the same aliases from the `clients` table, so the
  * detail report and the summary service always describe the same rows.
  */
 final class TurnoverBalanceValues
 {
     public const string OPENING_BALANCE = 'opening_balance_value';
 
+    public const string OPENING_ADJUSTMENT = 'opening_adjustment_value';
+
     public const string ACCRUED_AMOUNT = 'accrued_amount_value';
 
     public const string PAID_AMOUNT = 'paid_amount_value';
 
     public const string ADJUSTMENT_AMOUNT = 'adjustment_amount_value';
+
+    /**
+     * @return list<string>
+     */
+    public static function aliases(): array
+    {
+        return [
+            self::OPENING_BALANCE,
+            self::OPENING_ADJUSTMENT,
+            self::ACCRUED_AMOUNT,
+            self::PAID_AMOUNT,
+            self::ADJUSTMENT_AMOUNT,
+        ];
+    }
 
     public static function isClosed(?BillingPeriod $billingPeriod): bool
     {
@@ -47,12 +70,13 @@ final class TurnoverBalanceValues
     }
 
     /**
-     * @return list<string>
+     * @return list<string|Expression>
      */
     public static function closedPeriodColumns(): array
     {
         return [
             'accruals.opening_balance as '.self::OPENING_BALANCE,
+            DB::raw('0 as '.self::OPENING_ADJUSTMENT),
             'accruals.amount as '.self::ACCRUED_AMOUNT,
             'accruals.paid_amount as '.self::PAID_AMOUNT,
             'accruals.adjustment_amount as '.self::ADJUSTMENT_AMOUNT,
@@ -66,6 +90,7 @@ final class TurnoverBalanceValues
     {
         return [
             self::OPENING_BALANCE => self::previousClosingBalanceSubQuery($organization, $billingPeriod),
+            self::OPENING_ADJUSTMENT => self::openingAdjustmentAmountSubQuery($billingPeriod),
             self::ACCRUED_AMOUNT => self::receiptAmountSubQuery($billingPeriod),
             self::PAID_AMOUNT => self::paidAmountSubQuery($billingPeriod),
             self::ADJUSTMENT_AMOUNT => self::adjustmentAmountSubQuery($billingPeriod),
@@ -83,7 +108,8 @@ final class TurnoverBalanceValues
      */
     public static function metricExpressions(string $prefix = ''): array
     {
-        $opening = 'coalesce('.$prefix.self::OPENING_BALANCE.', 0)';
+        $opening = '(coalesce('.$prefix.self::OPENING_BALANCE.', 0)'
+            .' + coalesce('.$prefix.self::OPENING_ADJUSTMENT.', 0))';
         $accrued = 'coalesce('.$prefix.self::ACCRUED_AMOUNT.', 0)';
         $paid = 'coalesce('.$prefix.self::PAID_AMOUNT.', 0)';
         $adjustment = 'coalesce('.$prefix.self::ADJUSTMENT_AMOUNT.', 0)';
@@ -130,7 +156,8 @@ final class TurnoverBalanceValues
     public static function metricsOf(Model $record): array
     {
         return self::metrics(
-            (float) ($record->getAttribute(self::OPENING_BALANCE) ?? 0),
+            (float) ($record->getAttribute(self::OPENING_BALANCE) ?? 0)
+                + (float) ($record->getAttribute(self::OPENING_ADJUSTMENT) ?? 0),
             (float) ($record->getAttribute(self::ACCRUED_AMOUNT) ?? 0),
             (float) ($record->getAttribute(self::PAID_AMOUNT) ?? 0),
             (float) ($record->getAttribute(self::ADJUSTMENT_AMOUNT) ?? 0),
@@ -168,11 +195,21 @@ final class TurnoverBalanceValues
             ->where('payments.billing_period_id', $billingPeriod->getKey());
     }
 
+    private static function openingAdjustmentAmountSubQuery(BillingPeriod $billingPeriod): QueryBuilder
+    {
+        return DB::table('balance_adjustments')
+            ->selectRaw('coalesce(sum(balance_adjustments.amount), 0)')
+            ->whereColumn('balance_adjustments.client_id', 'clients.id')
+            ->where('balance_adjustments.billing_period_id', $billingPeriod->getKey())
+            ->where('balance_adjustments.type', BalanceAdjustmentType::OpeningBalance->value);
+    }
+
     private static function adjustmentAmountSubQuery(BillingPeriod $billingPeriod): QueryBuilder
     {
         return DB::table('balance_adjustments')
             ->selectRaw('coalesce(sum(balance_adjustments.amount), 0)')
             ->whereColumn('balance_adjustments.client_id', 'clients.id')
-            ->where('balance_adjustments.billing_period_id', $billingPeriod->getKey());
+            ->where('balance_adjustments.billing_period_id', $billingPeriod->getKey())
+            ->where('balance_adjustments.type', '!=', BalanceAdjustmentType::OpeningBalance->value);
     }
 }

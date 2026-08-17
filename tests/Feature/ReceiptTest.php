@@ -188,6 +188,81 @@ test('meter reading creates a receipt for the client billing period without accr
         ->and($receipt->closing_balance)->toBe('1550.00');
 });
 
+test('meter reading receipt shows opening balance adjustments as opening balance', function () {
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create();
+    $client = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'account_number' => '10009',
+            'billing_type' => 'meter',
+        ]);
+    $meter = Meter::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->for($client)
+        ->create([
+            'initial_reading' => 100,
+        ]);
+
+    Tariff::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'client_type' => 'individual',
+            'unit_price' => 90,
+            'starts_on' => '2026-05-01',
+            'status' => 'active',
+        ]);
+
+    Payment::factory()
+        ->for($organization)
+        ->for($client)
+        ->create([
+            'period' => '202605',
+            'amount' => 300,
+        ]);
+
+    BalanceAdjustment::factory()
+        ->count(2)
+        ->for($organization)
+        ->for($client)
+        ->sequence(
+            [
+                'period' => '202605',
+                'type' => BalanceAdjustmentType::OpeningBalance->value,
+                'amount' => 50,
+            ],
+            [
+                'period' => '202605',
+                'type' => BalanceAdjustmentType::ManualAdjustment->value,
+                'amount' => -20,
+            ],
+        )
+        ->create();
+
+    MeterReading::factory()
+        ->for($meter)
+        ->create([
+            'period' => '202605',
+            'previous_reading' => 100,
+            'current_reading' => 120,
+        ]);
+
+    $receipt = Receipt::query()
+        ->whereBelongsTo($organization)
+        ->whereBelongsTo($client)
+        ->forPeriod('202605')
+        ->sole();
+
+    expect($receipt->amount)->toBe('1800.00')
+        ->and($receipt->paid_amount)->toBe('300.00')
+        ->and($receipt->adjustment_amount)->toBe('-20.00')
+        ->and($receipt->opening_balance)->toBe('50.00')
+        ->and($receipt->closing_balance)->toBe('1530.00');
+});
+
 test('updating a meter reading updates the same receipt', function () {
     $organization = Organization::factory()->create();
     $utilityService = UtilityService::factory()->for($organization)->create();
@@ -492,7 +567,8 @@ test('billing month closure creates accruals without creating receipts', functio
         ->and($accrual->client_name)->toBe('ТОО Дала')
         ->and($accrual->utility_service_name)->toBe('Вывоз мусора')
         ->and($accrual->amount)->toBe('7500.00')
-        ->and($accrual->adjustment_amount)->toBe('500.00')
+        ->and($accrual->adjustment_amount)->toBe('0.00')
+        ->and($accrual->opening_balance)->toBe('500.00')
         ->and($accrual->closing_balance)->toBe('8000.00')
         ->and(Receipt::query()->whereBelongsTo($client)->forPeriod('202605')->count())->toBe(0);
 });

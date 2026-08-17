@@ -2,6 +2,7 @@
 
 namespace App\Actions;
 
+use App\BalanceAdjustmentType;
 use App\BillingPeriodStatus;
 use App\ClientType;
 use App\Models\Accrual;
@@ -195,6 +196,7 @@ class CloseBillingMonth
         $closedClientIds = $this->closedClientIds($billingPeriod, $clientIdChunk);
         $metersByClient = $this->activeMetersByClient($organization, $billingPeriod, $utilityService, $clientIdChunk);
         $openingBalances = $this->openingBalances($organization, $periodStart, $clientIdChunk);
+        $openingAdjustmentAmounts = $this->openingAdjustmentAmounts($billingPeriod, $clientIdChunk);
         $paidAmounts = $this->paidAmounts($billingPeriod, $clientIdChunk);
         $adjustmentAmounts = $this->adjustmentAmounts($billingPeriod, $clientIdChunk);
 
@@ -212,7 +214,11 @@ class CloseBillingMonth
                 throw new RuntimeException("Данные абонента {$client->account_number} изменились во время закрытия месяца.");
             }
 
-            $openingBalance = (float) ($openingBalances[$client->id] ?? 0);
+            $openingBalance = round(
+                (float) ($openingBalances[$client->id] ?? 0)
+                    + (float) ($openingAdjustmentAmounts[$client->id] ?? 0),
+                2,
+            );
             $paidAmount = (float) ($paidAmounts[$client->id] ?? 0);
             $adjustmentAmount = (float) ($adjustmentAmounts[$client->id] ?? 0);
 
@@ -552,6 +558,27 @@ class CloseBillingMonth
     }
 
     /**
+     * Incoming balances of the period, per client.
+     *
+     * Opening balance adjustments enter the opening balance of the accrual
+     * instead of its turnover, so they are summed apart from the other types.
+     *
+     * @param  list<int>  $clientIds
+     * @return array<int, string>
+     */
+    private function openingAdjustmentAmounts(BillingPeriod $billingPeriod, array $clientIds): array
+    {
+        return BalanceAdjustment::query()
+            ->whereBelongsTo($billingPeriod)
+            ->whereIn('client_id', $clientIds)
+            ->where('type', BalanceAdjustmentType::OpeningBalance->value)
+            ->groupBy('client_id')
+            ->selectRaw('client_id, sum(amount) as period_amount')
+            ->pluck('period_amount', 'client_id')
+            ->all();
+    }
+
+    /**
      * @param  list<int>  $clientIds
      * @return array<int, string>
      */
@@ -560,6 +587,7 @@ class CloseBillingMonth
         return BalanceAdjustment::query()
             ->whereBelongsTo($billingPeriod)
             ->whereIn('client_id', $clientIds)
+            ->where('type', '!=', BalanceAdjustmentType::OpeningBalance->value)
             ->groupBy('client_id')
             ->selectRaw('client_id, sum(amount) as period_amount')
             ->pluck('period_amount', 'client_id')

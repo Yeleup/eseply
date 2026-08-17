@@ -277,12 +277,7 @@ class TurnoverBalanceSheetReport implements FiltersExcelExport, OrganizationRepo
      */
     private function withoutValues(Builder $query): Builder
     {
-        foreach ([
-            TurnoverBalanceValues::OPENING_BALANCE,
-            TurnoverBalanceValues::ACCRUED_AMOUNT,
-            TurnoverBalanceValues::PAID_AMOUNT,
-            TurnoverBalanceValues::ADJUSTMENT_AMOUNT,
-        ] as $alias) {
+        foreach (TurnoverBalanceValues::aliases() as $alias) {
             $query->selectRaw("0 as {$alias}");
         }
 

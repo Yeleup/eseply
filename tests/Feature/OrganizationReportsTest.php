@@ -1,5 +1,6 @@
 <?php
 
+use App\BalanceAdjustmentType;
 use App\ClientType;
 use App\Filament\Pages\Reports\ListReports;
 use App\Filament\Pages\Reports\ViewReport;
@@ -2414,6 +2415,7 @@ test('turnover balance sheet builds an open billing period from receipts payment
         ->for($client)
         ->create([
             'period' => '202606',
+            'type' => BalanceAdjustmentType::ManualAdjustment->value,
             'amount' => -100,
         ]);
 
@@ -2442,6 +2444,104 @@ test('turnover balance sheet builds an open billing period from receipts payment
         ->assertTableColumnStateSet('opening_credit', 2000.0, $fixture['overpaid'])
         ->assertTableColumnStateSet('accrued_amount', 0.0, $fixture['overpaid'])
         ->assertTableColumnStateSet('closing_credit', 2000.0, $fixture['overpaid']);
+});
+
+test('turnover balance sheet shows opening balance adjustments as opening balance in an open period', function () {
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create();
+
+    $city = City::factory()->for($organization)->create(['name' => 'Алматы']);
+    $region = Region::factory()->for($organization)->for($city)->create(['name' => 'Алмалинский']);
+    $street = Street::factory()->for($region)->create(['name' => 'Абая']);
+
+    $openPeriod = billingPeriodFor($organization, '202606');
+
+    $client = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'account_number' => '800101',
+            'name' => 'Новый абонент',
+            'region_id' => $region->id,
+            'street_id' => $street->id,
+        ]);
+
+    BalanceAdjustment::factory()
+        ->count(2)
+        ->for($organization)
+        ->for($client)
+        ->sequence(
+            [
+                'period' => '202606',
+                'type' => BalanceAdjustmentType::OpeningBalance->value,
+                'amount' => 500,
+            ],
+            [
+                'period' => '202606',
+                'type' => BalanceAdjustmentType::ManualAdjustment->value,
+                'amount' => -100,
+            ],
+        )
+        ->create();
+
+    Receipt::factory()
+        ->for($organization)
+        ->for($client)
+        ->create([
+            'period' => '202606',
+            'receipt_number' => '202606-800101',
+            'account_number' => '800101',
+            'client_name' => 'Новый абонент',
+            'amount' => 3000,
+            'paid_amount' => 500,
+            'issued_at' => '2026-06-05 09:00:00',
+        ]);
+    Payment::factory()
+        ->for($organization)
+        ->for($client)
+        ->create([
+            'period' => '202606',
+            'amount' => 500,
+            'paid_at' => '2026-06-09',
+        ]);
+
+    $operator = actingAsReportsTenant($organization);
+
+    Livewire::test(ViewReport::class, [
+        'report' => 'turnover-balance-sheet',
+        'period' => (string) $openPeriod->getKey(),
+    ])
+        ->assertOk()
+        ->assertTableColumnStateSet('opening_debit', 500.0, $client)
+        ->assertTableColumnStateSet('opening_credit', 0.0, $client)
+        ->assertTableColumnStateSet('accrued_amount', 3000.0, $client)
+        ->assertTableColumnStateSet('adjustment_amount', -100.0, $client)
+        ->assertTableColumnStateSet('paid_amount', 500.0, $client)
+        ->assertTableColumnStateSet('turnover_debit', 3000.0, $client)
+        ->assertTableColumnStateSet('turnover_credit', 600.0, $client)
+        ->assertTableColumnStateSet('closing_debit', 2900.0, $client)
+        ->assertTableColumnStateSet('closing_credit', 0.0, $client)
+        ->assertTableColumnSummarySet('opening_debit', 'total', 500.0)
+        ->assertTableColumnSummarySet('turnover_debit', 'total', 3000.0)
+        ->assertTableColumnSummarySet('closing_debit', 'total', 2900.0);
+
+    $cityRecords = collect(app(ReportSummaryService::class)->records(
+        'turnover-balance-sheet',
+        ReportSummaryGroup::City,
+        $organization,
+        $operator,
+        $openPeriod,
+    ))->keyBy('group_label');
+
+    expect($cityRecords->get('Алматы'))->toMatchArray([
+        'opening_debit' => 500.0,
+        'opening_credit' => 0.0,
+        'turnover_debit' => 3000.0,
+        'turnover_credit' => 600.0,
+        'closing_debit' => 2900.0,
+        'closing_credit' => 0.0,
+        'adjustment_amount' => -100.0,
+    ]);
 });
 
 test('turnover balance sheet excel export repeats the two level heading and totals', function () {

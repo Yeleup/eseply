@@ -344,7 +344,7 @@ class ReportSummaryService
     }
 
     /**
-     * The detail report and the summary select the same four values from `clients`,
+     * The detail report and the summary select the same values from `clients`,
      * then split them into debit and credit per subscriber before they are summed.
      */
     private function turnoverBalanceSheetRows(
@@ -363,12 +363,7 @@ class ReportSummaryService
         if (! $billingPeriod instanceof BillingPeriod) {
             $values->whereRaw('1 = 0');
 
-            foreach ([
-                TurnoverBalanceValues::OPENING_BALANCE,
-                TurnoverBalanceValues::ACCRUED_AMOUNT,
-                TurnoverBalanceValues::PAID_AMOUNT,
-                TurnoverBalanceValues::ADJUSTMENT_AMOUNT,
-            ] as $alias) {
+            foreach (TurnoverBalanceValues::aliases() as $alias) {
                 $values->selectRaw("0 as {$alias}");
             }
         } elseif (TurnoverBalanceValues::isClosed($billingPeriod)) {

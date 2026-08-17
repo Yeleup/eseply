@@ -26,7 +26,7 @@ class BalanceAdjustmentFactory extends Factory
                 ->create(['organization_id' => $attributes['organization_id']])
                 ->id,
             'period' => fake()->dateTimeBetween('-1 year', 'now')->format('Ym'),
-            'type' => fake()->randomElement(BalanceAdjustmentType::cases())->value,
+            'type' => BalanceAdjustmentType::ManualAdjustment->value,
             'amount' => fake()->randomFloat(2, -10000, 10000),
             'adjusted_at' => fake()->dateTimeBetween('-1 year', 'now')->format('Y-m-d'),
             'note' => fake()->optional()->sentence(),

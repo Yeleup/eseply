@@ -3,13 +3,16 @@
 namespace App\Filament\Resources\BalanceAdjustments\Schemas;
 
 use App\BalanceAdjustmentType;
+use App\Models\BalanceAdjustment;
 use App\Models\Client;
+use Closure;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Components\Section;
+use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
 
 class BalanceAdjustmentForm
@@ -41,6 +44,24 @@ class BalanceAdjustmentForm
                             ->options(BalanceAdjustmentType::class)
                             ->default(BalanceAdjustmentType::ManualAdjustment->value)
                             ->required()
+                            ->rules([
+                                fn (Get $get, ?BalanceAdjustment $record): Closure => function (string $attribute, mixed $value, Closure $fail) use ($get, $record): void {
+                                    if ($value !== BalanceAdjustmentType::OpeningBalance->value) {
+                                        return;
+                                    }
+
+                                    $clientId = $get('client_id');
+
+                                    if ($record?->type === BalanceAdjustmentType::OpeningBalance
+                                        && (int) $clientId === (int) $record->client_id) {
+                                        return;
+                                    }
+
+                                    if (BalanceAdjustment::openingBalanceLockedFor($clientId)) {
+                                        $fail(BalanceAdjustment::OPENING_BALANCE_LOCKED_MESSAGE);
+                                    }
+                                },
+                            ])
                             ->native(false),
                         TextInput::make('amount')
                             ->label('Сумма')

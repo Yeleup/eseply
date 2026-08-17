@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\BalanceAdjustmentType;
 use App\ClientType;
 use Carbon\CarbonImmutable;
 use Database\Factories\ReceiptFactory;
@@ -230,9 +231,15 @@ class Receipt extends Model
     {
         return (float) $client->balanceAdjustments()
             ->whereBelongsTo($billingPeriod)
+            ->where('type', '!=', BalanceAdjustmentType::OpeningBalance->value)
             ->sum('amount');
     }
 
+    /**
+     * Closing balance of the previous receipt plus the incoming balances of the
+     * period: opening balance adjustments belong to the opening balance of the
+     * period they are entered in, not to its turnover.
+     */
     private static function openingBalance(Client $client, BillingPeriod $billingPeriod): float
     {
         $previousReceipt = $client->receipts()
@@ -240,11 +247,14 @@ class Receipt extends Model
             ->orderByBillingPeriodDesc()
             ->first();
 
-        if ($previousReceipt) {
-            return (float) $previousReceipt->closing_balance;
-        }
+        $carriedBalance = $previousReceipt ? (float) $previousReceipt->closing_balance : 0.0;
 
-        return 0.0;
+        $openingAdjustmentAmount = (float) $client->balanceAdjustments()
+            ->whereBelongsTo($billingPeriod)
+            ->where('type', BalanceAdjustmentType::OpeningBalance->value)
+            ->sum('amount');
+
+        return round($carriedBalance + $openingAdjustmentAmount, 2);
     }
 
     private static function clientTypeValue(Client $client): string

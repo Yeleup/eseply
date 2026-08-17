@@ -122,10 +122,10 @@ test('billing month closure subtracts all payments from closing balance', functi
         ->forPeriod('202605')
         ->sole();
 
-    expect($accrual->opening_balance)->toBe('0.00')
+    expect($accrual->opening_balance)->toBe('1000.00')
         ->and($accrual->amount)->toBe('5000.00')
         ->and($accrual->paid_amount)->toBe('2000.00')
-        ->and($accrual->adjustment_amount)->toBe('1000.00')
+        ->and($accrual->adjustment_amount)->toBe('0.00')
         ->and($accrual->closing_balance)->toBe('4000.00');
 });
 

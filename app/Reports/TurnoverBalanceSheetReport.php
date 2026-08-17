@@ -113,6 +113,7 @@ class TurnoverBalanceSheetReport implements FiltersExcelExport, OrganizationRepo
                 TextColumn::make('billing_period_label')
                     ->label('Период')
                     ->state(fn (): string => $billingPeriod?->label ?? '-'),
+                $this->volumeColumn($organization),
                 ...$this->metricColumns(),
             ])
             ->filters($this->filters($organization))
@@ -140,16 +141,19 @@ class TurnoverBalanceSheetReport implements FiltersExcelExport, OrganizationRepo
         $billingPeriod = $this->billingPeriod;
         $query = $this->filteredQuery($organization, $user, $filters);
 
+        $unitOfMeasurement = TurnoverBalanceValues::unitOfMeasurementOf($organization);
+
         return response()->streamDownload(
-            function () use ($query, $billingPeriod): void {
+            function () use ($query, $billingPeriod, $unitOfMeasurement): void {
                 $writer = new Writer($this->excelOptions());
                 $writer->openToFile('php://output');
 
-                foreach ($this->excelHeadingRows() as $headingRow) {
+                foreach ($this->excelHeadingRows($unitOfMeasurement) as $headingRow) {
                     $writer->addRow($headingRow);
                 }
 
                 $totals = array_fill_keys(array_keys(self::METRIC_LABELS), 0.0);
+                $volumeTotal = 0.0;
 
                 foreach ($query->lazy(500) as $client) {
                     $metrics = TurnoverBalanceValues::metricsOf($client);
@@ -158,10 +162,13 @@ class TurnoverBalanceSheetReport implements FiltersExcelExport, OrganizationRepo
                         $totals[$key] += $value;
                     }
 
-                    $writer->addRow(new Row($this->excelCells($client, $metrics, $billingPeriod)));
+                    $volume = TurnoverBalanceValues::volumeOf($client);
+                    $volumeTotal += $volume ?? 0.0;
+
+                    $writer->addRow(new Row($this->excelCells($client, $metrics, $volume, $billingPeriod)));
                 }
 
-                $writer->addRow(new Row($this->excelTotalCells($totals)));
+                $writer->addRow(new Row($this->excelTotalCells($totals, $volumeTotal)));
 
                 $writer->close();
             },
@@ -170,6 +177,28 @@ class TurnoverBalanceSheetReport implements FiltersExcelExport, OrganizationRepo
                 'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             ],
         );
+    }
+
+    /**
+     * Volume of the organization service, labelled with its unit of measurement.
+     *
+     * The billing types `fixed` have no volume, so such rows stay empty instead of showing a zero.
+     */
+    private function volumeColumn(Organization $organization): TextColumn
+    {
+        return TextColumn::make('volume')
+            ->label(TurnoverBalanceValues::volumeLabel(TurnoverBalanceValues::unitOfMeasurementOf($organization)))
+            ->state(fn (Client $record): ?float => TurnoverBalanceValues::volumeOf($record))
+            ->numeric(maxDecimalPlaces: 4)
+            ->placeholder('-')
+            ->summarize(
+                Summarizer::make('total')
+                    ->label('Итого')
+                    ->numeric(maxDecimalPlaces: 4)
+                    ->using(fn (QueryBuilder $query): float => (float) ($query
+                        ->selectRaw('coalesce(sum('.TurnoverBalanceValues::volumeExpression().'), 0) as aggregate')
+                        ->value('aggregate') ?? 0)),
+            );
     }
 
     /**
@@ -301,8 +330,9 @@ class TurnoverBalanceSheetReport implements FiltersExcelExport, OrganizationRepo
         $options->setColumnWidth(28, 2);
         $options->setColumnWidth(36, 3);
         $options->setColumnWidth(12, 4);
+        $options->setColumnWidth(14, 5);
 
-        for ($column = 5; $column <= 13; $column++) {
+        for ($column = 6; $column <= 14; $column++) {
             $options->setColumnWidth(18, $column);
         }
 
@@ -310,10 +340,11 @@ class TurnoverBalanceSheetReport implements FiltersExcelExport, OrganizationRepo
         $options->mergeCells(1, 1, 1, 2);
         $options->mergeCells(2, 1, 2, 2);
         $options->mergeCells(3, 1, 3, 2);
-        $options->mergeCells(4, 1, 5, 1);
-        $options->mergeCells(6, 1, 7, 1);
-        $options->mergeCells(8, 1, 9, 1);
-        $options->mergeCells(10, 1, 12, 1);
+        $options->mergeCells(4, 1, 4, 2);
+        $options->mergeCells(5, 1, 6, 1);
+        $options->mergeCells(7, 1, 8, 1);
+        $options->mergeCells(9, 1, 10, 1);
+        $options->mergeCells(11, 1, 13, 1);
 
         return $options;
     }
@@ -321,7 +352,7 @@ class TurnoverBalanceSheetReport implements FiltersExcelExport, OrganizationRepo
     /**
      * @return list<Row>
      */
-    private function excelHeadingRows(): array
+    private function excelHeadingRows(?string $unitOfMeasurement): array
     {
         return [
             new Row($this->excelHeadingCells([
@@ -329,6 +360,7 @@ class TurnoverBalanceSheetReport implements FiltersExcelExport, OrganizationRepo
                 'Абонент',
                 'Адрес',
                 'Период',
+                TurnoverBalanceValues::volumeLabel($unitOfMeasurement),
                 'Сальдо на начало периода',
                 '',
                 'Обороты за период',
@@ -340,6 +372,7 @@ class TurnoverBalanceSheetReport implements FiltersExcelExport, OrganizationRepo
                 '',
             ])),
             new Row($this->excelHeadingCells([
+                '',
                 '',
                 '',
                 '',
@@ -361,13 +394,14 @@ class TurnoverBalanceSheetReport implements FiltersExcelExport, OrganizationRepo
      * @param  array<string, float>  $metrics
      * @return list<Cell>
      */
-    private function excelCells(Client $client, array $metrics, ?BillingPeriod $billingPeriod): array
+    private function excelCells(Client $client, array $metrics, ?float $volume, ?BillingPeriod $billingPeriod): array
     {
         return [
             new StringCell((string) $client->account_number, null),
             new StringCell((string) $client->name, null),
             new StringCell($this->formatClientAddress($client), (new Style)->setShouldWrapText()),
             new StringCell($billingPeriod?->label ?? '', null),
+            $volume === null ? new StringCell('', null) : new NumericCell($volume, null),
             ...array_map(
                 fn (string $key): NumericCell => new NumericCell($metrics[$key], null),
                 array_keys(self::METRIC_LABELS),
@@ -379,7 +413,7 @@ class TurnoverBalanceSheetReport implements FiltersExcelExport, OrganizationRepo
      * @param  array<string, float>  $totals
      * @return list<Cell>
      */
-    private function excelTotalCells(array $totals): array
+    private function excelTotalCells(array $totals, float $volumeTotal): array
     {
         $style = (new Style)->setFontBold();
 
@@ -388,6 +422,7 @@ class TurnoverBalanceSheetReport implements FiltersExcelExport, OrganizationRepo
             new StringCell('', $style),
             new StringCell('', $style),
             new StringCell('', $style),
+            new NumericCell($volumeTotal, $style),
             ...array_map(
                 fn (string $key): NumericCell => new NumericCell($totals[$key], $style),
                 array_keys(self::METRIC_LABELS),

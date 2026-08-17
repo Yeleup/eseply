@@ -57,7 +57,7 @@ class ReportSummaryService
 
         return $table
             ->records(fn (): array => $this->records($reportSlug, $group, $organization, $user, $billingPeriod))
-            ->columns($this->columns($reportSlug, $group))
+            ->columns($this->columns($reportSlug, $group, $this->unitOfMeasurement($reportSlug, $organization)))
             ->recordUrl(null)
             ->paginated(false)
             ->emptyStateHeading($this->emptyStateHeading($reportSlug, $billingPeriod))
@@ -77,7 +77,7 @@ class ReportSummaryService
         return $this->downloadXlsx(
             $this->excelFileName($reportSlug, $group, $organization, $billingPeriod),
             $this->excelOptions($reportSlug),
-            $this->excelHeadings($reportSlug, $group),
+            $this->excelHeadings($reportSlug, $group, $this->unitOfMeasurement($reportSlug, $organization)),
             fn (): iterable => array_map(
                 fn (array $record): object => (object) $record,
                 array_values($this->records($reportSlug, $group, $organization, $user, $billingPeriod)),
@@ -159,9 +159,20 @@ class ReportSummaryService
     }
 
     /**
+     * Only the turnover balance sheet labels a metric with the unit of measurement,
+     * so the other reports never resolve the service of the organization.
+     */
+    private function unitOfMeasurement(string $reportSlug, Organization $organization): ?string
+    {
+        return $reportSlug === 'turnover-balance-sheet'
+            ? TurnoverBalanceValues::unitOfMeasurementOf($organization)
+            : null;
+    }
+
+    /**
      * @return list<TextColumn>
      */
-    private function columns(string $reportSlug, ReportSummaryGroup $group): array
+    private function columns(string $reportSlug, ReportSummaryGroup $group, ?string $unitOfMeasurement = null): array
     {
         $columns = [
             TextColumn::make('group_label')
@@ -175,7 +186,7 @@ class ReportSummaryService
                 ->numeric(),
         ];
 
-        foreach ($this->metricDefinitions($reportSlug) as $metric) {
+        foreach ($this->metricDefinitions($reportSlug, $unitOfMeasurement) as $metric) {
             $columns[] = $this->metricColumn($metric);
         }
 
@@ -193,6 +204,7 @@ class ReportSummaryService
         return match ($metric['type']) {
             'money' => $column->money('KZT'),
             'decimal' => $column->numeric(4),
+            'volume' => $column->numeric(maxDecimalPlaces: 4),
             'percent' => $column->formatStateUsing(fn (mixed $state): string => number_format((float) $state, 2, '.', ' ').'%'),
             default => $column->numeric(),
         };
@@ -390,6 +402,8 @@ class ReportSummaryService
         foreach (TurnoverBalanceValues::metricExpressions('turnover_values.') as $key => $expression) {
             $rows->selectRaw("{$expression} as {$key}");
         }
+
+        $rows->selectRaw(TurnoverBalanceValues::volumeExpression('turnover_values.').' as volume');
 
         return $rows;
     }
@@ -678,9 +692,14 @@ class ReportSummaryService
     }
 
     /**
+     * Metrics of the summary table.
+     *
+     * The unit of measurement only qualifies labels, so callers that read keys, types
+     * or aggregates may leave it out.
+     *
      * @return list<array{key: string, label: string, type: string, aggregate?: string}>
      */
-    private function metricDefinitions(string $reportSlug): array
+    private function metricDefinitions(string $reportSlug, ?string $unitOfMeasurement = null): array
     {
         return match ($reportSlug) {
             'meter-reading-sheet' => [
@@ -724,6 +743,7 @@ class ReportSummaryService
                 ['key' => 'consumption', 'label' => 'Потребление', 'type' => 'integer'],
             ],
             'turnover-balance-sheet' => [
+                ['key' => 'volume', 'label' => TurnoverBalanceValues::volumeLabel($unitOfMeasurement), 'type' => 'volume'],
                 ['key' => 'opening_debit', 'label' => 'Сальдо нач. Дебет', 'type' => 'money'],
                 ['key' => 'opening_credit', 'label' => 'Сальдо нач. Кредит', 'type' => 'money'],
                 ['key' => 'turnover_debit', 'label' => 'Оборот Дебет', 'type' => 'money'],
@@ -889,7 +909,7 @@ class ReportSummaryService
     /**
      * @return list<string>
      */
-    private function excelHeadings(string $reportSlug, ReportSummaryGroup $group): array
+    private function excelHeadings(string $reportSlug, ReportSummaryGroup $group, ?string $unitOfMeasurement = null): array
     {
         return [
             $group->heading(),
@@ -897,7 +917,7 @@ class ReportSummaryService
             'Строк',
             ...array_map(
                 fn (array $metric): string => $metric['label'],
-                $this->metricDefinitions($reportSlug),
+                $this->metricDefinitions($reportSlug, $unitOfMeasurement),
             ),
         ];
     }
@@ -931,6 +951,10 @@ class ReportSummaryService
 
         if ($metric['type'] === 'decimal') {
             return new NumericCell((float) $value, (new Style)->setFormat('0.0000'));
+        }
+
+        if ($metric['type'] === 'volume') {
+            return new NumericCell((float) $value, null);
         }
 
         if ($metric['type'] === 'percent') {

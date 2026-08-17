@@ -40,6 +40,8 @@ final class TurnoverBalanceValues
 
     public const string ADJUSTMENT_AMOUNT = 'adjustment_amount_value';
 
+    public const string VOLUME = 'volume_value';
+
     /**
      * @return list<string>
      */
@@ -51,7 +53,44 @@ final class TurnoverBalanceValues
             self::ACCRUED_AMOUNT,
             self::PAID_AMOUNT,
             self::ADJUSTMENT_AMOUNT,
+            self::VOLUME,
         ];
+    }
+
+    /**
+     * Column label of the volume, qualified with the unit of measurement of the organization service.
+     */
+    public static function volumeLabel(?string $unitOfMeasurement): string
+    {
+        return filled($unitOfMeasurement)
+            ? 'Объём, '.$unitOfMeasurement
+            : 'Объём';
+    }
+
+    /**
+     * Unit of measurement of the service the organization bills for.
+     */
+    public static function unitOfMeasurementOf(Organization $organization): ?string
+    {
+        return $organization->utilityService?->unit_of_measurement;
+    }
+
+    /**
+     * SQL expression of the volume, for a query that selects the aliases.
+     */
+    public static function volumeExpression(string $prefix = ''): string
+    {
+        return 'coalesce('.$prefix.self::VOLUME.', 0)';
+    }
+
+    /**
+     * Volume of one row, or `null` when the billing type has no volume.
+     */
+    public static function volumeOf(Model $record): ?float
+    {
+        $volume = $record->getAttribute(self::VOLUME);
+
+        return $volume === null ? null : (float) $volume;
     }
 
     public static function isClosed(?BillingPeriod $billingPeriod): bool
@@ -80,6 +119,7 @@ final class TurnoverBalanceValues
             'accruals.amount as '.self::ACCRUED_AMOUNT,
             'accruals.paid_amount as '.self::PAID_AMOUNT,
             'accruals.adjustment_amount as '.self::ADJUSTMENT_AMOUNT,
+            DB::raw("case when accruals.billing_type = 'meter' then accruals.volume end as ".self::VOLUME),
         ];
     }
 
@@ -94,6 +134,7 @@ final class TurnoverBalanceValues
             self::ACCRUED_AMOUNT => self::receiptAmountSubQuery($billingPeriod),
             self::PAID_AMOUNT => self::paidAmountSubQuery($billingPeriod),
             self::ADJUSTMENT_AMOUNT => self::adjustmentAmountSubQuery($billingPeriod),
+            self::VOLUME => self::receiptVolumeSubQuery($billingPeriod),
         ];
     }
 
@@ -175,6 +216,15 @@ final class TurnoverBalanceValues
             ->where('billing_periods.organization_id', $organization->getKey())
             ->where('billing_periods.starts_on', '<', BillingPeriod::periodStart($billingPeriod->starts_on)->toDateString())
             ->orderByDesc('billing_periods.starts_on')
+            ->limit(1);
+    }
+
+    private static function receiptVolumeSubQuery(BillingPeriod $billingPeriod): QueryBuilder
+    {
+        return DB::table('receipts')
+            ->select('receipts.volume')
+            ->whereColumn('receipts.client_id', 'clients.id')
+            ->where('receipts.billing_period_id', $billingPeriod->getKey())
             ->limit(1);
     }
 

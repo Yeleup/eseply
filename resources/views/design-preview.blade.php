@@ -550,6 +550,300 @@
             <section class="overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
                 <div class="flex flex-col gap-4 border-b border-zinc-200 p-4 dark:border-zinc-800 sm:flex-row sm:items-start sm:justify-between">
                     <div>
+                        <p class="text-sm text-zinc-500 dark:text-zinc-400">Meter reading entry / страница контроллера</p>
+                        <h2 class="text-base font-semibold">Ввод показаний</h2>
+                        <p class="mt-2 max-w-2xl text-sm text-zinc-500 dark:text-zinc-400">
+                            Контролёр выбирает город, район и улицу, получает список активных счётчиков в порядке обхода и вводит текущее показание прямо в строке. Показание сохраняется по уходу из поля или по Enter, кнопки «Сохранить всё» нет.
+                        </p>
+                    </div>
+
+                    <span class="inline-flex shrink-0 items-center rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-200">
+                        Расчётный месяц: 08.2026 — открыт
+                    </span>
+                </div>
+
+                <div class="grid grid-cols-1 gap-3 border-b border-zinc-200 p-4 dark:border-zinc-800 sm:grid-cols-3">
+                    <div class="rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-950">
+                        <p class="text-xs font-medium text-zinc-500 dark:text-zinc-400">Счётчиков в выборке</p>
+                        <p class="mt-1 text-lg font-semibold">120</p>
+                    </div>
+
+                    <div class="rounded-lg border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-900/60 dark:bg-emerald-950/30">
+                        <p class="text-xs font-medium text-emerald-700 dark:text-emerald-300">Снято</p>
+                        <p class="mt-1 text-lg font-semibold text-emerald-700 dark:text-emerald-300">
+                            42 из 120 <span class="text-sm font-normal">(35%)</span>
+                        </p>
+                        <div class="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-emerald-200 dark:bg-emerald-900/60">
+                            <div class="h-full rounded-full bg-emerald-500 dark:bg-emerald-400" style="width: 35%"></div>
+                        </div>
+                    </div>
+
+                    <div class="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/60 dark:bg-amber-950/30">
+                        <p class="text-xs font-medium text-amber-700 dark:text-amber-300">Проблемных</p>
+                        <p class="mt-1 text-lg font-semibold text-amber-700 dark:text-amber-300">1</p>
+                        <p class="mt-1 text-xs text-amber-700 dark:text-amber-300">
+                            Расход отрицательный. Пока такие показания не исправлены, месяц закрыть нельзя.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="border-b border-zinc-200 p-4 dark:border-zinc-800">
+                    <p class="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Фильтры обхода</p>
+                    <div class="mt-3 grid grid-cols-1 gap-4 lg:grid-cols-2">
+                        <div class="flex flex-col gap-3">
+                            <div>
+                                <label class="text-sm font-medium">Город</label>
+                                <div class="mt-1 flex items-center justify-between rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200">
+                                    <span>Алматы</span>
+                                    <span aria-hidden="true" class="text-zinc-400">▾</span>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="text-sm font-medium">Район</label>
+                                <div class="mt-1 flex items-center justify-between rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200">
+                                    <span>Алмалинский</span>
+                                    <span aria-hidden="true" class="text-zinc-400">▾</span>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="text-sm font-medium">Улицы</label>
+                                <div class="mt-1 flex flex-wrap items-center gap-2 rounded-md border border-zinc-300 bg-white px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900">
+                                    <span class="inline-flex items-center gap-1 rounded bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">
+                                        Абая
+                                        <button type="button" class="text-zinc-400 transition hover:text-zinc-700 dark:hover:text-zinc-100">&times;</button>
+                                    </span>
+                                    <span class="text-sm text-zinc-400 dark:text-zinc-500">Выберите улицы…</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex flex-col gap-4">
+                            <div class="rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-950">
+                                <p class="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Флажки обхода</p>
+                                <div class="mt-3 flex flex-col gap-2 text-sm">
+                                    <label class="flex items-center gap-2">
+                                        <span class="flex h-4 w-4 items-center justify-center rounded border border-teal-600 bg-teal-600 text-[10px] font-bold text-white dark:border-teal-400 dark:bg-teal-400 dark:text-zinc-950">✓</span>
+                                        Только не снятые
+                                    </label>
+                                    <label class="flex items-center gap-2">
+                                        <span class="h-4 w-4 rounded border border-zinc-300 bg-white dark:border-zinc-600 dark:bg-zinc-900"></span>
+                                        Только проблемные
+                                    </label>
+                                </div>
+                                <p class="mt-3 text-xs text-zinc-500 dark:text-zinc-400">«Только не снятые» включён по умолчанию: снятая строка сразу уходит из списка, и всегда видно, сколько осталось.</p>
+                            </div>
+
+                            <div class="rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-950">
+                                <p class="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Индикаторы активного фильтра</p>
+                                <div class="mt-3 flex flex-wrap items-center gap-2">
+                                    <span class="inline-flex items-center gap-1 rounded-full bg-violet-100 px-3 py-1 text-xs font-medium text-violet-800 dark:bg-violet-950/60 dark:text-violet-200">
+                                        Город: Алматы
+                                        <button type="button" class="text-violet-500 transition hover:text-violet-700 dark:hover:text-violet-100">&times;</button>
+                                    </span>
+                                    <span class="inline-flex items-center gap-1 rounded-full bg-violet-100 px-3 py-1 text-xs font-medium text-violet-800 dark:bg-violet-950/60 dark:text-violet-200">
+                                        Улицы: Абая
+                                        <button type="button" class="text-violet-500 transition hover:text-violet-700 dark:hover:text-violet-100">&times;</button>
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="border-b border-zinc-200 p-4 dark:border-zinc-800">
+                    <div>
+                        <p class="text-sm font-medium text-teal-700 dark:text-teal-300">Широкий экран</p>
+                        <h3 class="mt-1 text-base font-semibold">Плотная таблица</h3>
+                        <p class="mt-1 max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
+                            От 640px строка остаётся табличной. Порядок строк — маршрут обхода: улица, дом, квартира, поэтому дом 2 идёт раньше дома 10.
+                        </p>
+                    </div>
+
+                    <div class="mt-4 overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-800">
+                        <div class="overflow-x-auto">
+                            <table class="w-full min-w-[56rem] text-left text-sm">
+                                <thead class="bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500 dark:bg-zinc-950 dark:text-zinc-400">
+                                    <tr>
+                                        <th class="px-4 py-2 font-medium">Адрес</th>
+                                        <th class="px-4 py-2 font-medium">Лицевой счёт</th>
+                                        <th class="px-4 py-2 font-medium">Счётчик</th>
+                                        <th class="px-4 py-2 font-medium">Предыдущее</th>
+                                        <th class="px-4 py-2 font-medium">Текущее показание</th>
+                                        <th class="px-4 py-2 font-medium">Расход</th>
+                                        <th class="px-4 py-2 font-medium">Снято</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-zinc-200 dark:divide-zinc-800">
+                                    <tr>
+                                        <td class="px-4 py-3">
+                                            <p class="font-semibold">Абая, д. 2, кв. 15</p>
+                                            <p class="text-xs text-zinc-500 dark:text-zinc-400">Иванов Иван</p>
+                                        </td>
+                                        <td class="px-4 py-3">100001</td>
+                                        <td class="px-4 py-3">MTR-100001</td>
+                                        <td class="px-4 py-3">1 204</td>
+                                        <td class="px-4 py-3">
+                                            <input inputmode="numeric" placeholder="—" class="w-32 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-950 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50" value="">
+                                        </td>
+                                        <td class="px-4 py-3 text-zinc-400 dark:text-zinc-500">-</td>
+                                        <td class="px-4 py-3 text-zinc-400 dark:text-zinc-500">-</td>
+                                    </tr>
+                                    <tr class="bg-zinc-50 dark:bg-zinc-950">
+                                        <td class="px-4 py-3">
+                                            <p class="font-semibold">Абая, д. 10, кв. 4</p>
+                                            <p class="text-xs text-zinc-500 dark:text-zinc-400">Петрова Мария</p>
+                                        </td>
+                                        <td class="px-4 py-3">100002</td>
+                                        <td class="px-4 py-3">MTR-100002</td>
+                                        <td class="px-4 py-3">880</td>
+                                        <td class="px-4 py-3">
+                                            <input inputmode="numeric" class="w-32 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-950 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50" value="898">
+                                        </td>
+                                        <td class="px-4 py-3">
+                                            <span class="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-200">18</span>
+                                        </td>
+                                        <td class="px-4 py-3">23.08.2026</td>
+                                    </tr>
+                                    <tr class="bg-amber-50 dark:bg-amber-950/30">
+                                        <td class="px-4 py-3">
+                                            <p class="font-semibold">Абая, д. 10, кв. 9</p>
+                                            <p class="text-xs text-zinc-500 dark:text-zinc-400">Сидоров Пётр</p>
+                                        </td>
+                                        <td class="px-4 py-3">100003</td>
+                                        <td class="px-4 py-3">MTR-100003</td>
+                                        <td class="px-4 py-3">500</td>
+                                        <td class="px-4 py-3">
+                                            <input inputmode="numeric" class="w-32 rounded-md border border-amber-400 bg-white px-3 py-1.5 text-sm text-zinc-950 dark:border-amber-500 dark:bg-zinc-900 dark:text-zinc-50" value="400">
+                                        </td>
+                                        <td class="px-4 py-3">
+                                            <span class="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-950/60 dark:text-amber-200">-100</span>
+                                        </td>
+                                        <td class="px-4 py-3">23.08.2026</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="border-b border-zinc-200 p-4 dark:border-zinc-800">
+                    <div>
+                        <p class="text-sm font-medium text-teal-700 dark:text-teal-300">Телефон в поле</p>
+                        <h3 class="mt-1 text-base font-semibold">Карточка на телефоне</h3>
+                        <p class="mt-1 max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
+                            До 640px строка превращается в карточку: адрес теряет метку колонки и становится самым заметным элементом, поле ввода вырастает и открывает цифровую клавиатуру.
+                        </p>
+                    </div>
+
+                    <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+                        <div class="mx-auto w-full max-w-sm rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+                            <p class="text-base font-semibold text-zinc-950 dark:text-white">Абая, д. 2, кв. 15</p>
+                            <p class="mt-0.5 text-sm text-zinc-500 dark:text-zinc-400">Иванов Иван</p>
+
+                            <dl class="mt-3 grid grid-cols-2 gap-3 text-sm">
+                                <div>
+                                    <dt class="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Лицевой счёт</dt>
+                                    <dd class="mt-0.5 font-medium">100001</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Счётчик</dt>
+                                    <dd class="mt-0.5 font-medium">MTR-100001</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Предыдущее</dt>
+                                    <dd class="mt-0.5 font-medium">1 204</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Расход</dt>
+                                    <dd class="mt-0.5 font-medium text-zinc-400 dark:text-zinc-500">-</dd>
+                                </div>
+                            </dl>
+
+                            <label class="mt-4 flex flex-col gap-2 text-sm font-medium">
+                                Текущее показание
+                                <input inputmode="numeric" class="h-12 rounded-lg border border-zinc-300 bg-white px-3 text-lg font-semibold text-zinc-950 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50" value="1222">
+                            </label>
+
+                            <p class="mt-2 text-xs text-zinc-500 dark:text-zinc-400">Сохраняется по уходу из поля или по Enter.</p>
+                        </div>
+
+                        <div class="rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-950">
+                            <p class="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Состояния поля ввода</p>
+                            <div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                <div class="rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
+                                    <p class="text-xs text-zinc-500 dark:text-zinc-400">Пусто</p>
+                                    <input inputmode="numeric" placeholder="—" class="mt-2 w-full rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-950" value="">
+                                </div>
+                                <div class="rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
+                                    <p class="text-xs text-zinc-500 dark:text-zinc-400">Сохраняется</p>
+                                    <input inputmode="numeric" disabled class="mt-2 w-full cursor-not-allowed rounded-md border border-zinc-300 bg-zinc-100 px-3 py-1.5 text-sm text-zinc-400 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-500" value="898">
+                                </div>
+                                <div class="rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
+                                    <p class="text-xs text-emerald-700 dark:text-emerald-300">Сохранено</p>
+                                    <input inputmode="numeric" class="mt-2 w-full rounded-md border border-emerald-400 bg-white px-3 py-1.5 text-sm dark:border-emerald-500 dark:bg-zinc-950" value="898">
+                                </div>
+                                <div class="rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
+                                    <p class="text-xs text-red-700 dark:text-red-300">Ошибка валидации</p>
+                                    <input inputmode="numeric" class="mt-2 w-full rounded-md border border-red-400 bg-white px-3 py-1.5 text-sm dark:border-red-500 dark:bg-zinc-950" value="12.7">
+                                    <p class="mt-1 text-xs text-red-700 dark:text-red-300">Показание должно быть целым числом.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 gap-4 border-b border-zinc-200 p-4 dark:border-zinc-800 lg:grid-cols-2">
+                    <div class="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/60 dark:bg-amber-950/30">
+                        <p class="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">Предупреждение</p>
+                        <h3 class="mt-2 font-semibold text-amber-800 dark:text-amber-200">Расход отрицательный</h3>
+                        <p class="mt-1 text-sm text-amber-700 dark:text-amber-300">
+                            Счётчик MTR-100003: расход -100. Показание сохранено, но закрыть месяц с отрицательным расходом нельзя. Строка остаётся подсвеченной, пока оператор не исправит значение.
+                        </p>
+                    </div>
+
+                    <div class="rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-950">
+                        <p class="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Доступ</p>
+                        <ul class="mt-3 flex flex-col gap-2 text-sm text-zinc-600 dark:text-zinc-300">
+                            <li><span class="font-medium text-zinc-950 dark:text-white">Контроллер</span> — видит только счётчики своей зоны ответственности, фильтр контроллеров ему не показывается.</li>
+                            <li><span class="font-medium text-zinc-950 dark:text-white">Оператор</span> — видит все счётчики организации и может дополнительно отфильтровать список по контроллерам.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 gap-4 p-4 md:grid-cols-3">
+                    <div class="rounded-lg border border-dashed border-zinc-300 p-6 text-center dark:border-zinc-700">
+                        <p class="text-sm font-semibold text-zinc-700 dark:text-zinc-200">Нет счётчиков по выбранному адресу</p>
+                        <p class="mt-2 text-sm text-zinc-500 dark:text-zinc-400">Снимите фильтры или выберите другую улицу.</p>
+                    </div>
+
+                    <div class="rounded-lg border border-zinc-200 p-6 dark:border-zinc-800">
+                        <div class="h-3 w-1/2 animate-pulse rounded bg-zinc-200 dark:bg-zinc-800"></div>
+                        <div class="mt-3 h-3 w-full animate-pulse rounded bg-zinc-200 dark:bg-zinc-800"></div>
+                        <div class="mt-3 h-3 w-3/4 animate-pulse rounded bg-zinc-200 dark:bg-zinc-800"></div>
+                        <p class="mt-4 text-xs text-zinc-500 dark:text-zinc-400">Загрузка списка счётчиков</p>
+                    </div>
+
+                    <div class="rounded-lg border border-red-200 bg-red-50 p-6 dark:border-red-900/60 dark:bg-red-950/30">
+                        <p class="text-sm font-semibold text-red-800 dark:text-red-200">Не удалось сохранить показание</p>
+                        <p class="mt-2 text-sm text-red-700 dark:text-red-300">
+                            Закрытый расчётный месяц нельзя изменять. Уведомление не исчезает само, чтобы контролёр не принял потерянное значение за сохранённое.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="border-t border-zinc-200 p-4 dark:border-zinc-800">
+                    <div class="rounded-lg border border-dashed border-zinc-300 p-6 text-center dark:border-zinc-700">
+                        <p class="text-sm font-semibold text-zinc-700 dark:text-zinc-200">Расчётный месяц не открыт</p>
+                        <p class="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
+                            Откройте расчётный месяц в разделе «Расчётные месяцы», чтобы вводить оплаты, показания, корректировки и закрывать месяц. Список счётчиков остаётся виден, но сохранить показание нельзя.
+                        </p>
+                    </div>
+                </div>
+            </section>
+
+            <section class="overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+                <div class="flex flex-col gap-4 border-b border-zinc-200 p-4 dark:border-zinc-800 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
                         <p class="text-sm text-zinc-500 dark:text-zinc-400">Reports / XLSX export</p>
                         <h2 class="text-base font-semibold">Отчёты учёта</h2>
                         <p class="mt-2 max-w-2xl text-sm text-zinc-500 dark:text-zinc-400">

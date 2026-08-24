@@ -5,3 +5,32 @@
 @source '../../../../resources/views/receipts/**/*';
 
 @import '../../receipt.css';
+
+/**
+ * Meter reading entry page.
+ *
+ * The table runs in `stackedOnMobile()` mode, so below 640px every row becomes
+ * a card of "label above value" blocks. On a phone the controller matches the
+ * address against the door and types with one hand, so the address loses its
+ * column label and the input grows; from `sm` both fall back to the dense
+ * table look.
+ */
+.fi-readings-entry {
+    & .fi-ta-cell.fi-readings-address > .fi-ta-cell-label {
+        @apply hidden;
+    }
+
+    & .fi-ta-cell.fi-readings-address .fi-ta-text {
+        @apply text-base font-semibold sm:text-sm sm:font-normal;
+    }
+
+    & .fi-ta-text-input input.fi-input {
+        @apply h-12 text-lg sm:h-auto sm:text-base;
+    }
+
+    /* A negative consumption still saves, but it blocks the month close, so the
+       row stays marked until an operator fixes it. */
+    & .fi-ta-row.fi-readings-negative {
+        @apply bg-amber-50 dark:bg-amber-400/10;
+    }
+}

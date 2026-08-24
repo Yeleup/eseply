@@ -3,6 +3,7 @@
 namespace App\Providers\Filament;
 
 use App\Filament\Pages\Dashboard;
+use App\Filament\Pages\MeterReadingEntry;
 use App\Filament\Pages\Tenancy\EditOrganizationProfile;
 use App\Filament\Pages\Tenancy\RegisterOrganization;
 use App\Filament\Resources\Accruals\Pages\ListAccruals;
@@ -88,6 +89,7 @@ class AdminPanelProvider extends PanelProvider
                     ListBalanceAdjustments::class,
                     ListMeterReadings::class,
                     ListPayments::class,
+                    MeterReadingEntry::class,
                 ],
             )
             ->authenticatedTenantRoutes(function (): void {

@@ -2,9 +2,8 @@
 
 namespace App\Filament\Resources\Payments\Schemas;
 
-use App\Models\Client;
+use App\Filament\Support\ClientSelect;
 use App\PaymentMethod;
-use Filament\Facades\Filament;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
@@ -21,21 +20,7 @@ class PaymentForm
                 Section::make('Оплата')
                     ->columns(2)
                     ->schema([
-                        Select::make('client_id')
-                            ->label('Абонент')
-                            ->options(fn (): array => Filament::getTenant()
-                                ?->clients()
-                                ->orderBy('account_number')
-                                ->get()
-                                ->mapWithKeys(fn (Client $client): array => [
-                                    $client->id => "{$client->account_number} - {$client->name}",
-                                ])
-                                ->all() ?? [])
-                            ->searchable()
-                            ->preload()
-                            ->required()
-                            ->scopedExists(Client::class, 'id')
-                            ->native(false),
+                        ClientSelect::make(),
                         Select::make('method')
                             ->label('Способ оплаты')
                             ->options(PaymentMethod::class)

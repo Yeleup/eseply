@@ -874,6 +874,214 @@
             <section class="overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
                 <div class="flex flex-col gap-4 border-b border-zinc-200 p-4 dark:border-zinc-800 sm:flex-row sm:items-start sm:justify-between">
                     <div>
+                        <p class="text-sm text-zinc-500 dark:text-zinc-400">Payment desk / рабочее место кассира</p>
+                        <h2 class="text-base font-semibold">Приём оплат</h2>
+                        <p class="mt-2 max-w-2xl text-sm text-zinc-500 dark:text-zinc-400">
+                            Один абонент за раз, как очередь у окна. Оператор находит абонента одним поиском, сверяет долг, вводит принятую сумму. После сохранения страница очищается и возвращает фокус в поиск.
+                        </p>
+                    </div>
+
+                    <span class="inline-flex shrink-0 items-center rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-200">
+                        Расчётный месяц: 08.2026 — открыт
+                    </span>
+                </div>
+
+                <div class="border-b border-zinc-200 p-4 dark:border-zinc-800">
+                    <div>
+                        <p class="text-sm font-medium text-teal-700 dark:text-teal-300">Шаг 1</p>
+                        <h3 class="mt-1 text-base font-semibold">Поиск абонента</h3>
+                        <p class="mt-1 max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
+                            Одно поле: лицевой счёт, фамилия или телефон. Поиск начинается с двух символов, показывает не больше десяти абонентов, точное совпадение лицевого счёта поднимается наверх. У каждого сразу видно состояние счёта.
+                        </p>
+                    </div>
+
+                    <div class="mt-4 max-w-3xl">
+                        <input type="search" placeholder="Лицевой счёт, фамилия или телефон" value="Иванов" class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-base text-zinc-950 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50">
+
+                        <ul class="mt-3 divide-y divide-zinc-200 overflow-hidden rounded-xl border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+                            <li class="flex flex-col gap-1 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                                <span>
+                                    <span class="block text-sm font-semibold">100001 — Иванов Иван</span>
+                                    <span class="block text-xs text-zinc-500 dark:text-zinc-400">Абая, д. 2, кв. 15 · +7 701 000 11 22</span>
+                                </span>
+                                <span class="inline-flex items-center rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-800 dark:bg-rose-950/60 dark:text-rose-200">Долг 1 800,00 ₸</span>
+                            </li>
+                            <li class="flex flex-col gap-1 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                                <span>
+                                    <span class="block text-sm font-semibold">100017 — Иванова Мария</span>
+                                    <span class="block text-xs text-zinc-500 dark:text-zinc-400">Гоголя, д. 8, кв. 3</span>
+                                </span>
+                                <span class="inline-flex items-center rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-800 dark:bg-sky-950/60 dark:text-sky-200">Переплата 500,00 ₸</span>
+                            </li>
+                            <li class="flex flex-col gap-1 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                                <span>
+                                    <span class="block text-sm font-semibold">100042 — Иванов Пётр</span>
+                                    <span class="block text-xs text-zinc-500 dark:text-zinc-400">Абая, д. 10, кв. 4</span>
+                                </span>
+                                <span class="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-200">Долга нет</span>
+                            </li>
+                        </ul>
+
+                        <p class="mt-3 text-sm text-zinc-500 dark:text-zinc-400">Ничего не найдено. Проверьте лицевой счёт или попробуйте фамилию.</p>
+                    </div>
+                </div>
+
+                <div class="border-b border-zinc-200 p-4 dark:border-zinc-800">
+                    <div>
+                        <p class="text-sm font-medium text-teal-700 dark:text-teal-300">Шаг 2</p>
+                        <h3 class="mt-1 text-base font-semibold">Долг и приём оплаты</h3>
+                        <p class="mt-1 max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
+                            Долг считается тем же движком, что и оборотно-сальдовая ведомость, поэтому сумма на кассе и сумма в отчёте совпадают. Поле суммы всегда пустое: оператор вводит фактически принятую сумму, а весь долг подставляет кнопкой «Вся сумма».
+                        </p>
+                    </div>
+
+                    <div class="mt-4 rounded-xl border border-zinc-200 p-4 dark:border-zinc-800">
+                        <p class="text-base font-semibold">100001 — Иванов Иван</p>
+                        <p class="text-sm text-zinc-500 dark:text-zinc-400">Абая, д. 2, кв. 15</p>
+
+                        <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                            <div class="rounded-lg border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-950">
+                                <p class="text-xs font-medium text-zinc-500 dark:text-zinc-400">Сальдо на начало</p>
+                                <p class="mt-1 text-sm font-semibold">0,00 ₸</p>
+                            </div>
+                            <div class="rounded-lg border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-950">
+                                <p class="text-xs font-medium text-zinc-500 dark:text-zinc-400">Начислено</p>
+                                <p class="mt-1 text-sm font-semibold">3 000,00 ₸</p>
+                            </div>
+                            <div class="rounded-lg border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-950">
+                                <p class="text-xs font-medium text-zinc-500 dark:text-zinc-400">Оплачено</p>
+                                <p class="mt-1 text-sm font-semibold">1 200,00 ₸</p>
+                            </div>
+                            <div class="rounded-lg border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-950">
+                                <p class="text-xs font-medium text-zinc-500 dark:text-zinc-400">Корректировки</p>
+                                <p class="mt-1 text-sm font-semibold">0,00 ₸</p>
+                            </div>
+                            <div class="rounded-lg border border-rose-200 bg-rose-50 p-3 dark:border-rose-900/60 dark:bg-rose-950/30">
+                                <p class="text-xs font-medium text-rose-700 dark:text-rose-300">К оплате</p>
+                                <p class="mt-1 text-lg font-semibold text-rose-700 dark:text-rose-300">1 800,00 ₸</p>
+                            </div>
+                        </div>
+
+                        <div class="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            <div>
+                                <label class="text-sm font-medium">Сумма</label>
+                                <div class="mt-1 flex items-stretch overflow-hidden rounded-md border border-zinc-300 bg-white dark:border-zinc-700 dark:bg-zinc-900">
+                                    <input inputmode="decimal" placeholder="0,00" class="w-full bg-transparent px-3 py-2 text-base text-zinc-950 outline-none dark:text-zinc-50" value="">
+                                    <button type="button" class="border-l border-zinc-300 px-3 text-xs font-medium text-zinc-600 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800">Вся сумма</button>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="text-sm font-medium">Способ оплаты</label>
+                                <div class="mt-1 flex items-center justify-between rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900">
+                                    <span>Наличные</span>
+                                    <span aria-hidden="true" class="text-zinc-400">▾</span>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="text-sm font-medium">Дата оплаты</label>
+                                <div class="mt-1 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900">24.08.2026</div>
+                            </div>
+                            <div>
+                                <label class="text-sm font-medium">Примечание</label>
+                                <div class="mt-1 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-500">—</div>
+                            </div>
+                        </div>
+
+                        <div class="mt-4 flex flex-wrap items-center gap-2">
+                            <button class="rounded-md bg-teal-700 px-3 py-2 text-sm font-medium text-white transition hover:bg-teal-800 dark:bg-teal-500 dark:text-zinc-950 dark:hover:bg-teal-400">Принять оплату</button>
+                            <button class="rounded-md border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-900">Отменить</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="border-b border-zinc-200 p-4 dark:border-zinc-800">
+                    <div>
+                        <p class="text-sm font-medium text-teal-700 dark:text-teal-300">Шаг 3</p>
+                        <h3 class="mt-1 text-base font-semibold">Лента за сегодня</h3>
+                        <p class="mt-1 max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
+                            Все оплаты организации за сегодня, свежие сверху. Ручную оплату можно исправить или удалить, пока расчётный месяц редактируем. Оплату от провайдера онлайн-платежей править нельзя.
+                        </p>
+                    </div>
+
+                    <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div class="rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-950">
+                            <p class="text-xs font-medium text-zinc-500 dark:text-zinc-400">Оплат за сегодня</p>
+                            <p class="mt-1 text-lg font-semibold">14</p>
+                        </div>
+                        <div class="rounded-lg border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-900/60 dark:bg-emerald-950/30">
+                            <p class="text-xs font-medium text-emerald-700 dark:text-emerald-300">Принято за сегодня</p>
+                            <p class="mt-1 text-lg font-semibold text-emerald-700 dark:text-emerald-300">62 400,00 ₸</p>
+                        </div>
+                    </div>
+
+                    <div class="mt-4 overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-800">
+                        <div class="overflow-x-auto">
+                            <table class="w-full min-w-[52rem] text-left text-sm">
+                                <thead class="bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500 dark:bg-zinc-950 dark:text-zinc-400">
+                                    <tr>
+                                        <th class="px-4 py-2 font-medium">Время</th>
+                                        <th class="px-4 py-2 font-medium">Лицевой счёт</th>
+                                        <th class="px-4 py-2 font-medium">Абонент</th>
+                                        <th class="px-4 py-2 font-medium">Сумма</th>
+                                        <th class="px-4 py-2 font-medium">Способ</th>
+                                        <th class="px-4 py-2 font-medium">Принял</th>
+                                        <th class="px-4 py-2 font-medium">Действия</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-zinc-200 dark:divide-zinc-800">
+                                    <tr>
+                                        <td class="px-4 py-3">14:22</td>
+                                        <td class="px-4 py-3">100001</td>
+                                        <td class="px-4 py-3">Иванов Иван</td>
+                                        <td class="px-4 py-3 font-semibold">1 800,00 ₸</td>
+                                        <td class="px-4 py-3">
+                                            <span class="inline-flex items-center rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">Наличные</span>
+                                        </td>
+                                        <td class="px-4 py-3">Петрова А.</td>
+                                        <td class="px-4 py-3">
+                                            <span class="text-xs text-teal-700 dark:text-teal-300">Исправить · Удалить</span>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-4 py-3">14:05</td>
+                                        <td class="px-4 py-3">100017</td>
+                                        <td class="px-4 py-3">Иванова Мария</td>
+                                        <td class="px-4 py-3 font-semibold">2 000,00 ₸</td>
+                                        <td class="px-4 py-3">
+                                            <span class="inline-flex items-center rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-800 dark:bg-rose-950/60 dark:text-rose-200">Kaspi</span>
+                                        </td>
+                                        <td class="px-4 py-3 text-zinc-400 dark:text-zinc-500">-</td>
+                                        <td class="px-4 py-3 text-xs text-zinc-400 dark:text-zinc-500">Оплата провайдера, правка недоступна</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 gap-4 p-4 md:grid-cols-3">
+                    <div class="rounded-lg border border-emerald-200 bg-emerald-50 p-6 dark:border-emerald-900/60 dark:bg-emerald-950/30">
+                        <p class="text-sm font-semibold text-emerald-800 dark:text-emerald-200">Оплата принята</p>
+                        <p class="mt-2 text-sm text-emerald-700 dark:text-emerald-300">100001 — 1 800,00 ₸. Долга нет.</p>
+                    </div>
+
+                    <div class="rounded-lg border border-dashed border-zinc-300 p-6 text-center dark:border-zinc-700">
+                        <p class="text-sm font-semibold text-zinc-700 dark:text-zinc-200">Сегодня оплат ещё не было</p>
+                        <p class="mt-2 text-sm text-zinc-500 dark:text-zinc-400">Принятые оплаты появятся здесь сразу после сохранения.</p>
+                    </div>
+
+                    <div class="rounded-lg border border-red-200 bg-red-50 p-6 dark:border-red-900/60 dark:bg-red-950/30">
+                        <p class="text-sm font-semibold text-red-800 dark:text-red-200">Оплата не принята</p>
+                        <p class="mt-2 text-sm text-red-700 dark:text-red-300">
+                            Нет открытого расчётного месяца. Уведомление не исчезает само, чтобы принятую оплату не посчитали проведённой.
+                        </p>
+                    </div>
+                </div>
+            </section>
+
+            <section class="overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+                <div class="flex flex-col gap-4 border-b border-zinc-200 p-4 dark:border-zinc-800 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
                         <p class="text-sm text-zinc-500 dark:text-zinc-400">Reports / XLSX export</p>
                         <h2 class="text-base font-semibold">Отчёты учёта</h2>
                         <p class="mt-2 max-w-2xl text-sm text-zinc-500 dark:text-zinc-400">

@@ -19,10 +19,13 @@ use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 
 class MeterReadingForm
 {
+    private const int OPTIONS_LIMIT = 50;
+
     public static function configure(Schema $schema): Schema
     {
         return $schema
@@ -32,26 +35,10 @@ class MeterReadingForm
                     ->schema([
                         Select::make('meter_id')
                             ->label('Счётчик')
-                            ->options(function (): array {
-                                $tenant = Filament::getTenant();
-                                $user = auth()->user();
-
-                                if (! $tenant instanceof Organization || ! $user instanceof User) {
-                                    return [];
-                                }
-
-                                return Meter::query()
-                                    ->visibleToOrganizationMember($user, $tenant)
-                                    ->with('client')
-                                    ->orderBy('number')
-                                    ->get()
-                                    ->mapWithKeys(fn (Meter $meter): array => [
-                                        $meter->id => "{$meter->number} - {$meter->client?->account_number}",
-                                    ])
-                                    ->all();
-                            })
+                            ->options(fn (): array => self::meterOptions(null))
+                            ->getSearchResultsUsing(fn (string $search): array => self::meterOptions($search))
+                            ->getOptionLabelUsing(fn (mixed $value): ?string => self::meterOptionLabel($value))
                             ->searchable()
-                            ->preload()
                             ->required()
                             ->scopedExists(Meter::class, 'id')
                             ->live()
@@ -167,6 +154,72 @@ class MeterReadingForm
         }
 
         return null;
+    }
+
+    /**
+     * Meters are searched in the database: loading every meter of the
+     * organization with its client just to fill a dropdown made the form pay
+     * for the whole book to pick one line.
+     *
+     * @return array<int, string>
+     */
+    private static function meterOptions(?string $search): array
+    {
+        $query = self::meterQuery();
+
+        if (! $query instanceof Builder) {
+            return [];
+        }
+
+        return $query
+            ->when(
+                filled($search),
+                fn (Builder $query): Builder => $query->where(function (Builder $query) use ($search): void {
+                    $query
+                        ->where('meters.number', 'like', '%'.$search.'%')
+                        ->orWhereHas('client', fn (Builder $query): Builder => $query
+                            ->where('account_number', 'like', '%'.$search.'%'));
+                }),
+            )
+            ->with('client')
+            ->orderBy('meters.number')
+            ->limit(self::OPTIONS_LIMIT)
+            ->get()
+            ->mapWithKeys(fn (Meter $meter): array => [$meter->id => self::meterLabel($meter)])
+            ->all();
+    }
+
+    private static function meterOptionLabel(mixed $value): ?string
+    {
+        $query = self::meterQuery();
+
+        if (blank($value) || ! $query instanceof Builder) {
+            return null;
+        }
+
+        $meter = $query->with('client')->whereKey($value)->first();
+
+        return $meter instanceof Meter ? self::meterLabel($meter) : null;
+    }
+
+    private static function meterLabel(Meter $meter): string
+    {
+        return "{$meter->number} - {$meter->client?->account_number}";
+    }
+
+    /**
+     * @return Builder<Meter>|null
+     */
+    private static function meterQuery(): ?Builder
+    {
+        $tenant = Filament::getTenant();
+        $user = auth()->user();
+
+        if (! $tenant instanceof Organization || ! $user instanceof User) {
+            return null;
+        }
+
+        return Meter::query()->visibleToOrganizationMember($user, $tenant);
     }
 
     private static function currentBillingPeriodId(): ?int

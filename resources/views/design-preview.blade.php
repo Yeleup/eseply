@@ -655,7 +655,7 @@
                         <p class="text-sm font-medium text-teal-700 dark:text-teal-300">Широкий экран</p>
                         <h3 class="mt-1 text-base font-semibold">Плотная таблица</h3>
                         <p class="mt-1 max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
-                            От 640px строка остаётся табличной. Порядок строк — маршрут обхода: улица, дом, квартира, поэтому дом 2 идёт раньше дома 10.
+                            От 640px строка остаётся табличной. Порядок строк — маршрут обхода: улица, дом, квартира, поэтому дом 2 идёт раньше дома 10. Строка — это счётчик, а не абонент: у абонента с несколькими счётчиками они идут соседними строками с одним адресом и разными номерами.
                         </p>
                     </div>
 
@@ -703,6 +703,36 @@
                                             <span class="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-200">18</span>
                                         </td>
                                         <td class="px-4 py-3">23.08.2026</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-4 py-3">
+                                            <p class="font-semibold">Абая, д. 10, кв. 7</p>
+                                            <p class="text-xs text-zinc-500 dark:text-zinc-400">Ким Ольга</p>
+                                        </td>
+                                        <td class="px-4 py-3">100004</td>
+                                        <td class="px-4 py-3">MTR-100004-A</td>
+                                        <td class="px-4 py-3">640</td>
+                                        <td class="px-4 py-3">
+                                            <input inputmode="numeric" class="w-32 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-950 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50" value="659">
+                                        </td>
+                                        <td class="px-4 py-3">
+                                            <span class="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-200">19</span>
+                                        </td>
+                                        <td class="px-4 py-3">23.08.2026</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-4 py-3">
+                                            <p class="font-semibold">Абая, д. 10, кв. 7</p>
+                                            <p class="text-xs text-zinc-500 dark:text-zinc-400">Ким Ольга — второй счётчик</p>
+                                        </td>
+                                        <td class="px-4 py-3">100004</td>
+                                        <td class="px-4 py-3">MTR-100004-B</td>
+                                        <td class="px-4 py-3">310</td>
+                                        <td class="px-4 py-3">
+                                            <input inputmode="numeric" placeholder="—" class="w-32 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-950 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50" value="">
+                                        </td>
+                                        <td class="px-4 py-3 text-zinc-400 dark:text-zinc-500">-</td>
+                                        <td class="px-4 py-3 text-zinc-400 dark:text-zinc-500">-</td>
                                     </tr>
                                     <tr class="bg-amber-50 dark:bg-amber-950/30">
                                         <td class="px-4 py-3">

@@ -490,6 +490,55 @@ test('строки идут в порядке обхода: дом 2 раньш�
         ->assertCanSeeTableRecords([$second, $tenth], inOrder: true);
 });
 
+test('все счётчики абонента идут отдельными соседними строками', function (): void {
+    ['organization' => $organization, 'utilityService' => $utilityService, 'region' => $region, 'street' => $street] = readingEntryOrganization();
+    $billingPeriod = billingPeriodFor($organization);
+    readingEntryOperator($organization);
+
+    $first = readingEntryMeter($organization, $utilityService, [
+        'region_id' => $region->id,
+        'street_id' => $street->id,
+        'house' => '5',
+        'apartment' => '1',
+    ], ['number' => 'MTR-A', 'initial_reading' => 100]);
+
+    $client = $first->client;
+
+    $second = Meter::factory()->for($organization)->for($client)->for($utilityService)
+        ->create(['number' => 'MTR-B', 'initial_reading' => 200, 'status' => 'active']);
+    $third = Meter::factory()->for($organization)->for($client)->for($utilityService)
+        ->create(['number' => 'MTR-C', 'initial_reading' => 300, 'status' => 'active']);
+
+    // Три счётчика одного абонента — три строки, подряд и по номеру счётчика.
+    Livewire::test(MeterReadingEntry::class)
+        ->assertCanSeeTableRecords([$first, $second, $third], inOrder: true)
+        ->assertTableColumnStateSet('previous_reading_for_entry', 100, $first)
+        ->assertTableColumnStateSet('previous_reading_for_entry', 200, $second)
+        ->assertTableColumnStateSet('previous_reading_for_entry', 300, $third);
+
+    // Каждая строка пишет своё показание, не задевая соседние.
+    enterReading($first, '150');
+    enterReading($third, '330');
+
+    $readings = MeterReading::query()
+        ->where('billing_period_id', $billingPeriod->id)
+        ->where('client_id', $client->id)
+        ->orderBy('meter_id')
+        ->get()
+        ->keyBy('meter_id');
+
+    expect($readings)->toHaveCount(2)
+        ->and((int) $readings[$first->id]->consumption)->toBe(50)
+        ->and((int) $readings[$third->id]->consumption)->toBe(30)
+        ->and($readings->has($second->id))->toBeFalse();
+
+    // Фильтр «Только не снятые» работает по счётчику, а не по абоненту:
+    // остаётся ровно тот счётчик, по которому показания ещё нет.
+    Livewire::test(MeterReadingEntry::class)
+        ->assertCanSeeTableRecords([$second])
+        ->assertCanNotSeeTableRecords([$first, $third]);
+});
+
 // --- Квитанции --------------------------------------------------------------
 
 test('сохранение показания формирует квитанцию с суммарным объёмом по абоненту', function (): void {

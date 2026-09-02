@@ -19,6 +19,7 @@ IS_PRODUCTION := $(filter production,$(APP_ENV))
 ENV_COMPOSE := $(if $(IS_PRODUCTION),$(PROD_COMPOSE),$(LOCAL_COMPOSE))
 ENV_ENSURE_VENDOR := $(if $(IS_PRODUCTION),,ensure-vendor)
 ENV_ENSURE_NODE_MODULES := $(if $(IS_PRODUCTION),,ensure-node-modules)
+STRIP_DEFINER := sed -E 's/DEFINER=`[^`]*`@`[^`]*`//g'
 
 test_args ?= --compact
 artisan_args ?= list
@@ -141,7 +142,7 @@ import:
 	@test -f "$(dump_file)" || (echo 'Dump file not found: $(dump_file)' >&2; exit 1)
 	@gzip -t "$(dump_file)" || (echo 'Invalid gzip archive: $(dump_file)' >&2; exit 1)
 	$(LOAD_ENV) $(ENV_COMPOSE) exec -T db sh -lc 'mariadb -uroot -p"$$MARIADB_ROOT_PASSWORD" -e "DROP DATABASE IF EXISTS \`$$MARIADB_DATABASE\`; CREATE DATABASE \`$$MARIADB_DATABASE\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"'
-	$(LOAD_ENV) gunzip -c "$(dump_file)" | $(ENV_COMPOSE) exec -T db env MYSQL_PWD="$$DB_PASSWORD" mariadb -u"$$DB_USERNAME" "$$DB_DATABASE"
+	$(LOAD_ENV) gunzip -c "$(dump_file)" | $(STRIP_DEFINER) | $(ENV_COMPOSE) exec -T db env MYSQL_PWD="$$DB_PASSWORD" mariadb -u"$$DB_USERNAME" "$$DB_DATABASE"
 
 dump-media:
 	@test -d "$(storage_dir)" || (echo 'Storage directory not found: $(storage_dir)' >&2; exit 1)

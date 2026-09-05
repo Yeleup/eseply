@@ -358,13 +358,20 @@ class CloseBillingMonth
         foreach ($meters as $meter) {
             $reading = $meter->readings->first();
 
-            if (! $reading) {
+            // A row left by a visit where the meter could not be read carries no
+            // value, so the month is just as unclosable as with no row at all —
+            // but the note the controller left says why, and the operator needs
+            // to see it here rather than hunt for it on the entry page.
+            if (! $reading || ! $reading->isTaken()) {
+                $reason = filled($reading?->note) ? " Отметка контролёра: {$reading->note}" : '';
+
                 return new BillingClosureIssue(
                     'missing_meter_reading',
-                    "Нет показания счётчика {$meter->number} за период.",
+                    "Нет показания счётчика {$meter->number} за период.{$reason}",
                     [
                         'meter_id' => $meter->id,
                         'meter_number' => $meter->number,
+                        'note' => $reading?->note,
                     ],
                 );
             }

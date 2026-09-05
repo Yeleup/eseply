@@ -49,6 +49,19 @@ class Receipt extends Model
         'closing_balance' => 0,
     ];
 
+    public static function existsForMeterReading(MeterReading $meterReading): bool
+    {
+        if (! $meterReading->client_id || ! $meterReading->billing_period_id) {
+            return false;
+        }
+
+        return self::query()
+            ->where('organization_id', $meterReading->organization_id)
+            ->where('client_id', $meterReading->client_id)
+            ->where('billing_period_id', $meterReading->billing_period_id)
+            ->exists();
+    }
+
     public static function fromMeterReading(MeterReading $meterReading): self
     {
         $meterReading->loadMissing([

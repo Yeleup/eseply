@@ -93,11 +93,24 @@ class ReadingsRelationManager extends RelationManager
                 TextColumn::make('current_reading')
                     ->label('Текущее')
                     ->numeric(0)
-                    ->sortable(),
+                    ->sortable()
+                    // An empty value is a visit where the meter could not be
+                    // read, not a reading of nothing; the note says why.
+                    ->placeholder('Не снято'),
                 TextColumn::make('consumption')
                     ->label('Расход')
                     ->numeric(0)
-                    ->sortable(),
+                    ->sortable()
+                    ->state(fn (MeterReading $record): ?int => $record->isTaken()
+                        ? $record->consumption
+                        : null)
+                    ->placeholder('-'),
+                TextColumn::make('note')
+                    ->label('Примечание')
+                    ->wrap()
+                    ->limit(60)
+                    ->toggleable(isToggledHiddenByDefault: true)
+                    ->placeholder('-'),
                 TextColumn::make('read_at')
                     ->label('Дата ввода')
                     ->date('d.m.Y')

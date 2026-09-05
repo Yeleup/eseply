@@ -15,6 +15,7 @@ use App\Models\Region;
 use App\Models\User;
 use App\OrganizationMemberRole;
 use App\Support\ControllerZoneMeterCounts;
+use App\Support\TakenMeterReading;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Query\Builder as QueryBuilder;
@@ -53,7 +54,9 @@ final class DashboardMetrics
             ->whereHas('client', fn (Builder $query): Builder => $query->where('clients.billing_type', 'meter'))
             ->whereHas(
                 'readings',
-                fn (Builder $query): Builder => $query->where('meter_readings.billing_period_id', $billingPeriod->getKey()),
+                fn (Builder $query): Builder => $query
+                    ->where('meter_readings.billing_period_id', $billingPeriod->getKey())
+                    ->taken(),
             )
             ->count();
 
@@ -278,13 +281,10 @@ final class DashboardMetrics
             return $query;
         }
 
-        return $query->whereExists(function (QueryBuilder $query) use ($billingPeriodId): void {
-            $query
-                ->selectRaw('1')
-                ->from('meter_readings')
-                ->whereColumn('meter_readings.meter_id', 'meters.id')
-                ->where('meter_readings.billing_period_id', $billingPeriodId);
-        });
+        return $query->whereExists(fn (QueryBuilder $query) => TakenMeterReading::applyExists(
+            $query,
+            $billingPeriodId,
+        ));
     }
 
     /**

@@ -34,3 +34,29 @@
         @apply bg-amber-50 dark:bg-amber-400/10;
     }
 }
+
+/**
+ * Meter reading photo field.
+ *
+ * On a phone the controller photographs the meter far more often than they pick
+ * an old shot from the gallery, so the two paths become two explicit buttons
+ * instead of one drop area whose system chooser may or may not offer a camera.
+ * The buttons are injected by `resources/js/meter-photo-capture.js`, which also
+ * sets the "ready" class — the FilePond drop label disappears only once there
+ * is something to replace it with.
+ */
+.fi-meter-photo-capture {
+    @apply mb-3 grid grid-cols-2 gap-2;
+
+    & > button {
+        @apply flex h-12 items-center justify-center rounded-lg border border-gray-300 bg-white px-3 text-sm font-semibold text-gray-950 dark:border-white/20 dark:bg-white/5 dark:text-white;
+    }
+
+    & > button:first-child {
+        @apply border-transparent bg-primary-600 text-white dark:bg-primary-500;
+    }
+}
+
+.fi-meter-photo-capture-ready .filepond--drop-label {
+    @apply hidden;
+}

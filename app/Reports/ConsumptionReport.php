@@ -127,7 +127,9 @@ class ConsumptionReport implements OrganizationReport
             return $query->where('meter_readings.id', 0);
         }
 
-        return $query->whereBelongsTo($billingPeriod);
+        // A visit that took no reading is not a consumption row: it has no
+        // current value and its zero would dilute the report.
+        return $query->whereBelongsTo($billingPeriod)->taken();
     }
 
     private function excelFileName(Organization $organization, ?BillingPeriod $billingPeriod): string

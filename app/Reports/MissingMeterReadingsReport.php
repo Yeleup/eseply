@@ -141,6 +141,7 @@ class MissingMeterReadingsReport implements OrganizationReport
                 'previous_reading_for_report' => MeterReading::query()
                     ->select('current_reading')
                     ->whereColumn('meter_readings.meter_id', 'meters.id')
+                    ->taken()
                     ->whereHas(
                         'billingPeriod',
                         fn (Builder $query): Builder => $query->whereDate(
@@ -157,9 +158,11 @@ class MissingMeterReadingsReport implements OrganizationReport
                     ->orderByDesc('id')
                     ->limit(1),
             ])
+            // A visit that took no reading leaves the meter unread, so it has
+            // to stay on the list the operator chases.
             ->whereDoesntHave(
                 'readings',
-                fn (Builder $query): Builder => $query->whereBelongsTo($billingPeriod),
+                fn (Builder $query): Builder => $query->whereBelongsTo($billingPeriod)->taken(),
             );
     }
 

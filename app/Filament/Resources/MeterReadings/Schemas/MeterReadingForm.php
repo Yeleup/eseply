@@ -137,11 +137,24 @@ class MeterReadingForm
                     $tenant instanceof Organization ? $tenant->getKey() : 0,
                 );
             })
-            ->maxSize(10240)
+            // FilePond checks the size of the file as it was picked, before the
+            // resize below shrinks it, so the ceiling has to clear what a phone
+            // camera actually produces: a 48MP shot passes 10 MB easily and
+            // would be rejected before it could ever be downscaled. What
+            // reaches the server is the resized image, a few hundred kilobytes.
+            ->maxSize(25600)
             ->automaticallyResizeImagesMode('contain')
             ->automaticallyResizeImagesToWidth('1920')
             ->automaticallyResizeImagesToHeight('1920')
             ->openable()
+            // Splits the single drop area into «Сделать фото» and «Из галереи»
+            // on touch devices. `x-init` sits on the same element as Filament's
+            // own `x-data`, so Alpine runs it whenever the field appears —
+            // including inside a modal opened long after the page loaded, which
+            // is exactly how the controller reaches this field.
+            ->extraAlpineAttributes([
+                'x-init' => 'window.initMeterPhotoCapture?.($el, $data)',
+            ])
             ->preventFilePathTampering(allowFilePathUsing: function (string $file, Get $get, ?Model $record, Component $component): bool {
                 $tenant = Filament::getTenant();
 

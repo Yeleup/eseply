@@ -827,6 +827,82 @@
                     </div>
                 </div>
 
+                <div class="border-b border-zinc-200 p-4 dark:border-zinc-800">
+                    <div>
+                        <p class="text-sm font-medium text-teal-700 dark:text-teal-300">Модальное окно строки</p>
+                        <h3 class="mt-1 text-base font-semibold">Фото и примечание</h3>
+                        <p class="mt-1 max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
+                            Действие доступно на каждой строке, в том числе до ввода показания. Контролёр работает с телефона, поэтому камера и галерея разведены на две явные кнопки: системный диалог выбора файла на разных прошивках предлагает камеру по-разному, а «Сделать фото» открывает её всегда. На компьютере кнопок нет — там остаётся обычная область загрузки.
+                        </p>
+                    </div>
+
+                    <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+                        <div class="mx-auto w-full max-w-sm rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+                            <p class="text-base font-semibold text-zinc-950 dark:text-white">Показание счётчика MTR-100004</p>
+                            <p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+                                Если показание снять не удалось, оставьте фото и примечание без него: счётчик останется в списке не снятых.
+                            </p>
+
+                            <label class="mt-4 flex flex-col gap-2 text-sm font-medium">
+                                Дата снятия
+                                <input class="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900" value="05.09.2026">
+                            </label>
+
+                            <label class="mt-3 flex flex-col gap-2 text-sm font-medium">
+                                Примечание
+                                <textarea rows="2" class="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900">Счётчик заварен, доступа нет</textarea>
+                            </label>
+
+                            <p class="mt-4 text-sm font-medium">Фото счётчика</p>
+                            <div class="mt-2 grid grid-cols-2 gap-2">
+                                <span class="flex h-12 items-center justify-center rounded-lg bg-teal-600 px-3 text-sm font-semibold text-white">Сделать фото</span>
+                                <span class="flex h-12 items-center justify-center rounded-lg border border-zinc-300 bg-white px-3 text-sm font-semibold text-zinc-950 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white">Из галереи</span>
+                            </div>
+
+                            <div class="mt-3 flex items-center gap-3 rounded-lg border border-zinc-200 p-2 dark:border-zinc-800">
+                                <div class="h-12 w-12 shrink-0 rounded bg-zinc-200 dark:bg-zinc-800"></div>
+                                <div class="min-w-0">
+                                    <p class="truncate text-sm font-medium">meter-mtr-100004.jpg</p>
+                                    <p class="text-xs text-zinc-500 dark:text-zinc-400">Сжато до 1920px · 412 КБ</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-950">
+                            <p class="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Визит без показания</p>
+                            <p class="mt-3 text-sm text-zinc-600 dark:text-zinc-300">
+                                Сохранённые без показания фото и примечание не делают счётчик снятым. Строка остаётся в списке «Только не снятые», процент снятия не растёт, квитанция не выписывается, а закрытие месяца останавливается с ошибкой, в которой видна оставленная отметка.
+                            </p>
+
+                            <div class="mt-4 rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
+                                <p class="text-sm font-semibold">Абая, д. 7, кв. 3</p>
+                                <p class="mt-0.5 text-sm text-zinc-500 dark:text-zinc-400">Ким Ольга</p>
+                                <dl class="mt-3 grid grid-cols-3 gap-3 text-sm">
+                                    <div>
+                                        <dt class="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Текущее</dt>
+                                        <dd class="mt-0.5 font-medium text-zinc-400 dark:text-zinc-500">Не снято</dd>
+                                    </div>
+                                    <div>
+                                        <dt class="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Расход</dt>
+                                        <dd class="mt-0.5 font-medium text-zinc-400 dark:text-zinc-500">-</dd>
+                                    </div>
+                                    <div>
+                                        <dt class="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Примечание</dt>
+                                        <dd class="mt-0.5 font-medium">Счётчик заварен</dd>
+                                    </div>
+                                </dl>
+                            </div>
+
+                            <div class="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-900/60 dark:bg-red-950/30">
+                                <p class="text-sm font-semibold text-red-800 dark:text-red-200">Ошибка закрытия месяца</p>
+                                <p class="mt-1 text-sm text-red-700 dark:text-red-300">
+                                    Нет показания счётчика MTR-100004 за период. Отметка контролёра: Счётчик заварен, доступа нет
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="grid grid-cols-1 gap-4 border-b border-zinc-200 p-4 dark:border-zinc-800 lg:grid-cols-2">
                     <div class="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/60 dark:bg-amber-950/30">
                         <p class="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">Предупреждение — у оператора</p>

@@ -5,6 +5,7 @@ use App\Filament\Resources\Clients\RelationManagers\MetersRelationManager;
 use App\Filament\Resources\MeterReadings\Pages\CreateMeterReading;
 use App\Filament\Resources\MeterReadings\Pages\EditMeterReading;
 use App\Filament\Resources\MeterReadings\Pages\ListMeterReadings;
+use App\Filament\Resources\MeterReadings\Schemas\MeterReadingForm;
 use App\Filament\Resources\Meters\Pages\EditMeter;
 use App\Filament\Resources\Meters\RelationManagers\ReadingsRelationManager;
 use App\Models\Client;
@@ -768,4 +769,18 @@ test('a controller cannot lower an existing reading below the previous one', fun
 
     expect($reading->refresh()->current_reading)->toBe(100)
         ->and($reading->consumption)->toBe(0);
+});
+
+test('the photo field wires up the camera capture buttons', function (): void {
+    $photoUpload = MeterReadingForm::photoUpload();
+
+    // The buttons themselves are built in the browser by
+    // `resources/js/meter-photo-capture.js`; what has to hold on the PHP side
+    // is that the field still asks for them, on every form that uses it.
+    expect($photoUpload->getExtraAlpineAttributes())
+        ->toBe(['x-init' => 'window.initMeterPhotoCapture?.($el, $data)'])
+        // FilePond checks the size of the picked file before it downscales it,
+        // so the ceiling has to clear a raw phone camera shot.
+        ->and($photoUpload->getMaxSize())->toBe(25600)
+        ->and($photoUpload->getAcceptedFileTypes())->toBe(['image/*']);
 });

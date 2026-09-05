@@ -135,12 +135,14 @@ class MeterReadingEntry extends Page implements HasTable
 
         $taken = (clone $query)
             ->whereHas('readings', fn (Builder $query): Builder => $query
-                ->where('billing_period_id', $billingPeriodId))
+                ->where('billing_period_id', $billingPeriodId)
+                ->taken())
             ->count();
 
         $problem = (clone $query)
             ->whereHas('readings', fn (Builder $query): Builder => $query
                 ->where('billing_period_id', $billingPeriodId)
+                ->taken()
                 ->where('consumption', '<', 0))
             ->count();
 
@@ -222,7 +224,9 @@ class MeterReadingEntry extends Page implements HasTable
 
             TextColumn::make('consumption_for_entry')
                 ->label('Расход')
-                ->state(fn (Meter $record): ?int => $this->readingFor($record)?->consumption)
+                // A visit without a reading consumed nothing measurable, so the
+                // cell shows the placeholder instead of a green zero.
+                ->state(fn (Meter $record): ?int => $this->takenReadingFor($record)?->consumption)
                 ->badge()
                 ->color(fn (?int $state): string => match (true) {
                     $state === null => 'gray',
@@ -233,7 +237,7 @@ class MeterReadingEntry extends Page implements HasTable
 
             TextColumn::make('read_at_for_entry')
                 ->label('Снято')
-                ->state(fn (Meter $record) => $this->readingFor($record)?->read_at)
+                ->state(fn (Meter $record) => $this->takenReadingFor($record)?->read_at)
                 ->date('d.m.Y')
                 ->placeholder('-')
                 // "sm", not "md": stackedOnMobile() switches at 640px, so hiding
@@ -259,7 +263,12 @@ class MeterReadingEntry extends Page implements HasTable
                 ->excludeWhenResolvingRecord()
                 ->query(fn (Builder $query): Builder => $query->whereDoesntHave(
                     'readings',
-                    fn (Builder $readings): Builder => $readings->where('billing_period_id', $billingPeriodId),
+                    // A visit that took no reading leaves the meter unread, so
+                    // the row has to stay on the walk list instead of vanishing
+                    // behind the default filter.
+                    fn (Builder $readings): Builder => $readings
+                        ->where('billing_period_id', $billingPeriodId)
+                        ->taken(),
                 )),
 
             Filter::make('negative_consumption')
@@ -376,6 +385,7 @@ class MeterReadingEntry extends Page implements HasTable
         return MeterReading::query()
             ->select('current_reading')
             ->whereColumn('meter_readings.meter_id', 'meters.id')
+            ->taken()
             // Strictly earlier periods only. Without this the column would show
             // the value that has just been typed and the consumption would
             // collapse to zero right after saving.
@@ -432,6 +442,16 @@ class MeterReadingEntry extends Page implements HasTable
                 $existing->update([
                     'current_reading' => $state,
                     'read_at' => $existing->read_at ?? today(),
+                    // A row left by a visit without a reading may have been
+                    // created before a late reading of an earlier period
+                    // landed, so the baseline is resolved again rather than
+                    // carried over from that visit.
+                    'previous_reading' => $existing->isTaken()
+                        ? $existing->previous_reading
+                        : MeterReading::previousReadingForBillingPeriod(
+                            $meter->getKey(),
+                            $billingPeriod->getKey(),
+                        ),
                 ]);
 
                 $reading = $existing;
@@ -507,11 +527,15 @@ class MeterReadingEntry extends Page implements HasTable
             ->icon(Heroicon::OutlinedCamera)
             ->color('gray')
             ->modalHeading(fn (Meter $record): string => "Показание счётчика {$record->number}")
+            ->modalDescription('Если показание снять не удалось, оставьте фото и примечание без него: счётчик останется в списке не снятых.')
             ->modalSubmitActionLabel('Сохранить')
             ->successNotificationTitle('Показание обновлено')
-            ->visible(fn (Meter $record): bool => $this->canEnterReadings()
-                && $this->currentBillingPeriod() instanceof BillingPeriod
-                && $this->readingFor($record) instanceof MeterReading)
+            // Deliberately not tied to an existing reading. A controller who
+            // reached a meter they could not read — sealed, no access, nobody
+            // home — has to be able to record why, and that is exactly the case
+            // where no reading row exists yet.
+            ->visible(fn (): bool => $this->canEnterReadings()
+                && $this->currentBillingPeriod() instanceof BillingPeriod)
             ->fillForm(function (Meter $record): array {
                 $reading = $this->readingFor($record);
 
@@ -536,17 +560,41 @@ class MeterReadingEntry extends Page implements HasTable
                 abort_unless($organization instanceof Organization, 404);
                 abort_unless((int) $record->organization_id === (int) $organization->getKey(), 403);
 
+                abort_unless($record->status === 'active', 403);
+                abort_unless($record->client?->status === 'active', 403);
+                abort_unless($record->client?->billing_type === 'meter', 403);
+
+                $details = [
+                    'read_at' => $data['read_at'] ?? null,
+                    'note' => $data['note'] ?? null,
+                    'photo_path' => $data['photo_path'] ?? null,
+                ];
+
                 try {
                     $billingPeriod = BillingPeriod::requireCurrentEditableFor($organization);
                     $reading = $this->storedReading($record, $billingPeriod->getKey());
 
-                    abort_unless($reading instanceof MeterReading, 404);
-                    abort_unless(OrganizationMemberAccess::canUpdateMeterReading($reading), 403);
+                    if ($reading instanceof MeterReading) {
+                        abort_unless(OrganizationMemberAccess::canUpdateMeterReading($reading), 403);
 
-                    $reading->update([
-                        'read_at' => $data['read_at'] ?? null,
-                        'note' => $data['note'] ?? null,
-                        'photo_path' => $data['photo_path'] ?? null,
+                        $reading->update($details);
+
+                        return;
+                    }
+
+                    abort_unless(OrganizationMemberAccess::canCreateMeterReadingForMeter($record), 403);
+
+                    // The row is created without a value: the visit happened,
+                    // the reading did not. It stays "не снято" everywhere until
+                    // somebody types a number into this very row.
+                    $record->readings()->create([
+                        ...$details,
+                        'billing_period_id' => $billingPeriod->getKey(),
+                        'previous_reading' => MeterReading::previousReadingForBillingPeriod(
+                            $record->getKey(),
+                            $billingPeriod->getKey(),
+                        ),
+                        'current_reading' => null,
                     ]);
                 } catch (ValidationException|QueryException $exception) {
                     Notification::make()
@@ -598,6 +646,18 @@ class MeterReadingEntry extends Page implements HasTable
         }
 
         return $this->storedReading($meter, $billingPeriodId);
+    }
+
+    /**
+     * The reading of the period only when it actually carries a value. A visit
+     * that took no reading must read as "nothing here yet" to every column that
+     * reports what the meter showed.
+     */
+    private function takenReadingFor(Meter $meter): ?MeterReading
+    {
+        $reading = $this->readingFor($meter);
+
+        return $reading instanceof MeterReading && $reading->isTaken() ? $reading : null;
     }
 
     private function storedReading(Meter $meter, int $billingPeriodId): ?MeterReading

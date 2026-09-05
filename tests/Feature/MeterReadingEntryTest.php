@@ -14,9 +14,12 @@ use App\Models\Tariff;
 use App\Models\User;
 use App\Models\UtilityService;
 use App\OrganizationMemberRole;
+use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
 
@@ -537,6 +540,158 @@ test('все счётчики абонента идут отдельными с�
     Livewire::test(MeterReadingEntry::class)
         ->assertCanSeeTableRecords([$second])
         ->assertCanNotSeeTableRecords([$first, $third]);
+});
+
+// --- Визит без показания ----------------------------------------------------
+
+test('контролёр прикладывает фото и примечание, не сняв показание', function (): void {
+    Storage::fake('public');
+
+    ['organization' => $organization, 'utilityService' => $utilityService, 'region' => $region, 'street' => $street] = readingEntryOrganization();
+    billingPeriodFor($organization);
+    readingEntryController($organization, $region, $street);
+
+    $meter = readingEntryMeter($organization, $utilityService, [
+        'region_id' => $region->id,
+        'street_id' => $street->id,
+    ]);
+
+    Livewire::test(MeterReadingEntry::class)
+        ->callAction(TestAction::make('details')->table($meter), [
+            'note' => 'Счётчик заварен, доступа нет',
+            'photo_path' => UploadedFile::fake()->image('meter.jpg'),
+        ]);
+
+    $reading = MeterReading::query()->where('meter_id', $meter->id)->firstOrFail();
+
+    expect($reading->current_reading)->toBeNull()
+        ->and($reading->note)->toBe('Счётчик заварен, доступа нет')
+        ->and($reading->photo_path)->not->toBeNull();
+
+    Storage::disk('public')->assertExists($reading->photo_path);
+});
+
+test('визит без показания не считается снятым', function (): void {
+    ['organization' => $organization, 'utilityService' => $utilityService] = readingEntryOrganization();
+    billingPeriodFor($organization);
+    readingEntryOperator($organization);
+
+    $meter = readingEntryMeter($organization, $utilityService);
+
+    Livewire::test(MeterReadingEntry::class)
+        ->callAction(TestAction::make('details')->table($meter), ['note' => 'Нет доступа']);
+
+    $progress = Livewire::test(MeterReadingEntry::class)->instance()->readingProgress();
+
+    expect($progress['total'])->toBe(1)
+        ->and($progress['taken'])->toBe(0)
+        ->and($progress['problem'])->toBe(0)
+        ->and($progress['percent'])->toBe(0);
+});
+
+test('счётчик с визитом без показания остаётся в списке не снятых', function (): void {
+    ['organization' => $organization, 'utilityService' => $utilityService] = readingEntryOrganization();
+    billingPeriodFor($organization);
+    readingEntryOperator($organization);
+
+    $meter = readingEntryMeter($organization, $utilityService);
+
+    Livewire::test(MeterReadingEntry::class)
+        ->callAction(TestAction::make('details')->table($meter), ['note' => 'Нет доступа']);
+
+    // Фильтр «Только не снятые» включён по умолчанию: строка обязана остаться,
+    // иначе к счётчику больше нельзя вернуться на этом же обходе.
+    Livewire::test(MeterReadingEntry::class)->assertCanSeeTableRecords([$meter]);
+});
+
+test('визит без показания не создаёт квитанцию', function (): void {
+    ['organization' => $organization, 'utilityService' => $utilityService] = readingEntryOrganization();
+    billingPeriodFor($organization);
+    readingEntryOperator($organization);
+
+    $meter = readingEntryMeter($organization, $utilityService);
+
+    Livewire::test(MeterReadingEntry::class)
+        ->callAction(TestAction::make('details')->table($meter), ['note' => 'Нет доступа']);
+
+    expect(Receipt::query()->count())->toBe(0);
+});
+
+test('показание вписывается в ту же строку поверх визита без показания', function (): void {
+    ['organization' => $organization, 'utilityService' => $utilityService] = readingEntryOrganization();
+    billingPeriodFor($organization);
+    readingEntryOperator($organization);
+
+    $meter = readingEntryMeter($organization, $utilityService);
+
+    Livewire::test(MeterReadingEntry::class)
+        ->callAction(TestAction::make('details')->table($meter), ['note' => 'Собака во дворе']);
+
+    enterReading($meter, '150');
+
+    $readings = MeterReading::query()->where('meter_id', $meter->id)->get();
+
+    expect($readings)->toHaveCount(1)
+        ->and((int) $readings->first()->current_reading)->toBe(150)
+        ->and((int) $readings->first()->previous_reading)->toBe(100)
+        ->and((int) $readings->first()->consumption)->toBe(50)
+        ->and($readings->first()->note)->toBe('Собака во дворе');
+});
+
+test('визит без показания не становится предыдущим показанием следующего месяца', function (): void {
+    ['organization' => $organization, 'utilityService' => $utilityService] = readingEntryOrganization();
+    billingPeriodFor($organization, '202605');
+    readingEntryOperator($organization);
+
+    $meter = readingEntryMeter($organization, $utilityService);
+
+    enterReading($meter, '150');
+
+    // Следующий месяц: обход состоялся, но показание снять не смогли.
+    closedBillingPeriodFor($organization, '202605');
+    billingPeriodFor($organization, '202606');
+
+    Livewire::test(MeterReadingEntry::class)
+        ->callAction(TestAction::make('details')->table($meter), ['note' => 'Нет доступа']);
+
+    expect(MeterReading::previousReadingFor($meter->id))->toBe(150);
+
+    closedBillingPeriodFor($organization, '202606');
+    billingPeriodFor($organization, '202607');
+
+    // Предыдущим остаётся последнее реально снятое показание, а не пустая строка.
+    expect(MeterReading::previousReadingFor($meter->id))->toBe(150);
+
+    enterReading($meter, '180');
+
+    $reading = MeterReading::query()
+        ->where('meter_id', $meter->id)
+        ->orderByDesc('id')
+        ->firstOrFail();
+
+    expect((int) $reading->previous_reading)->toBe(150)
+        ->and((int) $reading->consumption)->toBe(30);
+});
+
+test('действие «Фото и примечание» доступно до ввода показания', function (): void {
+    ['organization' => $organization, 'utilityService' => $utilityService] = readingEntryOrganization();
+    billingPeriodFor($organization);
+    readingEntryOperator($organization);
+
+    $meter = readingEntryMeter($organization, $utilityService);
+
+    Livewire::test(MeterReadingEntry::class)
+        ->assertActionVisible(TestAction::make('details')->table($meter));
+});
+
+test('без открытого расчётного месяца фото и примечание приложить нельзя', function (): void {
+    ['organization' => $organization, 'utilityService' => $utilityService] = readingEntryOrganization();
+    readingEntryOperator($organization);
+
+    $meter = readingEntryMeter($organization, $utilityService);
+
+    Livewire::test(MeterReadingEntry::class)
+        ->assertActionHidden(TestAction::make('details')->table($meter));
 });
 
 // --- Квитанции --------------------------------------------------------------

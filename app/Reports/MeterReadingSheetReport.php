@@ -166,6 +166,7 @@ class MeterReadingSheetReport implements FiltersExcelExport, OrganizationReport
                 'previous_reading_for_report' => MeterReading::query()
                     ->select('current_reading')
                     ->whereColumn('meter_readings.meter_id', 'meters.id')
+                    ->taken()
                     ->orderByDesc(
                         BillingPeriod::query()
                             ->select('starts_on')

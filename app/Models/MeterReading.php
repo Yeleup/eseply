@@ -32,7 +32,7 @@ class MeterReading extends Model
     /** @use HasFactory<MeterReadingFactory> */
     use HasFactory;
 
-    public const DUPLICATE_BILLING_PERIOD_MESSAGE = 'За текущий расчётный месяц уже есть показание по этому счётчику. Измените существующее показание вместо создания нового.';
+    public const DUPLICATE_BILLING_PERIOD_MESSAGE = 'За текущий расчётный месяц по этому счётчику уже есть запись. Измените существующую запись вместо создания новой.';
 
     public const BELOW_PREVIOUS_READING_MESSAGE = 'Показание не может быть меньше предыдущего (:previous). Если счётчик перекрутился или заменён, показание вводит оператор.';
 
@@ -63,6 +63,29 @@ class MeterReading extends Model
     public function utilityService(): BelongsTo
     {
         return $this->belongsTo(UtilityService::class);
+    }
+
+    /**
+     * Rows that actually carry a reading.
+     *
+     * A row with an empty `current_reading` records a visit where the meter
+     * could not be read — sealed, no access, nobody home — and exists only to
+     * hold the photo and the note explaining it. It is not a reading: it never
+     * counts towards "снято", never contributes consumption, never becomes the
+     * previous reading and never lets the month close. Every query that asks
+     * "was this meter read this period" goes through this scope.
+     *
+     * @param  Builder<MeterReading>  $query
+     * @return Builder<MeterReading>
+     */
+    public function scopeTaken(Builder $query): Builder
+    {
+        return $query->whereNotNull($query->getModel()->qualifyColumn('current_reading'));
+    }
+
+    public function isTaken(): bool
+    {
+        return $this->current_reading !== null;
     }
 
     /**
@@ -106,7 +129,11 @@ class MeterReading extends Model
         }
 
         $previousReadingQuery = self::query()
-            ->where('meter_id', $meter->id);
+            ->where('meter_id', $meter->id)
+            // A visit that took no reading must never become the baseline of
+            // the next one: it would reset the meter to its initial value and
+            // bill the whole history in a single month.
+            ->taken();
 
         if ($period !== null && $period !== '') {
             $previousReadingQuery->beforePeriod((string) $period);
@@ -238,7 +265,12 @@ class MeterReading extends Model
 
             $meterReading->previous_reading = $previousReading;
             $meterReading->current_reading = $currentReading;
-            $meterReading->consumption = ($currentReading ?? 0) - ($previousReading ?? 0);
+            // No reading means no consumption, not a consumption of minus the
+            // previous value: the row must stay neutral in every SUM it lands
+            // in — the receipt volume, the accrual and the reports.
+            $meterReading->consumption = $currentReading === null
+                ? 0
+                : $currentReading - ($previousReading ?? 0);
         });
 
         static::deleting(function (MeterReading $meterReading): void {
@@ -258,6 +290,15 @@ class MeterReading extends Model
         });
 
         static::saved(function (MeterReading $meterReading): void {
+            // A visit without a reading is not a billable event, so it must not
+            // stamp a receipt on a subscriber nobody has read yet. It still
+            // refreshes a receipt that already exists — another meter of the
+            // same subscriber may have been read, and clearing a value has to
+            // take its charge off the receipt it was on.
+            if (! $meterReading->isTaken() && ! Receipt::existsForMeterReading($meterReading)) {
+                return;
+            }
+
             Receipt::fromMeterReading($meterReading);
         });
     }

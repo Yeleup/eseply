@@ -7,6 +7,7 @@ use App\Models\Organization;
 use App\Models\User;
 use App\OrganizationMemberRole;
 use App\Reports\Concerns\FormatsReportValues;
+use App\Support\TakenMeterReading;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Database\Query\Builder as QueryBuilder;
@@ -447,13 +448,10 @@ class ReportSummaryService
             return $query->whereRaw('1 = 0');
         }
 
-        return $query->whereNotExists(function (QueryBuilder $query) use ($billingPeriod): void {
-            $query
-                ->selectRaw('1')
-                ->from('meter_readings')
-                ->whereColumn('meter_readings.meter_id', 'meters.id')
-                ->where('meter_readings.billing_period_id', $billingPeriod->getKey());
-        });
+        return $query->whereNotExists(fn (QueryBuilder $query) => TakenMeterReading::applyExists(
+            $query,
+            $billingPeriod->getKey(),
+        ));
     }
 
     private function controllerMeterReadingProgressRows(
@@ -487,6 +485,7 @@ class ReportSummaryService
                 from meter_readings
                 where meter_readings.meter_id = meters.id
                   and meter_readings.billing_period_id = ?
+                  and '.TakenMeterReading::SQL_CONDITION.'
             ) then 1 else 0 end as read_meters',
             [$billingPeriod->getKey()],
         );
@@ -652,7 +651,10 @@ class ReportSummaryService
             return $query->whereRaw('1 = 0');
         }
 
-        return $query->where('meter_readings.billing_period_id', $billingPeriod->getKey());
+        return $query
+            ->where('meter_readings.billing_period_id', $billingPeriod->getKey())
+            // A visit without a reading is not a consumption line.
+            ->whereNotNull('meter_readings.current_reading');
     }
 
     private function applyClientVisibility(

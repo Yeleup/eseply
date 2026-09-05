@@ -211,7 +211,9 @@ class BuildClientCardViewData
             'meter_number' => $this->value($meterReading->meter?->number),
             'previous_reading' => $this->reading($meterReading->previous_reading),
             'current_reading' => $this->reading($meterReading->current_reading),
-            'consumption' => $this->reading($meterReading->consumption),
+            // A visit where the meter could not be read consumed nothing
+            // measurable, so the column stays empty instead of claiming zero.
+            'consumption' => $this->reading($meterReading->isTaken() ? $meterReading->consumption : null),
             'read_at' => $this->date($meterReading->read_at),
             'note' => $this->value($meterReading->note),
         ];

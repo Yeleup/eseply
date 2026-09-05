@@ -94,6 +94,10 @@ class AdminPanelProvider extends PanelProvider
                     PaymentDesk::class,
                 ],
             )
+            ->renderHook(
+                PanelsRenderHook::SCRIPTS_AFTER,
+                fn (): View => view('filament.meter-photo-capture-script'),
+            )
             ->authenticatedTenantRoutes(function (): void {
                 Route::get('/clients/{client}/card', ClientCardController::class)
                     ->name('clients.card');

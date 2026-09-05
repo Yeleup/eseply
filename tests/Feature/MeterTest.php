@@ -13,11 +13,15 @@ use App\Models\Client;
 use App\Models\Meter;
 use App\Models\MeterReading;
 use App\Models\Organization;
+use App\Models\Region;
+use App\Models\Street;
 use App\Models\User;
 use App\Models\UtilityService;
+use App\OrganizationMemberRole;
 use Filament\Facades\Filament;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Livewire\Livewire;
 
@@ -35,6 +39,64 @@ function actingAsMeterTenant(Organization $organization): User
     Filament::bootCurrentPanel();
 
     return $user;
+}
+
+function actingAsMeterController(Organization $organization, Region $region): User
+{
+    $user = User::factory()->create();
+    $user->organizations()->attach($organization, [
+        'role' => OrganizationMemberRole::Controller->value,
+    ]);
+
+    DB::table('organization_user_regions')->insert([
+        'organization_id' => $organization->id,
+        'user_id' => $user->id,
+        'region_id' => $region->id,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    Livewire::actingAs($user);
+
+    Filament::setCurrentPanel('admin');
+    Filament::setTenant($organization);
+    Filament::bootCurrentPanel();
+
+    return $user;
+}
+
+/**
+ * A meter of a region-assigned client with an open month, where the previous
+ * reading is the meter's initial reading.
+ *
+ * @return array{organization: Organization, region: Region, meter: Meter}
+ */
+function meterWithPreviousReading(int $previousReading): array
+{
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create();
+    $region = Region::factory()->for($organization)->create();
+    $street = Street::factory()->for($region)->create();
+    $client = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->for($region)
+        ->for($street)
+        ->create([
+            'billing_type' => 'meter',
+        ]);
+    $meter = Meter::factory()
+        ->for($organization)
+        ->for($client)
+        ->for($utilityService)
+        ->create([
+            'number' => 'MTR-BELOW-PREVIOUS',
+            'initial_reading' => $previousReading,
+        ]);
+
+    billingPeriodFor($organization);
+
+    return compact('organization', 'region', 'meter');
 }
 
 test('meters belong to an organization client and utility service', function () {
@@ -615,4 +677,181 @@ test('meter forms reject a fractional initial reading', function () {
         ->assertHasTableActionErrors(['initial_reading']);
 
     expect(Meter::query()->whereBelongsTo($organization)->count())->toBe(0);
+});
+
+test('the readings tab rejects a controller reading below the previous one', function () {
+    ['organization' => $organization, 'region' => $region, 'meter' => $meter] = meterWithPreviousReading(500);
+
+    actingAsMeterController($organization, $region);
+
+    Livewire::test(ReadingsRelationManager::class, [
+        'ownerRecord' => $meter,
+        'pageClass' => EditMeter::class,
+    ])
+        ->callTableAction('create', data: [
+            'current_reading' => 400,
+        ])
+        ->assertHasTableActionErrors(['current_reading']);
+
+    expect(MeterReading::query()->whereBelongsTo($meter)->count())->toBe(0);
+});
+
+test('the readings tab rejects a controller edit below the previous reading', function () {
+    ['organization' => $organization, 'region' => $region, 'meter' => $meter] = meterWithPreviousReading(500);
+
+    $reading = MeterReading::factory()
+        ->for($meter)
+        ->create([
+            'period' => '202605',
+            'previous_reading' => 500,
+            'current_reading' => 600,
+        ]);
+
+    actingAsMeterController($organization, $region);
+
+    Livewire::test(ReadingsRelationManager::class, [
+        'ownerRecord' => $meter,
+        'pageClass' => EditMeter::class,
+    ])
+        ->callTableAction('edit', $reading, data: [
+            'current_reading' => 400,
+        ])
+        ->assertHasTableActionErrors(['current_reading']);
+
+    expect($reading->refresh()->current_reading)->toBe(600)
+        ->and($reading->consumption)->toBe(100);
+});
+
+test('the readings tab accepts a controller reading equal to the previous one', function () {
+    ['organization' => $organization, 'region' => $region, 'meter' => $meter] = meterWithPreviousReading(500);
+
+    actingAsMeterController($organization, $region);
+
+    Livewire::test(ReadingsRelationManager::class, [
+        'ownerRecord' => $meter,
+        'pageClass' => EditMeter::class,
+    ])
+        ->callTableAction('create', data: [
+            'current_reading' => 500,
+        ])
+        ->assertHasNoTableActionErrors()
+        ->assertNotified();
+
+    $reading = MeterReading::query()
+        ->whereBelongsTo($organization)
+        ->whereBelongsTo($meter)
+        ->forPeriod('202605')
+        ->sole();
+
+    expect($reading->previous_reading)->toBe(500)
+        ->and($reading->current_reading)->toBe(500)
+        ->and($reading->consumption)->toBe(0);
+});
+
+test('the readings tab accepts an operator reading below the previous one', function () {
+    ['organization' => $organization, 'meter' => $meter] = meterWithPreviousReading(500);
+
+    actingAsMeterTenant($organization);
+
+    Livewire::test(ReadingsRelationManager::class, [
+        'ownerRecord' => $meter,
+        'pageClass' => EditMeter::class,
+    ])
+        ->callTableAction('create', data: [
+            'current_reading' => 400,
+        ])
+        ->assertHasNoTableActionErrors()
+        ->assertNotified();
+
+    $reading = MeterReading::query()
+        ->whereBelongsTo($organization)
+        ->whereBelongsTo($meter)
+        ->forPeriod('202605')
+        ->sole();
+
+    expect($reading->previous_reading)->toBe(500)
+        ->and($reading->current_reading)->toBe(400)
+        ->and($reading->consumption)->toBe(-100);
+});
+
+test('the readings tab ignores a tampered previous reading on edit', function () {
+    ['organization' => $organization, 'region' => $region, 'meter' => $meter] = meterWithPreviousReading(500);
+
+    $reading = MeterReading::factory()
+        ->for($meter)
+        ->create([
+            'period' => '202605',
+            'previous_reading' => 500,
+            'current_reading' => 600,
+        ]);
+
+    actingAsMeterController($organization, $region);
+
+    Livewire::test(ReadingsRelationManager::class, [
+        'ownerRecord' => $meter,
+        'pageClass' => EditMeter::class,
+    ])
+        ->callTableAction('edit', $reading, data: [
+            'previous_reading' => 99999,
+            'current_reading' => 600,
+        ])
+        ->assertHasNoTableActionErrors();
+
+    expect($reading->refresh()->previous_reading)->toBe(500)
+        ->and($reading->consumption)->toBe(100);
+});
+
+test('the readings tab lets a controller re-save a below-previous reading left by an operator', function () {
+    ['organization' => $organization, 'region' => $region, 'meter' => $meter] = meterWithPreviousReading(500);
+
+    $reading = MeterReading::factory()
+        ->for($meter)
+        ->create([
+            'period' => '202605',
+            'previous_reading' => 500,
+            'current_reading' => 400,
+        ]);
+
+    actingAsMeterController($organization, $region);
+
+    Livewire::test(ReadingsRelationManager::class, [
+        'ownerRecord' => $meter,
+        'pageClass' => EditMeter::class,
+    ])
+        ->callTableAction('edit', $reading, data: [
+            'current_reading' => 400,
+            'note' => 'Счётчик заменён, фото приложено',
+        ])
+        ->assertHasNoTableActionErrors();
+
+    expect($reading->refresh()->note)->toBe('Счётчик заменён, фото приложено')
+        ->and($reading->current_reading)->toBe(400)
+        ->and($reading->consumption)->toBe(-100);
+});
+
+test('the readings tab still stops a controller from lowering a below-previous reading further', function () {
+    ['organization' => $organization, 'region' => $region, 'meter' => $meter] = meterWithPreviousReading(500);
+
+    $reading = MeterReading::factory()
+        ->for($meter)
+        ->create([
+            'period' => '202605',
+            'previous_reading' => 500,
+            'current_reading' => 400,
+        ]);
+
+    actingAsMeterController($organization, $region);
+
+    Livewire::test(ReadingsRelationManager::class, [
+        'ownerRecord' => $meter,
+        'pageClass' => EditMeter::class,
+    ])
+        ->callTableAction('edit', $reading, data: [
+            'current_reading' => 350,
+        ])
+        ->assertHasTableActionErrors([
+            'current_reading' => [MeterReading::belowPreviousReadingMessage(500)],
+        ]);
+
+    expect($reading->refresh()->current_reading)->toBe(400);
 });

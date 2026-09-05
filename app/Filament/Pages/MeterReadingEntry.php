@@ -199,8 +199,18 @@ class MeterReadingEntry extends Page implements HasTable
                 ->type('text')
                 ->inputMode('numeric')
                 // The only channel that reports an error back to the input:
-                // everything thrown deeper is swallowed by Livewire.
-                ->rules(['integer', 'min:0'])
+                // everything thrown deeper is swallowed by Livewire. The column
+                // is bound to its record before the rules are evaluated, so the
+                // minimum is the one of this very meter.
+                ->rules(fn (Meter $record): array => [
+                    'integer',
+                    'min:'.$this->minimumReadingFor($record),
+                ])
+                ->validationMessages([
+                    'min' => fn (Meter $record): ?string => OrganizationMemberAccess::canEnterMeterReadingBelowPrevious()
+                        ? null
+                        : MeterReading::belowPreviousReadingMessage($this->previousReading($record)),
+                ])
                 ->getStateUsing(fn (Meter $record): ?int => $this->readingFor($record)?->current_reading)
                 // Deliberately not tied to the billing period: `isDisabled()`
                 // is re-evaluated on every save, so a period closing while the
@@ -453,6 +463,15 @@ class MeterReadingEntry extends Page implements HasTable
         $this->warnAboutNegativeConsumption($meter, $reading);
 
         return $reading->current_reading;
+    }
+
+    /**
+     * The lowest value this member may save for the meter: the previous reading
+     * for a controller, zero for an operator.
+     */
+    private function minimumReadingFor(Meter $meter): int
+    {
+        return OrganizationMemberAccess::minimumMeterReading($this->previousReading($meter));
     }
 
     private function warnAboutNegativeConsumption(Meter $meter, MeterReading $reading): void

@@ -257,11 +257,12 @@ class MetersRelationManager extends RelationManager
                         ->default(fn (): int => $this->previousReadingForMeterAndPeriod($meter, $this->currentBillingPeriodId()))
                         ->readOnly()
                         ->required(),
-                    TextInput::make('current_reading')
-                        ->label('Текущее показание')
-                        ->integer()
-                        ->minValue(0)
-                        ->required(),
+                    MeterReadingForm::currentReadingInput(
+                        fn (): int => $this->previousReadingForMeterAndPeriod($meter, $this->currentBillingPeriodId()),
+                        // The record of the action is the meter, not the
+                        // reading, so the stored value is resolved explicitly.
+                        fn (): ?int => $this->currentReadingForMeter($meter)?->current_reading,
+                    ),
                     DatePicker::make('read_at')
                         ->label('Дата ввода')
                         ->native(false),

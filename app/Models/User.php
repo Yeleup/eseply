@@ -132,6 +132,17 @@ class User extends Authenticatable implements FilamentUser, HasTenants
             && $this->canAccessMeterReadingInOrganization($meterReading, $organization);
     }
 
+    /**
+     * A reading below the previous one means negative consumption, which stops
+     * the closure of the month for the whole organization. Only the operator
+     * may enter it: they can see the meter history, replace the meter and fix
+     * the accrual, while the controller on the route can only guess.
+     */
+    public function canEnterMeterReadingBelowPreviousInOrganization(Organization|int|string|null $organization): bool
+    {
+        return $this->isOrganizationOperator($organization);
+    }
+
     public function canAccessClientInOrganization(Client $client, Organization|int|string|null $organization): bool
     {
         $organizationId = self::organizationId($organization);

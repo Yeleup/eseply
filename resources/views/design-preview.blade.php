@@ -817,6 +817,11 @@
                                     <input inputmode="numeric" class="mt-2 w-full rounded-md border border-red-400 bg-white px-3 py-1.5 text-sm dark:border-red-500 dark:bg-zinc-950" value="12.7">
                                     <p class="mt-1 text-xs text-red-700 dark:text-red-300">Показание должно быть целым числом.</p>
                                 </div>
+                                <div class="rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900 sm:col-span-2">
+                                    <p class="text-xs text-red-700 dark:text-red-300">Меньше предыдущего — у контроллера</p>
+                                    <input inputmode="numeric" class="mt-2 w-full rounded-md border border-red-400 bg-white px-3 py-1.5 text-sm dark:border-red-500 dark:bg-zinc-950" value="14180">
+                                    <p class="mt-1 text-xs text-red-700 dark:text-red-300">Показание не может быть меньше предыдущего (14320). Если счётчик перекрутился или заменён, показание вводит оператор.</p>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -824,19 +829,21 @@
 
                 <div class="grid grid-cols-1 gap-4 border-b border-zinc-200 p-4 dark:border-zinc-800 lg:grid-cols-2">
                     <div class="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/60 dark:bg-amber-950/30">
-                        <p class="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">Предупреждение</p>
+                        <p class="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">Предупреждение — у оператора</p>
                         <h3 class="mt-2 font-semibold text-amber-800 dark:text-amber-200">Расход отрицательный</h3>
                         <p class="mt-1 text-sm text-amber-700 dark:text-amber-300">
-                            Счётчик MTR-100003: расход -100. Показание сохранено, но закрыть месяц с отрицательным расходом нельзя. Строка остаётся подсвеченной, пока оператор не исправит значение.
+                            Счётчик MTR-100003: расход -100. Такое показание вводит только оператор: оно сохранено, строка подсвечена и попадает в «Проблемных», но закрыть месяц с отрицательным расходом нельзя, пока оператор не исправит значение. У контроллера то же показание не сохранится вовсе.
                         </p>
                     </div>
 
                     <div class="rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-950">
                         <p class="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Доступ</p>
                         <ul class="mt-3 flex flex-col gap-2 text-sm text-zinc-600 dark:text-zinc-300">
-                            <li><span class="font-medium text-zinc-950 dark:text-white">Контроллер</span> — видит только счётчики своей зоны ответственности, фильтр контроллеров ему не показывается.</li>
-                            <li><span class="font-medium text-zinc-950 dark:text-white">Оператор</span> — видит все счётчики организации и может дополнительно отфильтровать список по контроллерам.</li>
+                            <li><span class="font-medium text-zinc-950 dark:text-white">Контроллер</span> — видит только счётчики своей зоны ответственности, фильтр контроллеров ему не показывается. Показание меньше предыдущего он сохранить не может: поле остаётся красным с текстом «Показание не может быть меньше предыдущего (14320). Если счётчик перекрутился или заменён, показание вводит оператор.» Равное предыдущему допускается — нулевой расход в пустой квартире это норма.</li>
+                            <li><span class="font-medium text-zinc-950 dark:text-white">Оператор</span> — видит все счётчики организации и может дополнительно отфильтровать список по контроллерам. Показание меньше предыдущего ему разрешено: только он может заменить счётчик и поправить начисление.</li>
                         </ul>
+
+                        <p class="mt-3 text-xs text-zinc-500 dark:text-zinc-400">Одно и то же значение даёт разный исход: у контроллера — красная ошибка и несохранённое показание, у оператора — сохранённая строка с жёлтой подсветкой и предупреждением «Расход отрицательный».</p>
                     </div>
                 </div>
 

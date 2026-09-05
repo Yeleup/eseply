@@ -11,12 +11,16 @@ use App\Models\Client;
 use App\Models\Meter;
 use App\Models\MeterReading;
 use App\Models\Organization;
+use App\Models\Region;
+use App\Models\Street;
 use App\Models\User;
 use App\Models\UtilityService;
+use App\OrganizationMemberRole;
 use App\Support\MeterReadingPhotoStorage;
 use Filament\Facades\Filament;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Livewire\Livewire;
@@ -35,6 +39,69 @@ function actingAsReadingPhotoTenant(Organization $organization): User
     Filament::bootCurrentPanel();
 
     return $user;
+}
+
+/**
+ * A member of the organization with an explicit role, optionally assigned to
+ * the region a controller is allowed to work in.
+ */
+function actingAsReadingResourceMember(Organization $organization, OrganizationMemberRole $role, ?Region $region = null): User
+{
+    $user = User::factory()->create();
+    $user->organizations()->attach($organization, [
+        'role' => $role->value,
+    ]);
+
+    if ($region instanceof Region) {
+        DB::table('organization_user_regions')->insert([
+            'organization_id' => $organization->id,
+            'user_id' => $user->id,
+            'region_id' => $region->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
+    Livewire::actingAs($user);
+
+    Filament::setCurrentPanel('admin');
+    Filament::setTenant($organization);
+    Filament::bootCurrentPanel();
+
+    return $user;
+}
+
+/**
+ * A meter of a region-assigned client with an open month, where the previous
+ * reading of the current month is the meter's initial reading.
+ *
+ * @return array{organization: Organization, region: Region, meter: Meter}
+ */
+function readingResourceMeterFixture(int $previousReading): array
+{
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create();
+    $region = Region::factory()->for($organization)->create();
+    $street = Street::factory()->for($region)->create();
+    $client = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->for($region)
+        ->for($street)
+        ->create([
+            'billing_type' => 'meter',
+        ]);
+    $meter = Meter::factory()
+        ->for($organization)
+        ->for($client)
+        ->for($utilityService)
+        ->create([
+            'initial_reading' => $previousReading,
+        ]);
+
+    billingPeriodFor($organization);
+
+    return compact('organization', 'region', 'meter');
 }
 
 test('meter readings store an optional photo path', function () {
@@ -610,4 +677,95 @@ test('deleting an organization deletes its meter reading photo directory', funct
 
     Storage::disk('public')->assertMissing($photoPath);
     Storage::disk('public')->assertExists($otherPhotoPath);
+});
+
+test('a controller cannot create a reading below the previous one', function () {
+    ['organization' => $organization, 'region' => $region, 'meter' => $meter] = readingResourceMeterFixture(100);
+
+    actingAsReadingResourceMember($organization, OrganizationMemberRole::Controller, $region);
+
+    Livewire::test(CreateMeterReading::class)
+        ->fillForm([
+            'meter_id' => $meter->id,
+            'current_reading' => 90,
+        ])
+        ->call('create')
+        ->assertHasFormErrors(['current_reading']);
+
+    expect(MeterReading::query()->whereBelongsTo($meter)->exists())->toBeFalse();
+});
+
+test('a controller can create a reading equal to the previous one', function () {
+    ['organization' => $organization, 'region' => $region, 'meter' => $meter] = readingResourceMeterFixture(100);
+
+    actingAsReadingResourceMember($organization, OrganizationMemberRole::Controller, $region);
+
+    Livewire::test(CreateMeterReading::class)
+        ->fillForm([
+            'meter_id' => $meter->id,
+            'current_reading' => 100,
+        ])
+        ->call('create')
+        ->assertHasNoFormErrors();
+
+    $reading = MeterReading::query()->whereBelongsTo($meter)->sole();
+
+    expect($reading->previous_reading)->toBe(100)
+        ->and($reading->current_reading)->toBe(100)
+        ->and($reading->consumption)->toBe(0);
+});
+
+test('an operator can create a reading below the previous one', function () {
+    ['organization' => $organization, 'meter' => $meter] = readingResourceMeterFixture(100);
+
+    actingAsReadingResourceMember($organization, OrganizationMemberRole::Operator);
+
+    Livewire::test(CreateMeterReading::class)
+        ->fillForm([
+            'meter_id' => $meter->id,
+            'current_reading' => 90,
+        ])
+        ->call('create')
+        ->assertHasNoFormErrors();
+
+    $reading = MeterReading::query()->whereBelongsTo($meter)->sole();
+
+    expect($reading->previous_reading)->toBe(100)
+        ->and($reading->current_reading)->toBe(90)
+        ->and($reading->consumption)->toBe(-10);
+});
+
+test('a controller cannot lower an existing reading below the previous one', function () {
+    ['organization' => $organization, 'region' => $region, 'meter' => $meter] = readingResourceMeterFixture(100);
+
+    $reading = MeterReading::factory()->for($meter)->create([
+        'period' => '202605',
+        'previous_reading' => 100,
+        'current_reading' => 130,
+    ]);
+
+    actingAsReadingResourceMember($organization, OrganizationMemberRole::Controller, $region);
+
+    Livewire::test(EditMeterReading::class, [
+        'record' => $reading->getRouteKey(),
+    ])
+        ->fillForm([
+            'current_reading' => 90,
+        ])
+        ->call('save')
+        ->assertHasFormErrors(['current_reading']);
+
+    expect($reading->refresh()->current_reading)->toBe(130);
+
+    Livewire::test(EditMeterReading::class, [
+        'record' => $reading->getRouteKey(),
+    ])
+        ->fillForm([
+            'current_reading' => 100,
+        ])
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    expect($reading->refresh()->current_reading)->toBe(100)
+        ->and($reading->consumption)->toBe(0);
 });

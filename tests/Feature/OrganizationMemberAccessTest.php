@@ -15,6 +15,7 @@ use App\Filament\Resources\Meters\Pages\EditMeter;
 use App\Filament\Resources\Meters\Pages\ListMeters;
 use App\Filament\Resources\Meters\RelationManagers\ReadingsRelationManager;
 use App\Filament\Resources\Tariffs\Pages\ListTariffs;
+use App\Filament\Support\OrganizationMemberAccess;
 use App\Models\Client;
 use App\Models\Meter;
 use App\Models\MeterReading;
@@ -471,4 +472,145 @@ test('controller cannot access organization setup and non-reading operations', f
         'ownerRecord' => $client,
         'pageClass' => EditClient::class,
     ])->assertForbidden();
+});
+
+test('operator may enter a reading below the previous one while the controller may not', function () {
+    $organization = Organization::factory()->create();
+
+    $operator = User::factory()->create();
+    $operator->organizations()->attach($organization, [
+        'role' => OrganizationMemberRole::Operator->value,
+    ]);
+
+    $controller = User::factory()->create();
+    $controller->organizations()->attach($organization, [
+        'role' => OrganizationMemberRole::Controller->value,
+    ]);
+
+    expect($operator->canEnterMeterReadingBelowPreviousInOrganization($organization))->toBeTrue()
+        ->and($controller->canEnterMeterReadingBelowPreviousInOrganization($organization))->toBeFalse();
+});
+
+test('a member without a role and an operator of another organization may not enter a reading below the previous one', function () {
+    $organization = Organization::factory()->create();
+    $otherOrganization = Organization::factory()->create();
+
+    $memberWithoutRole = User::factory()->create();
+    $memberWithoutRole->organizations()->attach($organization, [
+        'role' => '',
+    ]);
+
+    $foreignOperator = User::factory()->create();
+    $foreignOperator->organizations()->attach($otherOrganization, [
+        'role' => OrganizationMemberRole::Operator->value,
+    ]);
+
+    expect($memberWithoutRole->canEnterMeterReadingBelowPreviousInOrganization($organization))->toBeFalse()
+        ->and($foreignOperator->canEnterMeterReadingBelowPreviousInOrganization($otherOrganization))->toBeTrue()
+        ->and($foreignOperator->canEnterMeterReadingBelowPreviousInOrganization($organization))->toBeFalse();
+});
+
+test('the tenant operator may enter a reading below the previous one and gets a zero minimum', function () {
+    $organization = Organization::factory()->create();
+    actingAsOrganizationAccessTenant($organization, OrganizationMemberRole::Operator);
+
+    expect(OrganizationMemberAccess::canEnterMeterReadingBelowPrevious())->toBeTrue()
+        ->and(OrganizationMemberAccess::minimumMeterReading(150))->toBe(0);
+});
+
+test('the tenant controller may not enter a reading below the previous one and gets it as the minimum', function () {
+    $organization = Organization::factory()->create();
+    actingAsOrganizationAccessTenant($organization, OrganizationMemberRole::Controller);
+
+    expect(OrganizationMemberAccess::canEnterMeterReadingBelowPrevious())->toBeFalse()
+        ->and(OrganizationMemberAccess::minimumMeterReading(150))->toBe(150);
+});
+
+test('a tenant member without a role may not enter a reading below the previous one', function () {
+    $organization = Organization::factory()->create();
+    $user = User::factory()->create();
+    $user->organizations()->attach($organization, [
+        'role' => '',
+    ]);
+
+    Livewire::actingAs($user);
+
+    Filament::setCurrentPanel('admin');
+    Filament::setTenant($organization);
+
+    expect(OrganizationMemberAccess::canEnterMeterReadingBelowPrevious())->toBeFalse()
+        ->and(OrganizationMemberAccess::minimumMeterReading(150))->toBe(150);
+});
+
+test('an operator of another organization may not enter a reading below the previous one of the current tenant', function () {
+    $otherOrganization = Organization::factory()->create();
+
+    $user = User::factory()->create();
+    $user->organizations()->attach($otherOrganization, [
+        'role' => OrganizationMemberRole::Operator->value,
+    ]);
+
+    $organization = Organization::factory()->create();
+    $user->organizations()->attach($organization, [
+        'role' => OrganizationMemberRole::Controller->value,
+    ]);
+
+    Livewire::actingAs($user);
+
+    Filament::setCurrentPanel('admin');
+    Filament::setTenant($organization);
+
+    expect(OrganizationMemberAccess::canEnterMeterReadingBelowPrevious())->toBeFalse()
+        ->and(OrganizationMemberAccess::minimumMeterReading(150))->toBe(150);
+});
+
+test('without a tenant nobody may enter a reading below the previous one', function () {
+    $organization = Organization::factory()->create();
+    $operator = User::factory()->create();
+    $operator->organizations()->attach($organization, [
+        'role' => OrganizationMemberRole::Operator->value,
+    ]);
+
+    Livewire::actingAs($operator);
+
+    Filament::setCurrentPanel('admin');
+
+    expect(OrganizationMemberAccess::tenant())->toBeNull()
+        ->and(OrganizationMemberAccess::canEnterMeterReadingBelowPrevious())->toBeFalse()
+        ->and(OrganizationMemberAccess::minimumMeterReading(150))->toBe(150);
+});
+
+test('without an authenticated user nobody may enter a reading below the previous one', function () {
+    $organization = Organization::factory()->create();
+
+    Filament::setCurrentPanel('admin');
+    // The tenant is set quietly: the TenantSet event requires a user, and this
+    // test is exactly about there being none.
+    Filament::setTenant($organization, isQuiet: true);
+
+    expect(OrganizationMemberAccess::user())->toBeNull()
+        ->and(OrganizationMemberAccess::canEnterMeterReadingBelowPrevious())->toBeFalse()
+        ->and(OrganizationMemberAccess::minimumMeterReading(150))->toBe(150);
+});
+
+test('the minimum reading is zero for an operator and the previous reading for a controller', function () {
+    expect(MeterReading::minimumCurrentReading(150, true))->toBe(0)
+        ->and(MeterReading::minimumCurrentReading(150, false))->toBe(150);
+});
+
+test('the minimum reading is never negative and an empty previous reading counts as zero', function () {
+    expect(MeterReading::minimumCurrentReading(null, false))->toBe(0)
+        ->and(MeterReading::minimumCurrentReading(null, true))->toBe(0)
+        ->and(MeterReading::minimumCurrentReading(0, false))->toBe(0)
+        ->and(MeterReading::minimumCurrentReading(-5, false))->toBe(0)
+        ->and(MeterReading::minimumCurrentReading(-5, true))->toBe(0);
+});
+
+test('the below previous reading message names the previous reading', function () {
+    expect(MeterReading::belowPreviousReadingMessage(150))
+        ->toBe('Показание не может быть меньше предыдущего (150). Если счётчик перекрутился или заменён, показание вводит оператор.')
+        ->and(MeterReading::belowPreviousReadingMessage(0))
+        ->toBe('Показание не может быть меньше предыдущего (0). Если счётчик перекрутился или заменён, показание вводит оператор.')
+        ->and(MeterReading::belowPreviousReadingMessage(null))
+        ->toBe('Показание не может быть меньше предыдущего (0). Если счётчик перекрутился или заменён, показание вводит оператор.');
 });

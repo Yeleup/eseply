@@ -155,6 +155,28 @@ final class OrganizationMemberAccess
             && $user->canUpdateMeterReadingInOrganization($meterReading, $tenant);
     }
 
+    public static function canEnterMeterReadingBelowPrevious(): bool
+    {
+        $tenant = self::tenant();
+        $user = self::user();
+
+        return $tenant instanceof Organization
+            && $user instanceof User
+            && $user->canEnterMeterReadingBelowPreviousInOrganization($tenant);
+    }
+
+    /**
+     * The lowest reading the current member may save for the meter: the
+     * previous reading for a controller, zero for an operator.
+     */
+    public static function minimumMeterReading(int $previousReading): int
+    {
+        return MeterReading::minimumCurrentReading(
+            $previousReading,
+            self::canEnterMeterReadingBelowPrevious(),
+        );
+    }
+
     public static function canDeleteMeterReading(MeterReading $meterReading): bool
     {
         $tenant = self::tenant();

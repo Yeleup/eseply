@@ -34,6 +34,8 @@ class MeterReading extends Model
 
     public const DUPLICATE_BILLING_PERIOD_MESSAGE = 'За текущий расчётный месяц уже есть показание по этому счётчику. Измените существующее показание вместо создания нового.';
 
+    public const BELOW_PREVIOUS_READING_MESSAGE = 'Показание не может быть меньше предыдущего (:previous). Если счётчик перекрутился или заменён, показание вводит оператор.';
+
     public const PHOTO_DISK = 'public';
 
     /**
@@ -149,6 +151,27 @@ class MeterReading extends Model
         }
 
         return $query->exists();
+    }
+
+    /**
+     * The lowest value that may be saved as the current reading.
+     *
+     * A reading equal to the previous one is always allowed: an empty flat
+     * consumes nothing, and zero consumption never blocks the closure of the
+     * month. Only a reading strictly below the previous one is restricted.
+     */
+    public static function minimumCurrentReading(?int $previousReading, bool $canGoBelowPrevious): int
+    {
+        if ($canGoBelowPrevious) {
+            return 0;
+        }
+
+        return max(0, $previousReading ?? 0);
+    }
+
+    public static function belowPreviousReadingMessage(?int $previousReading): string
+    {
+        return str_replace(':previous', (string) ($previousReading ?? 0), self::BELOW_PREVIOUS_READING_MESSAGE);
     }
 
     public static function photoDirectoryFor(int|string $organizationId): string

@@ -595,3 +595,71 @@ test('число запросов списка не растёт вместе с
 
     expect($withMany)->toBe($withFew);
 });
+
+test('контролёр не может ввести показание меньше предыдущего', function (): void {
+    ['organization' => $organization, 'utilityService' => $utilityService, 'region' => $region, 'street' => $street] = readingEntryOrganization();
+    billingPeriodFor($organization);
+    readingEntryController($organization, $region);
+
+    $meter = readingEntryMeter($organization, $utilityService, [
+        'region_id' => $region->id,
+        'street_id' => $street->id,
+    ], ['initial_reading' => 500]);
+
+    enterReading($meter, '400')
+        ->assertReturned(fn (mixed $value): bool => is_array($value)
+            && str_contains($value['error'] ?? '', 'не может быть меньше предыдущего (500)'));
+
+    expect(MeterReading::query()->count())->toBe(0);
+});
+
+test('контролёр вводит показание, равное предыдущему', function (): void {
+    ['organization' => $organization, 'utilityService' => $utilityService, 'region' => $region, 'street' => $street] = readingEntryOrganization();
+    billingPeriodFor($organization);
+    readingEntryController($organization, $region);
+
+    $meter = readingEntryMeter($organization, $utilityService, [
+        'region_id' => $region->id,
+        'street_id' => $street->id,
+    ], ['initial_reading' => 500]);
+
+    enterReading($meter, '500');
+
+    $reading = MeterReading::query()->where('meter_id', $meter->id)->firstOrFail();
+
+    expect((int) $reading->current_reading)->toBe(500)
+        ->and((int) $reading->consumption)->toBe(0);
+});
+
+test('контролёр не может опустить уже сохранённое показание ниже предыдущего', function (): void {
+    ['organization' => $organization, 'utilityService' => $utilityService, 'region' => $region, 'street' => $street] = readingEntryOrganization();
+    billingPeriodFor($organization);
+    readingEntryController($organization, $region);
+
+    $meter = readingEntryMeter($organization, $utilityService, [
+        'region_id' => $region->id,
+        'street_id' => $street->id,
+    ], ['initial_reading' => 500]);
+
+    enterReading($meter, '600');
+    enterReading($meter, '450')
+        ->assertReturned(fn (mixed $value): bool => is_array($value) && array_key_exists('error', $value));
+
+    $reading = MeterReading::query()->where('meter_id', $meter->id)->firstOrFail();
+
+    expect((int) $reading->current_reading)->toBe(600);
+});
+
+test('оператор вводит показание меньше предыдущего на той же странице', function (): void {
+    ['organization' => $organization, 'utilityService' => $utilityService] = readingEntryOrganization();
+    billingPeriodFor($organization);
+    readingEntryOperator($organization);
+
+    $meter = readingEntryMeter($organization, $utilityService, [], ['initial_reading' => 500]);
+
+    enterReading($meter, '400')->assertReturned(400);
+
+    $reading = MeterReading::query()->where('meter_id', $meter->id)->firstOrFail();
+
+    expect((int) $reading->consumption)->toBe(-100);
+});

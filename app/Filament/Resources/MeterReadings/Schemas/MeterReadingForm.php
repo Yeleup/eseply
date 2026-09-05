@@ -2,11 +2,13 @@
 
 namespace App\Filament\Resources\MeterReadings\Schemas;
 
+use App\Filament\Support\OrganizationMemberAccess;
 use App\Models\BillingPeriod;
 use App\Models\Meter;
 use App\Models\MeterReading;
 use App\Models\Organization;
 use App\Models\User;
+use Closure;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\FileUpload;
@@ -53,11 +55,10 @@ class MeterReadingForm
                             ->default(fn (Get $get): int => MeterReading::previousReadingForBillingPeriod($get('meter_id'), self::currentBillingPeriodId()) ?? 0)
                             ->readOnly()
                             ->required(),
-                        TextInput::make('current_reading')
-                            ->label('Текущее показание')
-                            ->integer()
-                            ->minValue(0)
-                            ->required(),
+                        self::currentReadingInput(fn (Get $get): int => MeterReading::previousReadingForBillingPeriod(
+                            $get('meter_id'),
+                            self::currentBillingPeriodId(),
+                        ) ?? 0),
                         DatePicker::make('read_at')
                             ->label('Дата ввода')
                             ->native(false),
@@ -67,6 +68,60 @@ class MeterReadingForm
                         self::photoUpload(),
                     ]),
             ]);
+    }
+
+    /**
+     * The current reading input, shared by every form that writes a reading.
+     *
+     * The previous reading comes from the resolver and never from the
+     * `previous_reading` field: that field is part of the client-controlled
+     * Livewire state, so a tampered value would lift the restriction.
+     *
+     * @param  Closure(): int  $previousReading  Evaluated by the component, so it may ask for `Get $get`.
+     * @param  Closure(): (int|null)|null  $storedReading  The value already saved for the row, when the record of the component is not the reading itself.
+     */
+    public static function currentReadingInput(Closure $previousReading, ?Closure $storedReading = null): TextInput
+    {
+        return TextInput::make('current_reading')
+            ->label('Текущее показание')
+            ->integer()
+            ->minValue(0)
+            ->rules([
+                fn (TextInput $component): Closure => function (string $attribute, mixed $value, Closure $fail) use ($component, $previousReading, $storedReading): void {
+                    if (blank($value) || OrganizationMemberAccess::canEnterMeterReadingBelowPrevious()) {
+                        return;
+                    }
+
+                    $previous = (int) $component->evaluate($previousReading);
+
+                    if ((int) $value >= $previous) {
+                        return;
+                    }
+
+                    // The stored value may itself be below the previous reading,
+                    // because an operator saved it after a rollover. Re-saving
+                    // the row unchanged — to attach a photo, a note or a date —
+                    // has to stay possible for the controller.
+                    if ((int) $value === self::storedCurrentReading($component, $storedReading)) {
+                        return;
+                    }
+
+                    $fail(MeterReading::belowPreviousReadingMessage($previous));
+                },
+            ])
+            ->required();
+    }
+
+    private static function storedCurrentReading(TextInput $component, ?Closure $storedReading): ?int
+    {
+        $stored = $storedReading instanceof Closure
+            ? $component->evaluate($storedReading)
+            // The record of the component is the reading itself on the resource
+            // edit page and in the readings relation manager; elsewhere it is
+            // the meter, and the caller passes an explicit resolver.
+            : ($component->getRecord() instanceof MeterReading ? $component->getRecord()->current_reading : null);
+
+        return $stored === null ? null : (int) $stored;
     }
 
     public static function photoUpload(): FileUpload

@@ -53,11 +53,9 @@ class ReadingsRelationManager extends RelationManager
                             ->default(fn (): int => $this->previousReadingForPeriod($this->currentBillingPeriodId()))
                             ->readOnly()
                             ->required(),
-                        TextInput::make('current_reading')
-                            ->label('Текущее показание')
-                            ->integer()
-                            ->minValue(0)
-                            ->required(),
+                        MeterReadingForm::currentReadingInput(
+                            fn (): int => $this->previousReadingForPeriod($this->currentBillingPeriodId()),
+                        ),
                         DatePicker::make('read_at')
                             ->label('Дата ввода')
                             ->native(false),
@@ -137,7 +135,19 @@ class ReadingsRelationManager extends RelationManager
             ])
             ->recordActions([
                 EditAction::make()
-                    ->visible(fn (MeterReading $record): bool => $this->canEditReading($record)),
+                    ->visible(fn (MeterReading $record): bool => $this->canEditReading($record))
+                    // `previous_reading` is `readOnly()`, which in Filament is a
+                    // render-time attribute only: the field is still dehydrated
+                    // and comes back from the browser. Recomputing it here keeps
+                    // the consumption — and the restriction on the controller —
+                    // out of reach of the client, the way `CreateAction` does.
+                    ->mutateDataUsing(function (MeterReading $record, array $data): array {
+                        abort_unless($this->canEditReading($record), 403);
+
+                        $data['previous_reading'] = $this->previousReadingForPeriod($record->billing_period_id);
+
+                        return $data;
+                    }),
                 DeleteAction::make()
                     ->visible(fn (MeterReading $record): bool => OrganizationMemberAccess::canDeleteMeterReading($record)),
             ])

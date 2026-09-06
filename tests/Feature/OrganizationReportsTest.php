@@ -2601,14 +2601,26 @@ test('turnover balance sheet summary excel export carries the volume column', fu
 
     $rows = downloadedXlsxRows($download->effects['download']);
 
-    expect($rows[0][0])->toBe('Город');
-    expect($rows[0][3])->toBe('Объём, м3');
+    expect($rows[0])->toBe([
+        'Город',
+        'Абонентов',
+        'Объём, м3',
+        'Сальдо нач. Дебет',
+        'Сальдо нач. Кредит',
+        'Оборот Дебет',
+        'Оборот Кредит',
+        'Сальдо кон. Дебет',
+        'Сальдо кон. Кредит',
+        'Начислено',
+        'Корректировка',
+        'Оплачено',
+    ]);
 
     $rowsByCity = collect(array_slice($rows, 1))->keyBy(fn (array $row): mixed => $row[0]);
 
-    expect($rowsByCity->get('Алматы')[3])->toEqual(20.0);
-    expect($rowsByCity->get('Астана')[3])->toEqual(0.0);
-    expect($rowsByCity->get('Итого')[3])->toEqual(20.0);
+    expect($rowsByCity->get('Алматы')[2])->toEqual(20.0);
+    expect($rowsByCity->get('Астана')[2])->toEqual(0.0);
+    expect($rowsByCity->get('Итого')[2])->toEqual(20.0);
 });
 
 test('turnover balance sheet takes the volume of an open period from the receipt', function () {
@@ -2811,7 +2823,6 @@ test('turnover balance sheet summarizes by city region street and controller wit
 
     expect($cityRecords->get('Алматы'))->toMatchArray([
         'clients_count' => 1,
-        'records_count' => 1,
         'opening_debit' => 1000.0,
         'opening_credit' => 0.0,
         'turnover_debit' => 5500.0,
@@ -2827,7 +2838,6 @@ test('turnover balance sheet summarizes by city region street and controller wit
     ]);
     expect($cityRecords->get('Итого'))->toMatchArray([
         'clients_count' => 2,
-        'records_count' => 2,
         'opening_debit' => 1000.0,
         'opening_credit' => 300.0,
         'turnover_debit' => 6500.0,
@@ -2868,6 +2878,23 @@ test('turnover balance sheet summarizes by city region street and controller wit
         'closing_debit' => 4500.0,
         'closing_credit' => 0.0,
     ]);
+
+    foreach ([$cityRecords, $regionRecords, $streetRecords, $controllerRecords] as $records) {
+        foreach ($records as $record) {
+            expect($record)->not->toHaveKey('records_count');
+        }
+    }
+
+    foreach (ReportSummaryGroup::cases() as $group) {
+        Livewire::test(ViewReport::class, [
+            'report' => 'turnover-balance-sheet',
+            'mode' => 'summary',
+            'group' => $group->value,
+        ])
+            ->assertOk()
+            ->assertSee('Абонентов')
+            ->assertDontSee('Строк');
+    }
 
     Livewire::test(ViewReport::class, [
         'report' => 'turnover-balance-sheet',

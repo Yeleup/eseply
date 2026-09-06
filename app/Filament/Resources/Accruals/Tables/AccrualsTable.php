@@ -13,6 +13,7 @@ class AccrualsTable
     public static function configure(Table $table): Table
     {
         return $table
+            ->poll('5s')
             ->modifyQueryUsing(fn (Builder $query): Builder => $query
                 ->with([
                     'billingPeriod',

@@ -11,7 +11,7 @@
         icon="heroicon-o-exclamation-triangle"
         icon-color="danger"
         heading="Сводка ошибки"
-        description="Исправьте данные по строкам ниже и запустите закрытие месяца повторно."
+        description="Исправьте данные или подтвердите показания кнопками на этой странице, затем нажмите «Закрыть месяц»."
     >
         <div class="grid gap-4 sm:grid-cols-3">
             <div class="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-white/10 dark:bg-white/5">

@@ -83,6 +83,12 @@ class MeterReading extends Model
         return $query->whereNotNull($query->getModel()->qualifyColumn('current_reading'));
     }
 
+    public function hasAcceptedNegativeConsumption(): bool
+    {
+        return $this->closure_resolution === 'negative_meter_consumption'
+            && $this->closure_accepted_at !== null;
+    }
+
     public function isTaken(): bool
     {
         return $this->current_reading !== null;
@@ -233,6 +239,7 @@ class MeterReading extends Model
             'current_reading' => 'integer',
             'consumption' => 'integer',
             'read_at' => 'date',
+            'closure_accepted_at' => 'datetime',
         ];
     }
 
@@ -271,6 +278,12 @@ class MeterReading extends Model
             $meterReading->consumption = $currentReading === null
                 ? 0
                 : $currentReading - ($previousReading ?? 0);
+
+            if ($meterReading->isDirty(['previous_reading', 'current_reading', 'meter_id', 'billing_period_id'])) {
+                $meterReading->closure_resolution = null;
+                $meterReading->closure_accepted_by_user_id = null;
+                $meterReading->closure_accepted_at = null;
+            }
         });
 
         static::deleting(function (MeterReading $meterReading): void {

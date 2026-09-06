@@ -376,7 +376,7 @@ class CloseBillingMonth
                 );
             }
 
-            if ((float) $reading->consumption < 0) {
+            if ((float) $reading->consumption < 0 && ! $reading->hasAcceptedNegativeConsumption()) {
                 return new BillingClosureIssue(
                     'negative_meter_consumption',
                     "Расход по счётчику {$meter->number} не может быть отрицательным.",

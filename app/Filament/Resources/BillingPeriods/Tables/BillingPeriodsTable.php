@@ -17,6 +17,7 @@ class BillingPeriodsTable
     public static function configure(Table $table): Table
     {
         return $table
+            ->poll('5s')
             ->modifyQueryUsing(fn (Builder $query): Builder => $query->orderByDesc('starts_on'))
             ->columns([
                 TextColumn::make('label')

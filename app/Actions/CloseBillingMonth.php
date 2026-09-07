@@ -16,6 +16,7 @@ use App\Models\Tariff;
 use App\Models\User;
 use App\Models\UtilityService;
 use App\Support\BillingClosureIssue;
+use App\Support\BillingPeriodOperationLock;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Facades\DB;
@@ -59,15 +60,21 @@ class CloseBillingMonth
     {
         $startedBy = $this->actingUser($startedBy);
 
-        return DB::transaction(function () use ($organization, $period, $startedBy): BillingPeriod {
-            $billingPeriod = $this->lockedBillingPeriod($organization, $period, $startedBy);
+        $lock = BillingPeriodOperationLock::acquire($organization, $period);
 
-            $this->ensureCanClose($billingPeriod);
+        try {
+            return DB::transaction(function () use ($organization, $period, $startedBy): BillingPeriod {
+                $billingPeriod = $this->lockedBillingPeriod($organization, $period, $startedBy);
 
-            $billingPeriod->markProcessing();
+                $this->ensureCanClose($billingPeriod);
 
-            return $billingPeriod;
-        }, attempts: 5);
+                $billingPeriod->markProcessing();
+
+                return $billingPeriod;
+            }, attempts: 5);
+        } finally {
+            $lock->release();
+        }
     }
 
     /**

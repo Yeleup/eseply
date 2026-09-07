@@ -6,6 +6,7 @@ use App\BillingPeriodStatus;
 use App\Filament\Resources\Accruals\Pages\ListAccruals;
 use App\Filament\Resources\BillingPeriods\Pages\ListBillingPeriodClosureErrors;
 use App\Filament\Resources\BillingPeriods\Pages\ListBillingPeriods;
+use App\Jobs\AcceptBillingClosureMeterReadingsJob;
 use App\Jobs\CloseBillingMonthJob;
 use App\Models\Accrual;
 use App\Models\BillingPeriod;
@@ -16,10 +17,12 @@ use App\Models\Receipt;
 use App\Models\Tariff;
 use App\Models\User;
 use App\OrganizationMemberRole;
+use App\Support\BillingPeriodOperationLock;
 use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Validation\ValidationException;
 use Livewire\Livewire;
@@ -140,10 +143,16 @@ test('a stale missing reading error never overwrites an entered reading', functi
 });
 
 test('closure can be queued again directly from the error report', function () {
-    Queue::fake();
+    Queue::fake([AcceptBillingClosureMeterReadingsJob::class, CloseBillingMonthJob::class]);
     app(CloseBillingMonth::class)->handle($this->organization, $this->period);
     Livewire::test(ListBillingPeriodClosureErrors::class, ['record' => $this->period->id])
-        ->callAction('acceptMissingReadings')
+        ->callAction('acceptMissingReadings')->assertHasNoActionErrors();
+    Queue::assertPushed(AcceptBillingClosureMeterReadingsJob::class, function ($job) {
+        $job->handle(app(AcceptBillingClosureMeterReadings::class));
+
+        return true;
+    });
+    Livewire::test(ListBillingPeriodClosureErrors::class, ['record' => $this->period->id])
         ->callAction('closeBillingMonth')->assertHasNoActionErrors();
     expect($this->period->refresh()->status)->toBe(BillingPeriodStatus::Processing);
     Queue::assertPushed(CloseBillingMonthJob::class);
@@ -203,4 +212,94 @@ test('billing pages poll and reflect a completed background closure', function (
     $periods->call('$refresh')->assertTableColumnStateSet('status', BillingPeriodStatus::Closed, $period);
     $errors->call('$refresh')->assertSee('Месяц закрыт')->assertDontSee('Закрытие завершилось ошибкой.')
         ->assertActionDisabled('closeBillingMonth');
+});
+
+test('bulk acceptance queues work without changing readings and blocks duplicate and closing requests', function () {
+    Queue::fake([AcceptBillingClosureMeterReadingsJob::class, CloseBillingMonthJob::class]);
+    app(CloseBillingMonth::class)->handle($this->organization, $this->period);
+    $page = Livewire::test(ListBillingPeriodClosureErrors::class, ['record' => $this->period->id]);
+    $page->call('acceptReadings', AcceptBillingClosureMeterReadings::MISSING)
+        ->assertNotified('Принятие показаний запущено');
+    expect($this->meter->readings()->count())->toBe(0);
+    $page->call('acceptReadings', AcceptBillingClosureMeterReadings::MISSING)
+        ->assertNotified('Дождитесь завершения операции с расчётным месяцем.');
+    Queue::assertPushed(AcceptBillingClosureMeterReadingsJob::class, 1);
+    expect(fn () => app(CloseBillingMonth::class)->claim($this->organization, $this->period))
+        ->toThrow(InvalidArgumentException::class, 'Дождитесь завершения операции с расчётным месяцем.');
+
+    Queue::assertPushed(AcceptBillingClosureMeterReadingsJob::class, function ($job) {
+        $job->handle(app(AcceptBillingClosureMeterReadings::class));
+
+        return true;
+    });
+    expect($this->meter->readings()->firstOrFail()->current_reading)->toBe(100)
+        ->and($this->operator->notifications()->firstOrFail()->data['title'])->toBe('Принято показаний: 1');
+    app(CloseBillingMonth::class)->claim($this->organization, $this->period);
+    expect($this->period->refresh()->status)->toBe(BillingPeriodStatus::Processing);
+});
+
+test('failed acceptance releases its reservation and notifies the operator', function () {
+    Queue::fake([AcceptBillingClosureMeterReadingsJob::class, CloseBillingMonthJob::class]);
+    Livewire::test(ListBillingPeriodClosureErrors::class, ['record' => $this->period->id])
+        ->call('acceptReadings', AcceptBillingClosureMeterReadings::MISSING);
+    Queue::assertPushed(AcceptBillingClosureMeterReadingsJob::class, function ($job) {
+        $job->failed(new RuntimeException('Worker timeout'));
+
+        return true;
+    });
+    expect($this->operator->notifications()->firstOrFail()->data['title'])->toBe('Не удалось принять показания');
+    app(CloseBillingMonth::class)->claim($this->organization, $this->period);
+    expect($this->period->refresh()->status)->toBe(BillingPeriodStatus::Processing);
+});
+
+test('queued acceptance rechecks operator permissions and releases the reservation on failure', function () {
+    Queue::fake([AcceptBillingClosureMeterReadingsJob::class]);
+    Livewire::test(ListBillingPeriodClosureErrors::class, ['record' => $this->period->id])
+        ->call('acceptReadings', AcceptBillingClosureMeterReadings::MISSING);
+    $this->operator->organizations()->detach($this->organization);
+
+    $job = unserialize(serialize(Queue::pushed(AcceptBillingClosureMeterReadingsJob::class)->first()));
+    expect(fn () => $job->handle(app(AcceptBillingClosureMeterReadings::class)))
+        ->toThrow(HttpException::class);
+    expect($this->meter->readings()->count())->toBe(0);
+    $lock = BillingPeriodOperationLock::acquire($this->organization, $this->period);
+    $lock->release();
+});
+
+test('an expired queued acceptance never writes readings or releases a newer reservation', function () {
+    Queue::fake([AcceptBillingClosureMeterReadingsJob::class]);
+    Livewire::test(ListBillingPeriodClosureErrors::class, ['record' => $this->period->id])
+        ->call('acceptReadings', AcceptBillingClosureMeterReadings::MISSING);
+    $job = Queue::pushed(AcceptBillingClosureMeterReadingsJob::class)->first();
+    $oldLock = BillingPeriodOperationLock::restore($this->organization, $this->period, $job->lockOwner);
+    $oldLock->release();
+    $newLock = BillingPeriodOperationLock::acquire($this->organization, $this->period);
+
+    expect(fn () => $job->handle(app(AcceptBillingClosureMeterReadings::class)))->toThrow(RuntimeException::class);
+    $job->failed(new RuntimeException('Expired'));
+    expect($this->meter->readings()->count())->toBe(0)
+        ->and($newLock->isOwnedByCurrentProcess())->toBeTrue();
+    $newLock->release();
+});
+
+test('a queued acceptance refuses to start when its reservation cannot cover its timeout', function () {
+    Queue::fake([AcceptBillingClosureMeterReadingsJob::class]);
+    Livewire::test(ListBillingPeriodClosureErrors::class, ['record' => $this->period->id])
+        ->call('acceptReadings', AcceptBillingClosureMeterReadings::MISSING);
+    $job = Queue::pushed(AcceptBillingClosureMeterReadingsJob::class)->first();
+    $job->reservedUntil = time() + $job->timeout - 1;
+    expect(fn () => $job->handle(app(AcceptBillingClosureMeterReadings::class)))->toThrow(RuntimeException::class);
+    expect($this->meter->readings()->count())->toBe(0);
+    $lock = BillingPeriodOperationLock::acquire($this->organization, $this->period);
+    $lock->release();
+});
+
+test('dispatch failure releases the acceptance reservation', function () {
+    Bus::shouldReceive('dispatch')->once()->andThrow(new RuntimeException('Queue unavailable'));
+    expect(fn () => Livewire::test(ListBillingPeriodClosureErrors::class, ['record' => $this->period->id])
+        ->call('acceptReadings', AcceptBillingClosureMeterReadings::MISSING))
+        ->toThrow(RuntimeException::class, 'Queue unavailable');
+    expect($this->meter->readings()->count())->toBe(0);
+    $lock = BillingPeriodOperationLock::acquire($this->organization, $this->period);
+    $lock->release();
 });

@@ -8,9 +8,11 @@ use App\BillingPeriodStatus;
 use App\Filament\Resources\BillingPeriods\BillingPeriodResource;
 use App\Filament\Resources\BillingPeriods\Tables\BillingPeriodClosureErrorsTable;
 use App\Filament\Support\OrganizationMemberAccess;
+use App\Jobs\AcceptBillingClosureMeterReadingsJob;
 use App\Jobs\CloseBillingMonthJob;
 use App\Models\BillingPeriod;
 use App\Reports\BillingPeriodClosureErrorsReport;
+use App\Support\BillingPeriodOperationLock;
 use Filament\Actions\Action;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\Concerns\InteractsWithRecord;
@@ -88,18 +90,67 @@ class ListBillingPeriodClosureErrors extends Page implements HasTable
             abort_unless($meterId > 0, 422);
         }
 
-        $count = app(AcceptBillingClosureMeterReadings::class)->handle(
-            OrganizationMemberAccess::tenant(),
-            $period,
-            OrganizationMemberAccess::user(),
-            $code,
-            $meterId,
-        );
+        abort_unless(in_array($code, [AcceptBillingClosureMeterReadings::MISSING, AcceptBillingClosureMeterReadings::NEGATIVE], true), 422);
+
+        if ($meterId === null) {
+            $this->queueReadingsAcceptance($code);
+
+            return;
+        }
+
+        try {
+            $count = app(AcceptBillingClosureMeterReadings::class)->handle(
+                OrganizationMemberAccess::tenant(),
+                $period,
+                OrganizationMemberAccess::user(),
+                $code,
+                $meterId,
+            );
+        } catch (InvalidArgumentException $exception) {
+            Notification::make()->title($exception->getMessage())->warning()->send();
+
+            return;
+        }
 
         $this->resetTable();
         Notification::make()->title("Принято показаний: {$count}")
             ->body('Запустите закрытие месяца для повторной проверки всех данных.')
             ->success()->send();
+    }
+
+    private function queueReadingsAcceptance(string $code): void
+    {
+        $organization = OrganizationMemberAccess::tenant();
+        $period = $this->getBillingPeriod();
+
+        try {
+            $lock = BillingPeriodOperationLock::acquire($organization, $period);
+        } catch (InvalidArgumentException $exception) {
+            Notification::make()->title($exception->getMessage())->warning()->send();
+
+            return;
+        }
+
+        try {
+            abort_unless($period->refresh()->isEditable(), 422);
+            AcceptBillingClosureMeterReadingsJob::dispatch(
+                $organization,
+                $period,
+                OrganizationMemberAccess::user(),
+                $code,
+                $lock->owner(),
+                time() + BillingPeriodOperationLock::LIFETIME,
+            );
+        } catch (Throwable $exception) {
+            $lock->release();
+
+            throw $exception;
+        }
+
+        $this->resetTable();
+        Notification::make()->title('Принятие показаний запущено')
+            ->body('Результат придёт в уведомления. Дождитесь завершения перед закрытием месяца.')
+            ->info()->send();
     }
 
     public function closeBillingMonth(): void

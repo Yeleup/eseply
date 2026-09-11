@@ -1393,7 +1393,7 @@
                             <p class="text-sm font-medium text-indigo-700 dark:text-indigo-300">Сводный режим</p>
                             <h3 class="mt-1 text-base font-semibold">Отчёт по оплатам: по контроллерам</h3>
                             <p class="mt-1 max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
-                                Сводка использует те же строки отчёта, но группирует их по городам, районам, улицам или контроллерам. Если абонент подходит нескольким контроллерам, он отображается в строке каждого подходящего контроллера. Последняя строка сводки — «Итого». Колонка «Строк» есть только там, где на абонента приходится несколько строк отчёта; в «Оборотно-сальдовой ведомости» строка — это сам абонент, поэтому её сводка показывает только «Абонентов».
+                                Сводка использует те же строки отчёта, но группирует их по городам, районам, улицам или контроллерам. Если абонент подходит нескольким контроллерам, он отображается в строке каждого подходящего контроллера. Последняя строка сводки — «Итого». Колонки «Строк» в сводке нет: она повторяла либо «Абонентов», либо профильный счётчик самого отчёта.
                             </p>
                         </div>
 
@@ -1422,7 +1422,6 @@
                                 <tr>
                                     <th class="px-4 py-3">Контроллер</th>
                                     <th class="px-4 py-3">Абонентов</th>
-                                    <th class="px-4 py-3">Строк</th>
                                     <th class="px-4 py-3">Оплат</th>
                                     <th class="px-4 py-3">Сумма оплат</th>
                                 </tr>
@@ -1432,19 +1431,16 @@
                                     <td class="px-4 py-3 font-medium">Controller By Region</td>
                                     <td class="px-4 py-3">1</td>
                                     <td class="px-4 py-3">1</td>
-                                    <td class="px-4 py-3">1</td>
                                     <td class="px-4 py-3 font-semibold text-emerald-700 dark:text-emerald-300">3 500.00 KZT</td>
                                 </tr>
                                 <tr>
                                     <td class="px-4 py-3 font-medium">Controller By Street</td>
                                     <td class="px-4 py-3">1</td>
                                     <td class="px-4 py-3">1</td>
-                                    <td class="px-4 py-3">1</td>
                                     <td class="px-4 py-3 font-semibold text-emerald-700 dark:text-emerald-300">3 500.00 KZT</td>
                                 </tr>
                                 <tr class="bg-zinc-50 font-semibold dark:bg-zinc-950">
                                     <td class="px-4 py-3">Итого</td>
-                                    <td class="px-4 py-3">2</td>
                                     <td class="px-4 py-3">2</td>
                                     <td class="px-4 py-3">2</td>
                                     <td class="px-4 py-3 text-emerald-700 dark:text-emerald-300">7 000.00 KZT</td>

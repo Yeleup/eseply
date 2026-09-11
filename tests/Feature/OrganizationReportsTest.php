@@ -1088,7 +1088,6 @@ test('summary reports include subscriber rows under every matching controller', 
     foreach (['Controller By Both', 'Controller By Region', 'Controller By Street'] as $controllerName) {
         expect($controllerRecords->get($controllerName))->toMatchArray([
             'clients_count' => 1,
-            'records_count' => 1,
             'payments_count' => 1,
             'payment_amount' => 3500.0,
         ]);
@@ -1111,12 +1110,10 @@ test('summary reports include subscriber rows under every matching controller', 
 
     expect($regionRecords->get('Алмалинский'))->toMatchArray([
         'clients_count' => 1,
-        'records_count' => 1,
         'payment_amount' => 3500.0,
     ]);
     expect($streetRecords->get('Алмалинский / Абая'))->toMatchArray([
         'clients_count' => 1,
-        'records_count' => 1,
         'payment_amount' => 3500.0,
     ]);
 
@@ -1152,7 +1149,6 @@ test('summary reports include subscriber rows under every matching controller', 
     expect($rows[0])->toBe([
         'Контроллер',
         'Абонентов',
-        'Строк',
         'Оплат',
         'Сумма оплат',
     ]);
@@ -1162,7 +1158,6 @@ test('summary reports include subscriber rows under every matching controller', 
     foreach (['Controller By Both', 'Controller By Region', 'Controller By Street'] as $controllerName) {
         expect($rowsByController->get($controllerName))->toEqual([
             $controllerName,
-            1,
             1,
             1,
             3500.0,
@@ -2879,23 +2874,6 @@ test('turnover balance sheet summarizes by city region street and controller wit
         'closing_credit' => 0.0,
     ]);
 
-    foreach ([$cityRecords, $regionRecords, $streetRecords, $controllerRecords] as $records) {
-        foreach ($records as $record) {
-            expect($record)->not->toHaveKey('records_count');
-        }
-    }
-
-    foreach (ReportSummaryGroup::cases() as $group) {
-        Livewire::test(ViewReport::class, [
-            'report' => 'turnover-balance-sheet',
-            'mode' => 'summary',
-            'group' => $group->value,
-        ])
-            ->assertOk()
-            ->assertSee('Абонентов')
-            ->assertDontSee('Строк');
-    }
-
     Livewire::test(ViewReport::class, [
         'report' => 'turnover-balance-sheet',
         'mode' => 'summary',
@@ -3015,10 +2993,122 @@ test('report summaries add a totals row', function () {
     expect($records->get('total'))->toMatchArray([
         'group_label' => 'Итого',
         'clients_count' => 1,
-        'records_count' => 1,
         'payments_count' => 1,
         'payment_amount' => 2500.0,
     ]);
+});
+
+test('no summary report shows the rows column', function () {
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create();
+    $city = City::factory()->for($organization)->create(['name' => 'Алматы']);
+    $region = Region::factory()->for($organization)->for($city)->create(['name' => 'Алмалинский']);
+    $street = Street::factory()->for($region)->create(['name' => 'Абая']);
+
+    $billingPeriod = billingPeriodFor($organization, '202606');
+
+    $client = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'account_number' => '820001',
+            'name' => 'Абонент сводки',
+            'billing_type' => 'meter',
+            'region_id' => $region->id,
+            'street_id' => $street->id,
+            'created_at' => '2026-06-05 09:00:00',
+        ]);
+
+    $readMeter = Meter::factory()
+        ->for($organization)
+        ->for($client)
+        ->for($utilityService)
+        ->create([
+            'number' => 'MTR-SUMMARY-READ',
+            'initial_reading' => 10,
+            'installed_on' => '2026-06-03',
+        ]);
+    MeterReading::factory()
+        ->for($readMeter)
+        ->create([
+            'period' => '202606',
+            'previous_reading' => 10,
+            'current_reading' => 25,
+            'read_at' => '2026-06-08',
+        ]);
+
+    // Счётчик без показания оставляет строки в отчёте о пропущенных показаниях.
+    Meter::factory()
+        ->for($organization)
+        ->for($client)
+        ->for($utilityService)
+        ->create([
+            'number' => 'MTR-SUMMARY-MISSING',
+            'initial_reading' => 0,
+            'installed_on' => '2026-06-04',
+        ]);
+
+    Payment::factory()
+        ->for($organization)
+        ->for($client)
+        ->create(['period' => '202606', 'amount' => 2000, 'paid_at' => '2026-06-09']);
+
+    // Показание уже создало квитанцию месяца: долг и неоплаченный остаток задаются
+    // прямым обновлением, чтобы строки остались и в этих двух отчётах.
+    Receipt::query()
+        ->where('client_id', $client->getKey())
+        ->where('billing_period_id', $billingPeriod->getKey())
+        ->update([
+            'amount' => 6000,
+            'paid_amount' => 2000,
+            'adjustment_amount' => 0,
+            'opening_balance' => 0,
+            'closing_balance' => 4000,
+        ]);
+
+    $operator = actingAsReportsTenant($organization);
+    $summaryService = app(ReportSummaryService::class);
+
+    $reports = [
+        'meter-reading-sheet',
+        'missing-meter-readings',
+        'controller-meter-reading-progress',
+        'new-client-accounts',
+        'payments',
+        'unpaid-receipts',
+        'meter-installation-replacement',
+        'debts',
+        'consumption',
+        'turnover-balance-sheet',
+    ];
+
+    foreach ($reports as $report) {
+        $records = $summaryService->records(
+            $report,
+            ReportSummaryGroup::City,
+            $organization,
+            $operator,
+            $billingPeriod,
+        );
+
+        expect($records)->not->toBeEmpty();
+
+        foreach ($records as $record) {
+            expect($record)->not->toHaveKey('records_count');
+        }
+
+        $download = Livewire::test(ViewReport::class, [
+            'report' => $report,
+            'mode' => 'summary',
+            'group' => ReportSummaryGroup::City->value,
+        ])
+            ->assertOk()
+            ->assertSee('Абонентов')
+            ->assertDontSee('Строк')
+            ->callAction('downloadExcel');
+
+        expect(downloadedXlsxRows($download->effects['download'])[0])->not->toContain('Строк');
+    }
 });
 
 test('turnover balance sheet totals an open billing period on screen', function () {

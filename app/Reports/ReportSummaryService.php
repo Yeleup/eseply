@@ -41,18 +41,6 @@ class ReportSummaryService
         'turnover-balance-sheet',
     ];
 
-    /**
-     * Reports whose detail row is the subscriber itself.
-     *
-     * The count of rows repeats the count of subscribers in every grouping, so the summary
-     * of such a report drops the duplicate column.
-     *
-     * @var list<string>
-     */
-    private const SUBSCRIBER_ROW_REPORTS = [
-        'turnover-balance-sheet',
-    ];
-
     public function supports(string $reportSlug): bool
     {
         return in_array($reportSlug, self::SUPPORTED_REPORTS, true);
@@ -144,16 +132,8 @@ class ReportSummaryService
             'clients_count' => 0,
         ];
 
-        if ($this->showsRecordsCount($reportSlug)) {
-            $total['records_count'] = 0;
-        }
-
         foreach ($records as $record) {
             $total['clients_count'] += (int) $record['clients_count'];
-
-            if ($this->showsRecordsCount($reportSlug)) {
-                $total['records_count'] += (int) $record['records_count'];
-            }
         }
 
         foreach ($this->metricDefinitions($reportSlug) as $metric) {
@@ -189,15 +169,6 @@ class ReportSummaryService
     }
 
     /**
-     * The column of the count of rows is only shown when a row of the detail report is not
-     * the subscriber itself, otherwise it repeats the count of subscribers.
-     */
-    private function showsRecordsCount(string $reportSlug): bool
-    {
-        return ! in_array($reportSlug, self::SUBSCRIBER_ROW_REPORTS, true);
-    }
-
-    /**
      * @return list<TextColumn>
      */
     private function columns(string $reportSlug, ReportSummaryGroup $group, ?string $unitOfMeasurement = null): array
@@ -210,12 +181,6 @@ class ReportSummaryService
                 ->label('Абонентов')
                 ->numeric(),
         ];
-
-        if ($this->showsRecordsCount($reportSlug)) {
-            $columns[] = TextColumn::make('records_count')
-                ->label('Строк')
-                ->numeric();
-        }
 
         foreach ($this->metricDefinitions($reportSlug, $unitOfMeasurement) as $metric) {
             $columns[] = $this->metricColumn($metric);
@@ -257,10 +222,6 @@ class ReportSummaryService
         $this->applyGrouping($query, $group, $organization, $user);
 
         $query->selectRaw('count(distinct report_rows.client_id) as clients_count');
-
-        if ($this->showsRecordsCount($reportSlug)) {
-            $query->selectRaw('count(distinct report_rows.row_key) as records_count');
-        }
 
         foreach ($this->sumMetricDefinitions($reportSlug) as $metric) {
             $key = $metric['key'];
@@ -398,7 +359,6 @@ class ReportSummaryService
         ?BillingPeriod $billingPeriod,
     ): QueryBuilder {
         $values = DB::table('clients')
-            ->selectRaw('clients.id as row_key')
             ->selectRaw('clients.id as client_id')
             ->selectRaw('clients.region_id as region_id')
             ->selectRaw('clients.street_id as street_id');
@@ -426,7 +386,6 @@ class ReportSummaryService
         $rows = DB::query()
             ->fromSub($values, 'turnover_values')
             ->select([
-                'turnover_values.row_key',
                 'turnover_values.client_id',
                 'turnover_values.region_id',
                 'turnover_values.street_id',
@@ -445,7 +404,6 @@ class ReportSummaryService
     {
         $query = DB::table('meters')
             ->join('clients', 'clients.id', '=', 'meters.client_id')
-            ->selectRaw('meters.id as row_key')
             ->selectRaw('clients.id as client_id')
             ->selectRaw('clients.region_id as region_id')
             ->selectRaw('clients.street_id as street_id')
@@ -464,7 +422,6 @@ class ReportSummaryService
     ): QueryBuilder {
         $query = DB::table('meters')
             ->join('clients', 'clients.id', '=', 'meters.client_id')
-            ->selectRaw('meters.id as row_key')
             ->selectRaw('clients.id as client_id')
             ->selectRaw('clients.region_id as region_id')
             ->selectRaw('clients.street_id as street_id')
@@ -493,7 +450,6 @@ class ReportSummaryService
     ): QueryBuilder {
         $query = DB::table('meters')
             ->join('clients', 'clients.id', '=', 'meters.client_id')
-            ->selectRaw('meters.id as row_key')
             ->selectRaw('clients.id as client_id')
             ->selectRaw('clients.region_id as region_id')
             ->selectRaw('clients.street_id as street_id')
@@ -529,7 +485,6 @@ class ReportSummaryService
         ?BillingPeriod $billingPeriod,
     ): QueryBuilder {
         $query = DB::table('clients')
-            ->selectRaw('clients.id as row_key')
             ->selectRaw('clients.id as client_id')
             ->selectRaw('clients.region_id as region_id')
             ->selectRaw('clients.street_id as street_id')
@@ -556,7 +511,6 @@ class ReportSummaryService
     ): QueryBuilder {
         $query = DB::table('payments')
             ->join('clients', 'clients.id', '=', 'payments.client_id')
-            ->selectRaw('payments.id as row_key')
             ->selectRaw('clients.id as client_id')
             ->selectRaw('clients.region_id as region_id')
             ->selectRaw('clients.street_id as street_id')
@@ -580,7 +534,6 @@ class ReportSummaryService
     ): QueryBuilder {
         $query = DB::table('receipts')
             ->join('clients', 'clients.id', '=', 'receipts.client_id')
-            ->selectRaw('receipts.id as row_key')
             ->selectRaw('clients.id as client_id')
             ->selectRaw('clients.region_id as region_id')
             ->selectRaw('clients.street_id as street_id')
@@ -607,7 +560,6 @@ class ReportSummaryService
     ): QueryBuilder {
         $query = DB::table('meters')
             ->join('clients', 'clients.id', '=', 'meters.client_id')
-            ->selectRaw('meters.id as row_key')
             ->selectRaw('clients.id as client_id')
             ->selectRaw('clients.region_id as region_id')
             ->selectRaw('clients.street_id as street_id')
@@ -641,7 +593,6 @@ class ReportSummaryService
     ): QueryBuilder {
         $query = DB::table('receipts')
             ->join('clients', 'clients.id', '=', 'receipts.client_id')
-            ->selectRaw('receipts.id as row_key')
             ->selectRaw('clients.id as client_id')
             ->selectRaw('clients.region_id as region_id')
             ->selectRaw('clients.street_id as street_id')
@@ -669,7 +620,6 @@ class ReportSummaryService
     ): QueryBuilder {
         $query = DB::table('meter_readings')
             ->join('clients', 'clients.id', '=', 'meter_readings.client_id')
-            ->selectRaw('meter_readings.id as row_key')
             ->selectRaw('clients.id as client_id')
             ->selectRaw('clients.region_id as region_id')
             ->selectRaw('clients.street_id as street_id')
@@ -813,10 +763,6 @@ class ReportSummaryService
             'clients_count' => (int) $row->clients_count,
         ];
 
-        if ($this->showsRecordsCount($reportSlug)) {
-            $record['records_count'] = (int) $row->records_count;
-        }
-
         foreach ($this->metricDefinitions($reportSlug) as $metric) {
             $record[$metric['key']] = $this->metricValue($metric, $row, $record);
         }
@@ -951,7 +897,6 @@ class ReportSummaryService
         return [
             $group->heading(),
             'Абонентов',
-            ...($this->showsRecordsCount($reportSlug) ? ['Строк'] : []),
             ...array_map(
                 fn (array $metric): string => $metric['label'],
                 $this->metricDefinitions($reportSlug, $unitOfMeasurement),
@@ -968,10 +913,6 @@ class ReportSummaryService
             new StringCell((string) $record->group_label, null),
             new NumericCell((int) $record->clients_count, null),
         ];
-
-        if ($this->showsRecordsCount($reportSlug)) {
-            $cells[] = new NumericCell((int) $record->records_count, null);
-        }
 
         foreach ($this->metricDefinitions($reportSlug) as $metric) {
             $cells[] = $this->metricExcelCell($record->{$metric['key']} ?? 0, $metric);

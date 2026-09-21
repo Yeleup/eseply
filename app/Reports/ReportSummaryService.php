@@ -358,6 +358,34 @@ class ReportSummaryService
         User $user,
         ?BillingPeriod $billingPeriod,
     ): QueryBuilder {
+        $values = $this->turnoverValues($organization, $user, $billingPeriod);
+
+        $rows = DB::query()
+            ->fromSub($values, 'turnover_values')
+            ->select([
+                'turnover_values.client_id',
+                'turnover_values.region_id',
+                'turnover_values.street_id',
+            ]);
+
+        foreach (TurnoverBalanceValues::metricExpressions('turnover_values.') as $key => $expression) {
+            $rows->selectRaw("{$expression} as {$key}");
+        }
+
+        $rows->selectRaw(TurnoverBalanceValues::volumeExpression('turnover_values.').' as volume');
+
+        return $rows;
+    }
+
+    /**
+     * Opening balance, accrual, payment and adjustment of every visible client, as
+     * `TurnoverBalanceValues` defines them for the billing period.
+     */
+    private function turnoverValues(
+        Organization $organization,
+        User $user,
+        ?BillingPeriod $billingPeriod,
+    ): QueryBuilder {
         $values = DB::table('clients')
             ->selectRaw('clients.id as client_id')
             ->selectRaw('clients.region_id as region_id')
@@ -383,21 +411,7 @@ class ReportSummaryService
                 ->addSelect(TurnoverBalanceValues::openPeriodSubQueries($organization, $billingPeriod));
         }
 
-        $rows = DB::query()
-            ->fromSub($values, 'turnover_values')
-            ->select([
-                'turnover_values.client_id',
-                'turnover_values.region_id',
-                'turnover_values.street_id',
-            ]);
-
-        foreach (TurnoverBalanceValues::metricExpressions('turnover_values.') as $key => $expression) {
-            $rows->selectRaw("{$expression} as {$key}");
-        }
-
-        $rows->selectRaw(TurnoverBalanceValues::volumeExpression('turnover_values.').' as volume');
-
-        return $rows;
+        return $values;
     }
 
     private function meterReadingSheetRows(Organization $organization, User $user): QueryBuilder
@@ -586,31 +600,32 @@ class ReportSummaryService
             });
     }
 
+    /**
+     * Clients with a positive closing balance, computed by the same engine as the
+     * turnover balance sheet, the payment desk and the dashboard. A client without a
+     * receipt in an open period still carries the balance of the previous periods.
+     */
     private function debtRows(
         Organization $organization,
         User $user,
         ?BillingPeriod $billingPeriod,
     ): QueryBuilder {
-        $query = DB::table('receipts')
-            ->join('clients', 'clients.id', '=', 'receipts.client_id')
-            ->selectRaw('clients.id as client_id')
-            ->selectRaw('clients.region_id as region_id')
-            ->selectRaw('clients.street_id as street_id')
-            ->selectRaw('receipts.opening_balance as opening_balance')
-            ->selectRaw('receipts.amount as accrual_amount')
-            ->selectRaw('receipts.paid_amount as paid_amount')
-            ->selectRaw('receipts.adjustment_amount as adjustment_amount')
-            ->selectRaw('receipts.closing_balance as debt_amount')
-            ->where('receipts.organization_id', $organization->getKey())
-            ->where('receipts.closing_balance', '>', 0);
+        $prefix = 'debt_values.';
+        $closing = TurnoverBalanceValues::closingBalanceExpression($prefix);
 
-        $this->applyClientVisibility($query, $user, $organization);
-
-        if (! $billingPeriod instanceof BillingPeriod) {
-            return $query->whereRaw('1 = 0');
-        }
-
-        return $query->where('receipts.billing_period_id', $billingPeriod->getKey());
+        return DB::query()
+            ->fromSub($this->turnoverValues($organization, $user, $billingPeriod), 'debt_values')
+            ->select([
+                'debt_values.client_id',
+                'debt_values.region_id',
+                'debt_values.street_id',
+            ])
+            ->selectRaw(TurnoverBalanceValues::openingBalanceExpression($prefix).' as opening_balance')
+            ->selectRaw('coalesce('.$prefix.TurnoverBalanceValues::ACCRUED_AMOUNT.', 0) as accrual_amount')
+            ->selectRaw('coalesce('.$prefix.TurnoverBalanceValues::PAID_AMOUNT.', 0) as paid_amount')
+            ->selectRaw('coalesce('.$prefix.TurnoverBalanceValues::ADJUSTMENT_AMOUNT.', 0) as adjustment_amount')
+            ->selectRaw("{$closing} as debt_amount")
+            ->whereRaw("{$closing} > 0");
     }
 
     private function consumptionRows(

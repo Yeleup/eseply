@@ -23,7 +23,14 @@ use Illuminate\Database\Eloquent\Collection;
 
 class ReceiptsTable
 {
-    private const PRINTABLE_FILTER_KEYS = [
+    private const PRINT_SCOPE_FILTER_KEYS = [
+        'billing_period_id',
+        'region_id',
+        'street_id',
+        'controller_id',
+    ];
+
+    private const PRINT_FILTER_KEYS = [
         'billing_period_id',
         'region_id',
         'street_id',
@@ -163,7 +170,7 @@ class ReceiptsTable
     {
         $parameters = [];
 
-        foreach (self::PRINTABLE_FILTER_KEYS as $filterKey) {
+        foreach (self::PRINT_FILTER_KEYS as $filterKey) {
             $value = self::selectedFilterValue($livewire, $filterKey);
 
             if ($value > 0) {
@@ -176,7 +183,7 @@ class ReceiptsTable
 
     private static function hasPrintableFilter(HasTable $livewire): bool
     {
-        foreach (self::PRINTABLE_FILTER_KEYS as $filterKey) {
+        foreach (self::PRINT_SCOPE_FILTER_KEYS as $filterKey) {
             if (self::selectedFilterValue($livewire, $filterKey) > 0) {
                 return true;
             }

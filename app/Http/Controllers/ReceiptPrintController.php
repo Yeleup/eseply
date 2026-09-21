@@ -27,6 +27,13 @@ class ReceiptPrintController extends Controller
         'amount_due_positive',
     ];
 
+    private const PRINT_SCOPE_FILTER_KEYS = [
+        'billing_period_id',
+        'region_id',
+        'street_id',
+        'controller_id',
+    ];
+
     /**
      * Массовая печать раскладывает экземпляры сеткой 2×4 на листе A4.
      * Число чётное, поэтому оба экземпляра одной квитанции всегда
@@ -72,7 +79,7 @@ class ReceiptPrintController extends Controller
         $receiptIds = $this->receiptIds($request);
         $filters = $this->printFilters($request);
 
-        abort_unless($receiptIds->isNotEmpty() || $this->hasPrintFilters($filters), 404);
+        abort_unless($receiptIds->isNotEmpty() || $this->hasPrintScopeFilters($filters), 404);
 
         $receiptsQuery = Receipt::query()
             ->whereBelongsTo($tenant)
@@ -151,10 +158,10 @@ class ReceiptPrintController extends Controller
     /**
      * @param  array<string, int>  $filters
      */
-    private function hasPrintFilters(array $filters): bool
+    private function hasPrintScopeFilters(array $filters): bool
     {
-        foreach ($filters as $value) {
-            if ($value > 0) {
+        foreach (self::PRINT_SCOPE_FILTER_KEYS as $filterKey) {
+            if ($filters[$filterKey] > 0) {
                 return true;
             }
         }

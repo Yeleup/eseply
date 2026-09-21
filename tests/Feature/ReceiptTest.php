@@ -696,9 +696,12 @@ test('receipt resource list filters receipts with a positive amount due', functi
         ->filterTable('amount_due_positive')
         ->assertCanSeeTableRecords([$positiveReceipt])
         ->assertCanNotSeeTableRecords([$zeroReceipt, $negativeReceipt])
+        ->assertTableActionHidden('printFiltered')
+        ->filterTable('billing_period_id', $positiveReceipt->billing_period_id)
         ->assertTableActionVisible('printFiltered')
         ->assertTableActionHasUrl('printFiltered', route('filament.admin.receipts.print-bulk', [
             'tenant' => $organization,
+            'billing_period_id' => $positiveReceipt->billing_period_id,
             'amount_due_positive' => 1,
         ]));
 });
@@ -988,19 +991,34 @@ test('bulk receipt print filters receipts with a positive amount due', function 
         ->assertDontSeeText($foreignReceipt->client_name);
 });
 
-test('bulk receipt print includes every receipt when the positive amount due filter is omitted', function () {
+test('bulk receipt print requires a scope filter when filtering by a positive amount due', function () {
     $organization = Organization::factory()->create();
-    $positiveReceipt = createReceiptFromMeterReading($organization, [
+    createReceiptFromMeterReading($organization, [
         'account_number' => '100015',
         'name' => 'Положительный долг',
     ]);
-    $zeroReceipt = createReceiptFromMeterReading($organization, [
+
+    $this->actingAs(actingAsReceiptTenant($organization));
+
+    $this->get(route('filament.admin.receipts.print-bulk', [
+        'tenant' => $organization,
+        'amount_due_positive' => 1,
+    ]))->assertNotFound();
+});
+
+test('bulk receipt print includes every receipt when the positive amount due filter is omitted', function () {
+    $organization = Organization::factory()->create();
+    $positiveReceipt = createReceiptFromMeterReading($organization, [
         'account_number' => '100016',
+        'name' => 'Положительный долг',
+    ]);
+    $zeroReceipt = createReceiptFromMeterReading($organization, [
+        'account_number' => '100017',
         'name' => 'Нулевой долг',
     ]);
     $zeroReceipt->update(['closing_balance' => 0]);
     $negativeReceipt = createReceiptFromMeterReading($organization, [
-        'account_number' => '100017',
+        'account_number' => '100018',
         'name' => 'Переплата',
     ]);
     $negativeReceipt->update(['closing_balance' => -100]);

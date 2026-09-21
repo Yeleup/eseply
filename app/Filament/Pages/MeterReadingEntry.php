@@ -107,7 +107,11 @@ class MeterReadingEntry extends Page implements HasTable
             // A closure, not orderBy() in the query: Filament appends the column
             // sort after the query's own orders, so an address order baked into
             // the query would always win over the sort the controller picked.
-            ->defaultSort(fn (Builder $query): Builder => $this->orderByWalkingRoute($query))
+            // Filament calls this closure even when a column sort is active, so
+            // the walking route is only applied while no column sort is chosen.
+            ->defaultSort(fn (Builder $query): Builder => $this->hasActiveColumnSort($table)
+                ? $query
+                : $this->orderByWalkingRoute($query))
             ->filters($this->filters($organization, $billingPeriod?->getKey()))
             ->headerActions([$this->largeConsumptionConfirmationAction()])
             ->recordActions([$this->detailsAction()])
@@ -393,6 +397,17 @@ class MeterReadingEntry extends Page implements HasTable
                 'readings' => fn (HasMany $query): HasMany => $query
                     ->where('billing_period_id', $billingPeriod?->getKey()),
             ]);
+    }
+
+    /**
+     * A sort on a column that is not sortable or not visible is ignored by
+     * Filament, so it must not switch the walking route off either.
+     */
+    private function hasActiveColumnSort(Table $table): bool
+    {
+        $sortColumn = $this->getTableSortColumn();
+
+        return filled($sortColumn) && $table->getSortableVisibleColumn($sortColumn) !== null;
     }
 
     /**

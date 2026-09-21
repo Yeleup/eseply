@@ -671,9 +671,9 @@ function readingEntryMetersWithAccountNumbers(): array
     $address = ['region_id' => $region->id, 'street_id' => $street->id];
 
     return [
-        'long' => readingEntryMeter($organization, $utilityService, [...$address, 'house' => '1', 'account_number' => '10000000']),
-        'middle' => readingEntryMeter($organization, $utilityService, [...$address, 'house' => '2', 'account_number' => '9999999']),
-        'short' => readingEntryMeter($organization, $utilityService, [...$address, 'house' => '3', 'account_number' => '7010480']),
+        'long' => readingEntryMeter($organization, $utilityService, [...$address, 'house' => '1', 'account_number' => '10000000'], ['number' => 'MTR-A']),
+        'middle' => readingEntryMeter($organization, $utilityService, [...$address, 'house' => '2', 'account_number' => '9999999'], ['number' => 'MTR-B']),
+        'short' => readingEntryMeter($organization, $utilityService, [...$address, 'house' => '3', 'account_number' => '7010480'], ['number' => 'MTR-C']),
     ];
 }
 
@@ -710,6 +710,40 @@ test('счётчики одного лицевого счёта при сорт�
         ->sortTable('client.account_number', 'desc')
         ->assertCanSeeTableRecords([$other, $second, $first], inOrder: true);
 });
+
+test('при сортировке по лицевому счёту порядок обхода не добавляется в запрос', function (): void {
+    readingEntryMetersWithAccountNumbers();
+
+    $orderClauses = fn (Testable $component): array => collect($component->instance()->getFilteredSortedTableQuery()->getQuery()->orders)
+        ->map(fn (array $order): string => $order['sql'] ?? $order['column'])
+        ->all();
+
+    $component = Livewire::test(MeterReadingEntry::class);
+
+    expect($orderClauses($component))->toContain('streets.name', 'length(clients.house), clients.house');
+
+    $component->sortTable('client.account_number', 'desc');
+
+    expect($orderClauses($component))
+        ->toContain('length(clients.account_number) desc', 'clients.account_number')
+        ->not->toContain('streets.name')
+        ->not->toContain('length(clients.house), clients.house')
+        ->not->toContain('length(clients.apartment), clients.apartment');
+});
+
+test('поиск работает вместе с сортировкой по лицевому счёту', function (string $direction, array $expectedOrder): void {
+    $meters = readingEntryMetersWithAccountNumbers();
+
+    // «10» есть в 10000000 и 7010480, но не в 9999999 и не в номерах счётчиков.
+    Livewire::test(MeterReadingEntry::class)
+        ->searchTable('10')
+        ->sortTable('client.account_number', $direction)
+        ->assertCanSeeTableRecords(array_map(fn (string $key): Meter => $meters[$key], $expectedOrder), inOrder: true)
+        ->assertCanNotSeeTableRecords([$meters['middle']]);
+})->with([
+    'по возрастанию' => ['asc', ['short', 'long']],
+    'по убыванию' => ['desc', ['long', 'short']],
+]);
 
 test('сохранение показания не сбрасывает выбранную сортировку по лицевому счёту', function (): void {
     ['short' => $short, 'long' => $long, 'middle' => $middle] = readingEntryMetersWithAccountNumbers();

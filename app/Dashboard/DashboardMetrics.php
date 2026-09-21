@@ -14,11 +14,13 @@ use App\Models\Receipt;
 use App\Models\Region;
 use App\Models\User;
 use App\OrganizationMemberRole;
+use App\Reports\TurnoverBalanceValues;
 use App\Support\ControllerZoneMeterCounts;
 use App\Support\TakenMeterReading;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Query\Builder as QueryBuilder;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 
 final class DashboardMetrics
@@ -82,8 +84,12 @@ final class DashboardMetrics
      * Money figures of one billing period. Only operators may see them, so the
      * member is not a parameter: an operator always sees the whole organization.
      *
+     * The debt of a period that is not closed yet is the current closing balance
+     * of every active client, see `debtQuery()`.
+     *
      * @return array{
      *     charged:float, charged_is_preliminary:bool, charged_documents:int,
+     *     debt_is_current:bool,
      *     paid:float, payments_count:int, collection_percent:float,
      *     debt:float, debtors_count:int
      * }
@@ -94,9 +100,9 @@ final class DashboardMetrics
             ->selectRaw('coalesce(sum(amount), 0) as total, count(*) as documents')
             ->first();
 
-        $debtRow = $this->chargeQuery($organization, $billingPeriod)
-            ->where('closing_balance', '>', 0)
-            ->selectRaw('coalesce(sum(closing_balance), 0) as total, count(*) as debtors')
+        $debtRow = $this->debtQuery($organization, $billingPeriod)
+            ->where('closing_debit', '>', 0)
+            ->selectRaw('coalesce(sum(closing_debit), 0) as total, count(*) as debtors')
             ->first();
 
         $paymentRow = Payment::query()
@@ -113,6 +119,7 @@ final class DashboardMetrics
             'charged' => $charged,
             'charged_is_preliminary' => $billingPeriod->status !== BillingPeriodStatus::Closed,
             'charged_documents' => (int) ($chargeRow->documents ?? 0),
+            'debt_is_current' => $billingPeriod->status !== BillingPeriodStatus::Closed,
             'paid' => $paid,
             'payments_count' => (int) ($paymentRow->payments ?? 0),
             'collection_percent' => $charged <= 0.0 ? 0.0 : round($paid / $charged * 100, 1),
@@ -224,7 +231,7 @@ final class DashboardMetrics
         $organizationId = (int) $organization->getKey();
         $billingPeriodId = (int) $billingPeriod->getKey();
 
-        $rows = Region::query()
+        $query = Region::query()
             ->select(['regions.id', 'regions.name'])
             ->leftJoin('cities', 'cities.id', '=', 'regions.city_id')
             ->addSelect(['cities.name as city_name'])
@@ -233,10 +240,25 @@ final class DashboardMetrics
             ->selectSub($this->regionMeterCountQuery($organizationId), 'meters_total')
             ->selectSub($this->regionMeterCountQuery($organizationId, $billingPeriodId), 'meters_taken')
             ->selectSub($this->regionChargeQuery($chargeTable, $organizationId, $billingPeriodId, onlyDebt: false), 'charged')
-            ->selectSub($this->regionChargeQuery($chargeTable, $organizationId, $billingPeriodId, onlyDebt: true), 'debt')
             ->selectSub($this->regionPaymentQuery($organizationId, $billingPeriodId), 'paid')
-            ->orderBy('regions.name')
-            ->get();
+            ->orderBy('regions.name');
+
+        if ($chargeTable === 'accruals') {
+            $query->selectSub($this->regionChargeQuery($chargeTable, $organizationId, $billingPeriodId, onlyDebt: true), 'debt');
+        } else {
+            $regionDebts = DB::query()
+                ->fromSub($this->openPeriodDebtQuery($organization, $billingPeriod), 'client_debts')
+                ->select('client_debts.region_id')
+                ->selectRaw('sum(client_debts.closing_debit) as debt')
+                ->where('client_debts.closing_debit', '>', 0)
+                ->groupBy('client_debts.region_id');
+
+            $query
+                ->leftJoinSub($regionDebts, 'region_debts', 'region_debts.region_id', '=', 'regions.id')
+                ->selectRaw('coalesce(region_debts.debt, 0) as debt');
+        }
+
+        $rows = $query->get();
 
         return $rows
             ->filter(fn (Region $region): bool => (int) $region->getAttribute('clients_count') > 0)
@@ -338,6 +360,52 @@ final class DashboardMetrics
             ->toBase()
             ->where('organization_id', $organization->getKey())
             ->where('billing_period_id', $billingPeriod->getKey());
+    }
+
+    /**
+     * One row per client with the positive part of its closing balance as `closing_debit`.
+     *
+     * A closed period reads the accruals of record. Any other period uses the engine
+     * of the payment desk and the turnover balance sheet, so a client without a
+     * receipt still carries the debt of the previous periods and the three numbers
+     * always agree.
+     */
+    private function debtQuery(Organization $organization, BillingPeriod $billingPeriod): QueryBuilder
+    {
+        if ($this->chargeTable($billingPeriod) === 'accruals') {
+            return DB::query()->fromSub(
+                $this->chargeQuery($organization, $billingPeriod)
+                    ->select(['client_id'])
+                    ->selectRaw('greatest(closing_balance, 0) as closing_debit'),
+                'client_debts',
+            );
+        }
+
+        return DB::query()->fromSub($this->openPeriodDebtQuery($organization, $billingPeriod), 'client_debts');
+    }
+
+    /**
+     * Current closing balance of every active client of an open period, computed in
+     * SQL with the expressions of `TurnoverBalanceValues`, like the turnover balance
+     * sheet does for the same period.
+     */
+    private function openPeriodDebtQuery(Organization $organization, BillingPeriod $billingPeriod): QueryBuilder
+    {
+        $values = DB::table('clients')
+            ->select(['clients.id as client_id', 'clients.region_id'])
+            ->where('clients.organization_id', $organization->getKey())
+            ->where('clients.status', 'active')
+            ->addSelect(Arr::except(
+                TurnoverBalanceValues::openPeriodSubQueries($organization, $billingPeriod),
+                [TurnoverBalanceValues::VOLUME],
+            ));
+
+        $closingDebit = TurnoverBalanceValues::metricExpressions('turnover_values.')['closing_debit'];
+
+        return DB::query()
+            ->fromSub($values, 'turnover_values')
+            ->select(['turnover_values.client_id', 'turnover_values.region_id'])
+            ->selectRaw("{$closingDebit} as closing_debit");
     }
 
     /**

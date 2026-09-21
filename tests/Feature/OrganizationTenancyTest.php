@@ -429,3 +429,7 @@ test('region resource manages streets as a related table', function () {
 
     expect($createdStreet->organization->is($organization))->toBeTrue();
 });
+
+test('database notifications poll once a minute', function () {
+    expect(Filament::getPanel('admin')->getDatabaseNotificationsPollingInterval())->toBe('60s');
+});

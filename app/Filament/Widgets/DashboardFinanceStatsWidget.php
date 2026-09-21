@@ -23,6 +23,11 @@ class DashboardFinanceStatsWidget extends StatsOverviewWidget
     protected static ?int $sort = 2;
 
     /**
+     * The dashboard refreshes on page load and when the billing period changes.
+     */
+    protected ?string $pollingInterval = null;
+
+    /**
      * Payments, accruals and receipts are operator-only data.
      */
     public static function canView(): bool

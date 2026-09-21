@@ -208,10 +208,48 @@ test('billing pages poll and reflect a completed background closure', function (
     $errors = Livewire::test(ListBillingPeriodClosureErrors::class, ['record' => $period->id])->assertSee('wire:poll.5s', false);
     app(CloseBillingMonth::class)->run($this->organization, $period, $this->operator);
     $accrual = Accrual::query()->where('billing_period_id', $period->id)->firstOrFail();
-    $accruals->call('$refresh')->assertCanSeeTableRecords([$accrual])->assertDontSee('Идёт расчёт начислений');
-    $periods->call('$refresh')->assertTableColumnStateSet('status', BillingPeriodStatus::Closed, $period);
+    $accruals->call('$refresh')->assertCanSeeTableRecords([$accrual])->assertDontSee('Идёт расчёт начислений')
+        ->assertDontSee('wire:poll', false);
+    $periods->call('$refresh')->assertTableColumnStateSet('status', BillingPeriodStatus::Closed, $period)
+        ->assertDontSee('wire:poll', false);
     $errors->call('$refresh')->assertSee('Месяц закрыт')->assertDontSee('Закрытие завершилось ошибкой.')
-        ->assertActionDisabled('closeBillingMonth');
+        ->assertActionDisabled('closeBillingMonth')->assertDontSee('wire:poll', false);
+});
+
+test('billing pages do not poll while no closure is running', function (BillingPeriodStatus $status) {
+    $this->period->forceFill(['status' => $status])->save();
+
+    Livewire::test(ListAccruals::class)->assertDontSee('wire:poll', false);
+    Livewire::test(ListBillingPeriods::class)->assertDontSee('wire:poll', false);
+    Livewire::test(ListBillingPeriodClosureErrors::class, ['record' => $this->period->id])->assertDontSee('wire:poll', false);
+})->with([
+    'open' => BillingPeriodStatus::Open,
+    'closed' => BillingPeriodStatus::Closed,
+    'failed' => BillingPeriodStatus::Failed,
+]);
+
+test('closure errors page polls only while the viewed period closes', function () {
+    $this->period->forceFill(['status' => BillingPeriodStatus::Closed, 'closed_at' => now()])->save();
+    $closingPeriod = billingPeriodFor($this->organization, '202606');
+    $closingPeriod->forceFill(['status' => BillingPeriodStatus::Processing])->save();
+
+    Livewire::test(ListAccruals::class)->assertSee('wire:poll.5s', false);
+    Livewire::test(ListBillingPeriodClosureErrors::class, ['record' => $this->period->id])->assertDontSee('wire:poll', false);
+    Livewire::test(ListBillingPeriodClosureErrors::class, ['record' => $closingPeriod->id])->assertSee('wire:poll.5s', false);
+});
+
+test('billing pages do not poll for a closure of another organization', function () {
+    /** The Filament tenant overrides the organization of new records, so it is lifted while the fixture is created. */
+    Filament::setTenant(null);
+    $otherOrganization = Organization::factory()->create();
+    $otherPeriod = billingPeriodFor($otherOrganization);
+    $otherPeriod->forceFill(['status' => BillingPeriodStatus::Processing])->save();
+    expect($otherPeriod->refresh()->organization_id)->toBe($otherOrganization->id)
+        ->and($otherPeriod->status)->toBe(BillingPeriodStatus::Processing);
+    Filament::setTenant($this->organization);
+
+    Livewire::test(ListAccruals::class)->assertDontSee('wire:poll', false);
+    Livewire::test(ListBillingPeriods::class)->assertDontSee('wire:poll', false);
 });
 
 test('bulk acceptance queues work without changing readings and blocks duplicate and closing requests', function () {

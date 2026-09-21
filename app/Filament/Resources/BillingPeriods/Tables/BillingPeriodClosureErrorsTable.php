@@ -4,6 +4,7 @@ namespace App\Filament\Resources\BillingPeriods\Tables;
 
 use App\Actions\AcceptBillingClosureMeterReadings;
 use App\Filament\Resources\BillingPeriods\Pages\ListBillingPeriodClosureErrors;
+use App\Filament\Support\CurrentBillingPeriod;
 use App\Models\BillingPeriod;
 use App\Models\BillingPeriodClosureError;
 use App\Reports\BillingPeriodClosureErrorsReport;
@@ -25,7 +26,7 @@ class BillingPeriodClosureErrorsTable
         $report = app(BillingPeriodClosureErrorsReport::class);
 
         return $table
-            ->poll('5s')
+            ->poll(fn (): ?string => CurrentBillingPeriod::closingPollingInterval($billingPeriod))
             ->query($report->query($billingPeriod))
             ->columns([
                 TextColumn::make('account_number')

@@ -22,6 +22,11 @@ class DashboardStatsWidget extends StatsOverviewWidget
 
     protected static ?int $sort = 1;
 
+    /**
+     * The dashboard refreshes on page load and when the billing period changes.
+     */
+    protected ?string $pollingInterval = null;
+
     public static function canView(): bool
     {
         return OrganizationMemberAccess::canAccessTenant();

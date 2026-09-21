@@ -18,13 +18,23 @@ use App\Reports\TurnoverBalanceValues;
 use App\Support\ControllerZoneMeterCounts;
 use App\Support\TakenMeterReading;
 use Carbon\CarbonImmutable;
+use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 final class DashboardMetrics
 {
+    /**
+     * Seconds a computed block stays cached. The dashboard may lag behind the
+     * reports by this much in exchange for not recomputing on every visit.
+     */
+    public const int CACHE_TTL = 60;
+
+    private const string CACHE_PREFIX = 'dashboard-metrics';
+
     /**
      * Operational figures of one billing period, limited to what the member may see.
      *
@@ -36,6 +46,22 @@ final class DashboardMetrics
      * }
      */
     public function operations(Organization $organization, BillingPeriod $billingPeriod, User $user): array
+    {
+        return $this->remember(
+            $this->cacheKey('operations', $organization, $billingPeriod, $user),
+            fn (): array => $this->computeOperations($organization, $billingPeriod, $user),
+        );
+    }
+
+    /**
+     * @return array{
+     *     clients_active:int, clients_total:int, clients_new:int,
+     *     meters_active:int, meters_metered:int,
+     *     readings_taken:int, readings_expected:int, readings_percent:float,
+     *     consumption:int
+     * }
+     */
+    private function computeOperations(Organization $organization, BillingPeriod $billingPeriod, User $user): array
     {
         [$periodStartsAt, $periodEndsAt] = $this->periodRange($billingPeriod);
 
@@ -96,6 +122,22 @@ final class DashboardMetrics
      */
     public function finance(Organization $organization, BillingPeriod $billingPeriod): array
     {
+        return $this->remember(
+            $this->cacheKey('finance', $organization, $billingPeriod),
+            fn (): array => $this->computeFinance($organization, $billingPeriod),
+        );
+    }
+
+    /**
+     * @return array{
+     *     charged:float, charged_is_preliminary:bool, charged_documents:int,
+     *     debt_is_current:bool,
+     *     paid:float, payments_count:int, collection_percent:float,
+     *     debt:float, debtors_count:int
+     * }
+     */
+    private function computeFinance(Organization $organization, BillingPeriod $billingPeriod): array
+    {
         $chargeRow = $this->chargeQuery($organization, $billingPeriod)
             ->selectRaw('coalesce(sum(amount), 0) as total, count(*) as documents')
             ->first();
@@ -134,6 +176,17 @@ final class DashboardMetrics
      * @return list<array{period:string, label:string, charged:float, paid:float}>
      */
     public function monthlyTotals(Organization $organization, int $months = 12): array
+    {
+        return $this->remember(
+            $this->cacheKey("monthly-totals:{$months}", $organization),
+            fn (): array => $this->computeMonthlyTotals($organization, $months),
+        );
+    }
+
+    /**
+     * @return list<array{period:string, label:string, charged:float, paid:float}>
+     */
+    private function computeMonthlyTotals(Organization $organization, int $months): array
     {
         $billingPeriods = BillingPeriod::query()
             ->forOrganization($organization)
@@ -181,6 +234,20 @@ final class DashboardMetrics
      */
     public function controllerProgress(Organization $organization, BillingPeriod $billingPeriod, User $user): array
     {
+        return $this->remember(
+            $this->cacheKey('controller-progress', $organization, $billingPeriod, $user),
+            fn (): array => $this->computeControllerProgress($organization, $billingPeriod, $user),
+        );
+    }
+
+    /**
+     * @return list<array{
+     *     controller_id:int, name:string, email:string,
+     *     total:int, taken:int, missing:int, percent:float
+     * }>
+     */
+    private function computeControllerProgress(Organization $organization, BillingPeriod $billingPeriod, User $user): array
+    {
         $query = User::query()
             ->select(['users.id', 'users.name', 'users.email'])
             ->join('organization_user', 'organization_user.user_id', '=', 'users.id')
@@ -226,6 +293,20 @@ final class DashboardMetrics
      * }>
      */
     public function regionBreakdown(Organization $organization, BillingPeriod $billingPeriod): array
+    {
+        return $this->remember(
+            $this->cacheKey('region-breakdown', $organization, $billingPeriod),
+            fn (): array => $this->computeRegionBreakdown($organization, $billingPeriod),
+        );
+    }
+
+    /**
+     * @return list<array{
+     *     region_id:int, region:string, city:string, clients:int,
+     *     readings_percent:float, charged:float, paid:float, debt:float
+     * }>
+     */
+    private function computeRegionBreakdown(Organization $organization, BillingPeriod $billingPeriod): array
     {
         $chargeTable = $this->chargeTable($billingPeriod);
         $organizationId = (int) $organization->getKey();
@@ -278,6 +359,46 @@ final class DashboardMetrics
             ->sortByDesc('debt')
             ->values()
             ->all();
+    }
+
+    /**
+     * @template TValue of array
+     *
+     * @param  Closure(): TValue  $compute
+     * @return TValue
+     */
+    private function remember(string $key, Closure $compute): array
+    {
+        return Cache::remember($key, self::CACHE_TTL, $compute);
+    }
+
+    /**
+     * Cache key of one dashboard block.
+     *
+     * The key holds everything the figures depend on: the organization, the
+     * billing period with its status (the status switches the source of the
+     * charges) and, when a member is given, what that member may see. Every
+     * operator sees the whole organization and shares one entry; a controller
+     * sees only their zone and gets an entry of their own; anyone else sees
+     * nothing and gets a separate empty entry.
+     */
+    private function cacheKey(string $block, Organization $organization, ?BillingPeriod $billingPeriod = null, ?User $user = null): string
+    {
+        $key = self::CACHE_PREFIX.":{$block}:organization:{$organization->getKey()}";
+
+        if ($billingPeriod instanceof BillingPeriod) {
+            $key .= ":period:{$billingPeriod->getKey()}:{$billingPeriod->status->value}";
+        }
+
+        if ($user instanceof User) {
+            $key .= ':visibility:'.match (true) {
+                $user->isOrganizationOperator($organization) => 'organization',
+                $user->isOrganizationController($organization) => "controller:{$user->getKey()}",
+                default => 'none',
+            };
+        }
+
+        return $key;
     }
 
     private function regionClientCountQuery(): QueryBuilder

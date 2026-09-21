@@ -21,6 +21,11 @@ final class CurrentBillingPeriod
 
     public const string ClosingTooltip = 'Расчётный месяц закрывается. Дождитесь результата.';
 
+    /**
+     * How often billing tables refresh while a closure runs.
+     */
+    public const string ClosingPollingInterval = '5s';
+
     public static function get(?Organization $organization = null): ?BillingPeriod
     {
         $organization ??= self::tenant();
@@ -62,6 +67,29 @@ final class CurrentBillingPeriod
             ->where('status', BillingPeriodStatus::Processing->value)
             ->orderByDesc('starts_on')
             ->first();
+    }
+
+    /**
+     * Polling interval of the billing tables: they refresh only while the
+     * organization closes a month, or, when a period is given, while that
+     * period closes.
+     *
+     * Filament evaluates the interval on every render, so the poll that first
+     * sees the finished closure still renders the fresh records and then drops
+     * `wire:poll` from the page.
+     */
+    public static function closingPollingInterval(?BillingPeriod $billingPeriod = null): ?string
+    {
+        if ($billingPeriod instanceof BillingPeriod) {
+            $isClosing = BillingPeriod::query()
+                ->whereKey($billingPeriod->getKey())
+                ->where('status', BillingPeriodStatus::Processing->value)
+                ->exists();
+        } else {
+            $isClosing = self::closing() instanceof BillingPeriod;
+        }
+
+        return $isClosing ? self::ClosingPollingInterval : null;
     }
 
     public static function missingTooltip(?Organization $organization = null): ?string

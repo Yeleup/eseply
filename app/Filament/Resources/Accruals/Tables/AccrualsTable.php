@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Accruals\Tables;
 
 use App\Filament\Support\BillingPeriodOptions;
+use App\Filament\Support\CurrentBillingPeriod;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
@@ -13,7 +14,7 @@ class AccrualsTable
     public static function configure(Table $table): Table
     {
         return $table
-            ->poll('5s')
+            ->poll(fn (): ?string => CurrentBillingPeriod::closingPollingInterval())
             ->modifyQueryUsing(fn (Builder $query): Builder => $query
                 ->with([
                     'billingPeriod',

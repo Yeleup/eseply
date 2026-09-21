@@ -1386,6 +1386,35 @@ test('bulk receipt print rejects a selection token of another user or another or
         ->assertNotFound();
 });
 
+test('bulk receipt print returns 404 for array query parameters', function (string $parameter) {
+    $organization = Organization::factory()->create();
+    $receipt = createReceiptFromMeterReading($organization, [
+        'account_number' => '100071',
+    ]);
+
+    $user = actingAsReceiptTenant($organization);
+    $value = $parameter === 'selection'
+        ? ReceiptPrintSelection::store($user, $organization, [$receipt->getKey()])
+        : (string) $receipt->billing_period_id;
+
+    $printUrl = route('filament.admin.receipts.print-bulk', ['tenant' => $organization]);
+
+    $this->actingAs($user)
+        ->get($printUrl.'?'.$parameter.'[]='.$value)
+        ->assertNotFound();
+
+    $this->actingAs($user)
+        ->get($printUrl.'?'.$parameter.'[a]='.$value)
+        ->assertNotFound();
+})->with([
+    'selection',
+    'billing_period_id',
+    'region_id',
+    'street_id',
+    'controller_id',
+    'amount_due_positive',
+]);
+
 test('admin users cannot open another tenant receipt print view', function () {
     $organization = Organization::factory()->create();
     $otherOrganization = Organization::factory()->create();

@@ -134,17 +134,20 @@ class ReceiptPrintController extends Controller
     }
 
     /**
+     * Фильтр, переданный массивом (`region_id[]=…`), даёт 404, а не
+     * приводится к числу.
+     *
      * @return array<string, int>
      */
     private function printFilters(Request $request): array
     {
         $filters = [];
 
-        foreach (self::PRINT_FILTER_KEYS as $filterKey) {
+        foreach ([...self::PRINT_FILTER_KEYS, 'amount_due_positive'] as $filterKey) {
+            abort_if(is_array($request->query($filterKey)), 404);
+
             $filters[$filterKey] = $request->integer($filterKey);
         }
-
-        $filters['amount_due_positive'] = $request->integer('amount_due_positive');
 
         return $filters;
     }
@@ -226,8 +229,8 @@ class ReceiptPrintController extends Controller
 
     /**
      * Выбранные квитанции передаются токеном `selection`, который выдаёт
-     * bulk-действие «Печатать выбранные». Чужой, просроченный или
-     * неизвестный токен даёт 404.
+     * bulk-действие «Печатать выбранные». Чужой, просроченный,
+     * неизвестный или не строковый (например, `selection[]=…`) токен даёт 404.
      *
      * @return Collection<int, int>|null
      */
@@ -237,7 +240,11 @@ class ReceiptPrintController extends Controller
             return null;
         }
 
-        $receiptIds = ReceiptPrintSelection::resolve($request->string('selection')->toString(), $user, $tenant);
+        $selectionToken = $request->query('selection');
+
+        abort_unless(is_string($selectionToken) && $selectionToken !== '', 404);
+
+        $receiptIds = ReceiptPrintSelection::resolve($selectionToken, $user, $tenant);
 
         abort_unless($receiptIds?->isNotEmpty(), 404);
 

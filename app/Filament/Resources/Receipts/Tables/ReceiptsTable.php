@@ -9,9 +9,11 @@ use App\Models\Region;
 use App\Models\Street;
 use App\Models\User;
 use App\OrganizationMemberRole;
+use App\Support\ReceiptPrintSelection;
 use Filament\Actions\Action;
 use Filament\Actions\BulkAction;
 use Filament\Facades\Filament;
+use Filament\Notifications\Notification;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Contracts\HasTable;
@@ -19,7 +21,8 @@ use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Js;
+use Livewire\Component;
 
 class ReceiptsTable
 {
@@ -146,13 +149,72 @@ class ReceiptsTable
                     ->label(__('filament-receipts.actions.print_selected'))
                     ->icon(Heroicon::OutlinedPrinter)
                     ->color('gray')
-                    ->url(fn (Collection $records): string => route('filament.admin.receipts.print-bulk', [
-                        'tenant' => Filament::getTenant(),
-                        'receipt_ids' => $records->modelKeys(),
-                    ]))
-                    ->openUrlInNewTab()
-                    ->deselectRecordsAfterCompletion(),
+                    ->fetchSelectedRecords(false)
+                    ->action(fn (Builder $selectedRecordsQuery, BulkAction $action, Component&HasTable $livewire) => self::openSelectedReceiptsPrint($selectedRecordsQuery, $action, $livewire)),
             ]);
+    }
+
+    /**
+     * Действие монтируется, поэтому получает актуальный выбор строк,
+     * включая отмеченные после последней перерисовки таблицы и «Выбрать все»
+     * с исключёнными строками. Читаются только id, не больше лимита плюс один:
+     * выборка сверх лимита отклоняется, а выбор строк остаётся на месте.
+     * Выбор сохраняется под токеном, печать открывается в новой вкладке, и
+     * только после этого выбор снимается: `deselectRecordsAfterCompletion()`
+     * снял бы его и при отказе.
+     *
+     * @param  Builder<Receipt>  $selectedRecordsQuery
+     */
+    private static function openSelectedReceiptsPrint(Builder $selectedRecordsQuery, BulkAction $action, Component&HasTable $livewire): void
+    {
+        $tenant = Filament::getTenant();
+        $user = auth()->user();
+
+        if (! $tenant instanceof Organization || ! $user instanceof User) {
+            return;
+        }
+
+        $selectionLimit = ReceiptPrintSelection::limit();
+        $receiptIds = $selectedRecordsQuery
+            ->toBase()
+            ->limit($selectionLimit + 1)
+            ->pluck($selectedRecordsQuery->getModel()->getQualifiedKeyName());
+
+        if ($receiptIds->isEmpty()) {
+            return;
+        }
+
+        if ($receiptIds->count() > $selectionLimit) {
+            Notification::make()
+                ->title(__('filament-receipts.notifications.print_selected_too_many.title', [
+                    'limit' => number_format($selectionLimit, thousands_separator: ' '),
+                ]))
+                ->body(__('filament-receipts.notifications.print_selected_too_many.body'))
+                ->danger()
+                ->persistent()
+                ->send();
+
+            $action->cancel();
+        }
+
+        $printUrl = route('filament.admin.receipts.print-bulk', [
+            'tenant' => $tenant,
+            'selection' => ReceiptPrintSelection::store($user, $tenant, $receiptIds),
+        ]);
+
+        $livewire->js('window.open('.Js::from($printUrl).", '_blank')");
+        $livewire->deselectAllTableRecords();
+
+        Notification::make()
+            ->title(__('filament-receipts.notifications.print_selected_opened.title'))
+            ->body(__('filament-receipts.notifications.print_selected_opened.body'))
+            ->success()
+            ->actions([
+                Action::make('openPrint')
+                    ->label(__('filament-receipts.actions.open'))
+                    ->url($printUrl, shouldOpenInNewTab: true),
+            ])
+            ->send();
     }
 
     /**

@@ -19,10 +19,12 @@ use App\Models\Tariff;
 use App\Models\User;
 use App\Models\UtilityService;
 use App\OrganizationMemberRole;
+use App\Support\ReceiptPrintSelection;
 use Filament\Facades\Filament;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
 
 uses(RefreshDatabase::class);
@@ -39,6 +41,29 @@ function actingAsReceiptTenant(Organization $organization): User
     Filament::bootCurrentPanel();
 
     return $user;
+}
+
+/**
+ * Токен выбора из `window.open(...)`, который bulk-действие «Печатать выбранные»
+ * отправляет в браузер; null, если печать не открывалась.
+ */
+function openedReceiptPrintSelectionToken(Testable $component): ?string
+{
+    $windowOpenExpressions = collect($component->effects['xjs'] ?? [])
+        ->pluck('expression')
+        ->filter(fn (string $expression): bool => str_starts_with($expression, 'window.open('));
+
+    if ($windowOpenExpressions->isEmpty()) {
+        return null;
+    }
+
+    expect($windowOpenExpressions)->toHaveCount(1)
+        ->and($windowOpenExpressions->first())->toContain("'_blank'")
+        ->and($windowOpenExpressions->first())->not->toContain('receipt_ids');
+
+    preg_match('/[?&]selection=([A-Za-z0-9]{40})/', $windowOpenExpressions->first(), $matches);
+
+    return $matches[1] ?? null;
 }
 
 /**
@@ -840,10 +865,10 @@ test('admin users can open a current tenant bulk receipt print view for selected
 
     $response = $this->get(route('filament.admin.receipts.print-bulk', [
         'tenant' => $organization,
-        'receipt_ids' => [
+        'selection' => ReceiptPrintSelection::store($user, $organization, [
             $secondReceipt->getKey(),
             $firstReceipt->getKey(),
-        ],
+        ]),
     ]));
 
     $response
@@ -880,11 +905,12 @@ test('bulk receipt print lays out up to eight copies per A4 page without splitti
         'name' => "Абонент {$index}",
     ]));
 
-    $this->actingAs(actingAsReceiptTenant($organization));
+    $user = actingAsReceiptTenant($organization);
+    $this->actingAs($user);
 
     $response = $this->get(route('filament.admin.receipts.print-bulk', [
         'tenant' => $organization,
-        'receipt_ids' => $receipts->map->getKey()->all(),
+        'selection' => ReceiptPrintSelection::store($user, $organization, $receipts->map->getKey()),
     ]));
 
     $response
@@ -912,11 +938,12 @@ test('bulk receipt print fits eight single-copy receipts on one A4 page', functi
         'account_number' => (string) (100040 + $index),
     ]));
 
-    $this->actingAs(actingAsReceiptTenant($organization));
+    $user = actingAsReceiptTenant($organization);
+    $this->actingAs($user);
 
     $pages = collect($this->get(route('filament.admin.receipts.print-bulk', [
         'tenant' => $organization,
-        'receipt_ids' => $receipts->map->getKey()->all(),
+        'selection' => ReceiptPrintSelection::store($user, $organization, $receipts->map->getKey()),
     ]))->assertSuccessful()->viewData('printPages'));
 
     expect($pages->map(fn (array $pageCopies): int => count($pageCopies))->all())->toBe([8, 1]);
@@ -1153,9 +1180,240 @@ test('admin users cannot open another tenant bulk receipt print view', function 
 
     $this->get(route('filament.admin.receipts.print-bulk', [
         'tenant' => $organization,
-        'receipt_ids' => [$receipt->getKey()],
+        'selection' => ReceiptPrintSelection::store($user, $organization, [$receipt->getKey()]),
     ]))->assertNotFound();
 });
+
+test('print selected bulk action opens bulk print of every selected receipt through a selection token', function () {
+    $organization = Organization::factory()->create();
+    $receipts = collect(range(0, 10))->map(fn (int $index): Receipt => createReceiptFromMeterReading($organization, [
+        'account_number' => (string) (100060 + $index),
+        'name' => "Абонент {$index}",
+    ]));
+    $selectedReceipts = $receipts->take(10);
+
+    $user = actingAsReceiptTenant($organization);
+    $this->actingAs($user);
+
+    $component = Livewire::test(ListReceipts::class)
+        ->callTableBulkAction('printSelected', $selectedReceipts)
+        ->assertHasNoTableBulkActionErrors()
+        ->assertNotified('Печать выбранных квитанций открыта в новой вкладке')
+        ->assertDispatched('deselectAllTableRecords');
+
+    $token = openedReceiptPrintSelectionToken($component);
+
+    expect($token)->not->toBeNull()
+        ->and(ReceiptPrintSelection::resolve($token, $user, $organization)?->sort()->values()->all())
+        ->toBe($selectedReceipts->map->getKey()->sort()->values()->all());
+
+    $this->get(route('filament.admin.receipts.print-bulk', [
+        'tenant' => $organization,
+        'selection' => $token,
+    ]))
+        ->assertSuccessful()
+        ->assertSeeText('Квитанций: 10')
+        ->assertSeeText('Абонент 9')
+        ->assertDontSeeText('Абонент 10');
+});
+
+test('print selected bulk action prints every receipt of select all across table pages except the deselected ones', function () {
+    $organization = Organization::factory()->create();
+    $receipts = collect(range(0, 11))->map(function (int $index) use ($organization): Receipt {
+        $receipt = createReceiptFromMeterReading($organization, [
+            'account_number' => (string) (100080 + $index),
+            'name' => "Абонент {$index}",
+        ]);
+        $receipt->update(['issued_at' => now()->subMinutes($index)]);
+
+        return $receipt;
+    });
+    $deselectedReceipts = $receipts->only([1, 10]);
+    $remainingReceipts = $receipts->except([1, 10]);
+
+    $user = actingAsReceiptTenant($organization);
+    $this->actingAs($user);
+
+    $component = Livewire::test(ListReceipts::class)
+        ->set('tableRecordsPerPage', 5)
+        ->assertCanSeeTableRecords($receipts->slice(0, 5))
+        ->assertCanNotSeeTableRecords($receipts->slice(5))
+        ->set('isTrackingDeselectedTableRecords', true)
+        ->set('deselectedTableRecords', [(string) $receipts[1]->getKey()])
+        ->call('gotoPage', 3)
+        ->assertCanSeeTableRecords($receipts->slice(10))
+        ->assertCanNotSeeTableRecords($receipts->slice(0, 10))
+        ->set('deselectedTableRecords', $deselectedReceipts->map(fn (Receipt $receipt): string => (string) $receipt->getKey())->values()->all())
+        ->callTableBulkAction('printSelected', [])
+        ->assertHasNoTableBulkActionErrors()
+        ->assertDispatched('deselectAllTableRecords');
+
+    $token = openedReceiptPrintSelectionToken($component);
+
+    expect($token)->not->toBeNull()
+        ->and(ReceiptPrintSelection::resolve($token, $user, $organization)?->sort()->values()->all())
+        ->toBe($remainingReceipts->map->getKey()->sort()->values()->all());
+
+    $this->get(route('filament.admin.receipts.print-bulk', [
+        'tenant' => $organization,
+        'selection' => $token,
+    ]))
+        ->assertSuccessful()
+        ->assertSeeText('Квитанций: 10')
+        ->assertSeeText('100080')
+        ->assertSeeText('100091')
+        ->assertDontSeeText('100081')
+        ->assertDontSeeText('100090');
+});
+
+test('print selected bulk action rejects a selection above the limit and keeps the selection', function () {
+    config(['receipts.print_selection_limit' => 2]);
+
+    $organization = Organization::factory()->create();
+    $receipts = collect(range(0, 2))->map(fn (int $index): Receipt => createReceiptFromMeterReading($organization, [
+        'account_number' => (string) (100090 + $index),
+    ]));
+
+    $user = actingAsReceiptTenant($organization);
+    $this->actingAs($user);
+
+    $component = Livewire::test(ListReceipts::class)
+        ->callTableBulkAction('printSelected', $receipts)
+        ->assertNotified('Выбрано больше 2 квитанций')
+        ->assertNotDispatched('deselectAllTableRecords')
+        ->assertSet('selectedTableRecords', $receipts->map(fn (Receipt $receipt): string => (string) $receipt->getKey())->all());
+
+    expect(openedReceiptPrintSelectionToken($component))->toBeNull();
+
+    $component = Livewire::test(ListReceipts::class)
+        ->set('isTrackingDeselectedTableRecords', true)
+        ->callTableBulkAction('printSelected', [])
+        ->assertNotified('Выбрано больше 2 квитанций')
+        ->assertNotDispatched('deselectAllTableRecords');
+
+    expect(openedReceiptPrintSelectionToken($component))->toBeNull();
+
+    $component = Livewire::test(ListReceipts::class)
+        ->callTableBulkAction('printSelected', $receipts->take(2))
+        ->assertNotified('Печать выбранных квитанций открыта в новой вкладке')
+        ->assertDispatched('deselectAllTableRecords');
+
+    expect(openedReceiptPrintSelectionToken($component))->not->toBeNull();
+});
+
+test('bulk receipt print selection token can be reopened by its owner until it expires', function () {
+    $organization = Organization::factory()->create();
+    $receipt = createReceiptFromMeterReading($organization, [
+        'account_number' => '100095',
+    ]);
+
+    $user = actingAsReceiptTenant($organization);
+    $this->actingAs($user);
+
+    $printUrl = route('filament.admin.receipts.print-bulk', [
+        'tenant' => $organization,
+        'selection' => ReceiptPrintSelection::store($user, $organization, [$receipt->getKey()]),
+    ]);
+
+    $this->get($printUrl)->assertSuccessful()->assertSeeText('Квитанций: 1');
+    $this->get($printUrl)->assertSuccessful()->assertSeeText('Квитанций: 1');
+
+    $this->travel(ReceiptPrintSelection::LIFETIME + 1)->seconds();
+
+    $this->get($printUrl)->assertNotFound();
+});
+
+test('bulk receipt print rejects a selection token of another user or another organization', function () {
+    // Фикстуры чужой организации создаются до установки тенанта: после
+    // Filament::setTenant() фабрики принудительно проставляют его organization_id.
+    $otherOrganization = Organization::factory()->create();
+    $foreignReceipt = createReceiptFromMeterReading($otherOrganization, [
+        'account_number' => '90003',
+    ]);
+    $organization = Organization::factory()->create();
+    $receipt = createReceiptFromMeterReading($organization, [
+        'account_number' => '100070',
+    ]);
+    $otherUser = User::factory()->create();
+    $otherUser->organizations()->attach($organization);
+
+    $user = actingAsReceiptTenant($organization);
+    $user->organizations()->attach($otherOrganization);
+    $token = ReceiptPrintSelection::store($user, $organization, [$receipt->getKey()]);
+    $foreignToken = ReceiptPrintSelection::store($user, $otherOrganization, [$foreignReceipt->getKey()]);
+
+    $this->actingAs($user)
+        ->get(route('filament.admin.receipts.print-bulk', [
+            'tenant' => $organization,
+            'selection' => $token,
+        ]))
+        ->assertSuccessful()
+        ->assertSeeText('Квитанций: 1');
+
+    $this->actingAs($user)
+        ->get(route('filament.admin.receipts.print-bulk', [
+            'tenant' => $otherOrganization,
+            'selection' => $token,
+        ]))
+        ->assertNotFound();
+
+    $this->actingAs($user)
+        ->get(route('filament.admin.receipts.print-bulk', [
+            'tenant' => $organization,
+            'selection' => $foreignToken,
+        ]))
+        ->assertNotFound();
+
+    $this->actingAs($otherUser)
+        ->get(route('filament.admin.receipts.print-bulk', [
+            'tenant' => $organization,
+            'selection' => $token,
+        ]))
+        ->assertNotFound();
+
+    $this->actingAs($user)
+        ->get(route('filament.admin.receipts.print-bulk', [
+            'tenant' => $organization,
+            'selection' => str_repeat('a', 40),
+        ]))
+        ->assertNotFound();
+
+    $this->actingAs($user)
+        ->get(route('filament.admin.receipts.print-bulk', [
+            'tenant' => $organization,
+            'receipt_ids' => [$receipt->getKey()],
+        ]))
+        ->assertNotFound();
+});
+
+test('bulk receipt print returns 404 for array query parameters', function (string $parameter) {
+    $organization = Organization::factory()->create();
+    $receipt = createReceiptFromMeterReading($organization, [
+        'account_number' => '100071',
+    ]);
+
+    $user = actingAsReceiptTenant($organization);
+    $value = $parameter === 'selection'
+        ? ReceiptPrintSelection::store($user, $organization, [$receipt->getKey()])
+        : (string) $receipt->billing_period_id;
+
+    $printUrl = route('filament.admin.receipts.print-bulk', ['tenant' => $organization]);
+
+    $this->actingAs($user)
+        ->get($printUrl.'?'.$parameter.'[]='.$value)
+        ->assertNotFound();
+
+    $this->actingAs($user)
+        ->get($printUrl.'?'.$parameter.'[a]='.$value)
+        ->assertNotFound();
+})->with([
+    'selection',
+    'billing_period_id',
+    'region_id',
+    'street_id',
+    'controller_id',
+    'amount_due_positive',
+]);
 
 test('admin users cannot open another tenant receipt print view', function () {
     $organization = Organization::factory()->create();

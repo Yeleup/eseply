@@ -9,6 +9,7 @@ use App\Support\ReceiptTemplateHtmlSanitizer;
 use App\Support\ReceiptTemplateRenderer;
 use App\Support\ReceiptTemplateVariables;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 
 class BuildReceiptPrintViewData
 {
@@ -28,6 +29,30 @@ class BuildReceiptPrintViewData
     ) {}
 
     /**
+     * Данные печати для порции квитанций: строки счётчиков всей порции
+     * загружаются пакетно, а не отдельными запросами на каждую квитанцию.
+     *
+     * @param  Collection<int, Receipt>  $receipts
+     * @return list<array{
+     *     receipt: Receipt,
+     *     generatedAt: Carbon,
+     *     copiesPerPage: int,
+     *     renderedCopies: array<string, string>,
+     *     templateCss: string
+     * }>
+     */
+    public function handleMany(Collection $receipts): array
+    {
+        $meterReadingLines = $this->buildReceiptMeterReadingLines->handleMany($receipts);
+
+        return $receipts
+            ->map(fn (Receipt $receipt): array => $this->handle($receipt, $meterReadingLines[$receipt->getKey()] ?? []))
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  list<array{meter_number:string, previous_reading:string, current_reading:string, consumption:string, tariff_price:string, amount:string}>|null  $meterReadingLines
      * @return array{
      *     receipt: Receipt,
      *     generatedAt: Carbon,
@@ -36,7 +61,7 @@ class BuildReceiptPrintViewData
      *     templateCss: string
      * }
      */
-    public function handle(Receipt $receipt): array
+    public function handle(Receipt $receipt, ?array $meterReadingLines = null): array
     {
         $receipt->loadMissing([
             'billingPeriod',
@@ -48,7 +73,7 @@ class BuildReceiptPrintViewData
 
         $generatedAt = now();
 
-        ['html' => $html, 'css' => $css, 'copiesPerPage' => $copiesPerPage] = $this->resolveTemplate($receipt->organization);
+        ['html' => $html, 'css' => $css, 'copiesPerPage' => $copiesPerPage] = $this->template($receipt->organization);
 
         $copyTitles = $copiesPerPage === 1
             ? ['Для абонента']
@@ -56,7 +81,7 @@ class BuildReceiptPrintViewData
 
         $fragments = ReceiptTemplateVariables::fragments(
             $receipt,
-            $this->buildReceiptMeterReadingLines->handle($receipt),
+            $meterReadingLines ?? $this->buildReceiptMeterReadingLines->handle($receipt),
             $generatedAt,
         );
 
@@ -88,7 +113,7 @@ class BuildReceiptPrintViewData
      *
      * @return array{html: string, css: string, copiesPerPage: int}
      */
-    private function resolveTemplate(?Organization $organization): array
+    public function template(?Organization $organization): array
     {
         $cacheKey = $organization?->getKey() ?? 0;
 

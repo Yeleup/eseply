@@ -1,9 +1,11 @@
 <?php
 
 use App\Actions\BuildReceiptMeterReadingLines;
+use App\Actions\BuildReceiptPrintViewData;
 use App\Actions\CloseBillingMonth;
 use App\BalanceAdjustmentType;
 use App\Filament\Resources\Receipts\Pages\ListReceipts;
+use App\Http\Controllers\ReceiptPrintController;
 use App\Models\Accrual;
 use App\Models\BalanceAdjustment;
 use App\Models\Client;
@@ -22,10 +24,17 @@ use App\OrganizationMemberRole;
 use App\Support\ReceiptPrintSelection;
 use Filament\Facades\Filament;
 use Filament\Support\Icons\Heroicon;
+use Illuminate\Database\Eloquent\Factories\Sequence;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Response;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Exceptions;
+use Illuminate\Testing\TestResponse;
 use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 uses(RefreshDatabase::class);
 
@@ -64,6 +73,41 @@ function openedReceiptPrintSelectionToken(Testable $component): ?string
     preg_match('/[?&]selection=([A-Za-z0-9]{40})/', $windowOpenExpressions->first(), $matches);
 
     return $matches[1] ?? null;
+}
+
+/**
+ * Массовая печать отдаётся потоком; ответ пересобирается в обычный,
+ * чтобы проверять содержимое стандартными assert-методами.
+ */
+function bulkPrintResponse(TestResponse $response): TestResponse
+{
+    if (! $response->baseResponse instanceof StreamedResponse) {
+        return $response;
+    }
+
+    return TestResponse::fromBaseResponse(new Response(
+        $response->streamedContent(),
+        $response->getStatusCode(),
+        $response->headers->all(),
+    ));
+}
+
+/**
+ * Листы A4 массовой печати: названия экземпляров на каждом листе.
+ *
+ * @return list<list<string>>
+ */
+function bulkPrintPages(string $content): array
+{
+    return collect(explode('<section class="receipt-a4-page">', $content))
+        ->skip(1)
+        ->map(function (string $page): array {
+            preg_match_all('/data-receipt-copy="([^"]+)"/', $page, $matches);
+
+            return $matches[1];
+        })
+        ->values()
+        ->all();
 }
 
 /**
@@ -549,6 +593,84 @@ test('receipt meter lines include each meter reading for the period', function (
         ]);
 });
 
+test('batched receipt meter lines match per receipt meter lines', function () {
+    $organization = Organization::factory()->create();
+    $firstReceipt = createReceiptFromMeterReading($organization, ['account_number' => '100080'], [
+        'previous_reading' => 100,
+        'current_reading' => 130,
+    ]);
+    $secondReceipt = createReceiptFromMeterReading($organization, ['account_number' => '100081'], [
+        'previous_reading' => 40,
+        'current_reading' => 45,
+    ]);
+    $receiptWithoutClient = Receipt::factory()->for($organization)->make([
+        'client_id' => null,
+        'billing_period_id' => $firstReceipt->billing_period_id,
+    ]);
+    $receiptWithoutClient->id = 999999;
+
+    $buildReceiptMeterReadingLines = app(BuildReceiptMeterReadingLines::class);
+
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+
+    $batchedLines = $buildReceiptMeterReadingLines->handleMany(collect([$firstReceipt, $secondReceipt, $receiptWithoutClient]));
+
+    $batchedQueryCount = count(DB::getQueryLog());
+    DB::disableQueryLog();
+
+    expect($batchedQueryCount)->toBe(2)
+        ->and($batchedLines)->toBe([
+            $firstReceipt->getKey() => $buildReceiptMeterReadingLines->handle($firstReceipt),
+            $secondReceipt->getKey() => $buildReceiptMeterReadingLines->handle($secondReceipt),
+            999999 => [],
+        ])
+        ->and($batchedLines[$firstReceipt->getKey()][0]['consumption'])->toBe('30')
+        ->and($batchedLines[$secondReceipt->getKey()][0]['consumption'])->toBe('5');
+});
+
+test('batched receipt meter lines load only the readings of each receipt client and period', function () {
+    $organization = Organization::factory()->create();
+    $firstReceipt = createReceiptFromMeterReading($organization, ['account_number' => '100090']);
+    $secondReceipt = createReceiptFromMeterReading($organization, ['account_number' => '100091']);
+    $juneBillingPeriodId = DB::table('billing_periods')->insertGetId([
+        'organization_id' => $organization->getKey(),
+        'starts_on' => '2026-06-01',
+        'status' => 'closed',
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    foreach ([$firstReceipt, $secondReceipt] as $receipt) {
+        $mayReading = (array) DB::table('meter_readings')->where('client_id', $receipt->client_id)->sole();
+        unset($mayReading['id']);
+
+        DB::table('meter_readings')->insert(array_replace($mayReading, [
+            'billing_period_id' => $juneBillingPeriodId,
+            'previous_reading' => $mayReading['current_reading'],
+            'current_reading' => $mayReading['current_reading'] + 7,
+            'consumption' => 7,
+        ]));
+    }
+
+    $secondReceiptForJune = $secondReceipt->replicate();
+    $secondReceiptForJune->id = 999998;
+    $secondReceiptForJune->billing_period_id = $juneBillingPeriodId;
+
+    $loadedMeterReadingsCount = 0;
+    MeterReading::retrieved(function () use (&$loadedMeterReadingsCount): void {
+        $loadedMeterReadingsCount++;
+    });
+
+    $lines = app(BuildReceiptMeterReadingLines::class)->handleMany(collect([$firstReceipt, $secondReceiptForJune]));
+
+    expect($loadedMeterReadingsCount)->toBe(2)
+        ->and($lines[$firstReceipt->getKey()])->toHaveCount(1)
+        ->and($lines[$firstReceipt->getKey()][0]['consumption'])->toBe('20')
+        ->and($lines[999998])->toHaveCount(1)
+        ->and($lines[999998][0]['consumption'])->toBe('7');
+});
+
 test('billing month closure creates accruals without creating receipts', function () {
     $organization = Organization::factory()->create();
     $utilityService = UtilityService::factory()->for($organization)->create([
@@ -863,23 +985,18 @@ test('admin users can open a current tenant bulk receipt print view for selected
     $user = actingAsReceiptTenant($organization);
     $this->actingAs($user);
 
-    $response = $this->get(route('filament.admin.receipts.print-bulk', [
+    $response = bulkPrintResponse($this->get(route('filament.admin.receipts.print-bulk', [
         'tenant' => $organization,
         'selection' => ReceiptPrintSelection::store($user, $organization, [
             $secondReceipt->getKey(),
             $firstReceipt->getKey(),
         ]),
-    ]));
+    ])));
 
     $response
         ->assertSuccessful()
         ->assertHeader('Content-Type', 'text/html; charset=UTF-8')
         ->assertHeader('X-Content-Type-Options', 'nosniff')
-        ->assertViewIs('receipts.bulk-print')
-        ->assertViewHasAll([
-            'periodLabel',
-            'receiptPrintData',
-        ])
         ->assertSeeTextInOrder([
             'Массовая печать квитанций',
             'Квитанций: 2',
@@ -908,20 +1025,20 @@ test('bulk receipt print lays out up to eight copies per A4 page without splitti
     $user = actingAsReceiptTenant($organization);
     $this->actingAs($user);
 
-    $response = $this->get(route('filament.admin.receipts.print-bulk', [
+    $response = bulkPrintResponse($this->get(route('filament.admin.receipts.print-bulk', [
         'tenant' => $organization,
         'selection' => ReceiptPrintSelection::store($user, $organization, $receipts->map->getKey()),
-    ]));
+    ])));
 
     $response
         ->assertSuccessful()
         ->assertSeeText('Листов A4: 2, до 8 экземпляров на листе.');
 
-    $pages = collect($response->viewData('printPages'));
+    $pages = collect(bulkPrintPages($response->getContent()));
 
     expect($pages)->toHaveCount(2)
         ->and($pages->map(fn (array $pageCopies): int => count($pageCopies))->all())->toBe([8, 2])
-        ->and(collect($pages->first())->pluck('copyTitle')->all())->toBe([
+        ->and($pages->first())->toBe([
             'Для организации', 'Для абонента',
             'Для организации', 'Для абонента',
             'Для организации', 'Для абонента',
@@ -941,12 +1058,239 @@ test('bulk receipt print fits eight single-copy receipts on one A4 page', functi
     $user = actingAsReceiptTenant($organization);
     $this->actingAs($user);
 
-    $pages = collect($this->get(route('filament.admin.receipts.print-bulk', [
+    $pages = collect(bulkPrintPages(bulkPrintResponse($this->get(route('filament.admin.receipts.print-bulk', [
         'tenant' => $organization,
         'selection' => ReceiptPrintSelection::store($user, $organization, $receipts->map->getKey()),
-    ]))->assertSuccessful()->viewData('printPages'));
+    ])))->assertSuccessful()->getContent()));
 
     expect($pages->map(fn (array $pageCopies): int => count($pageCopies))->all())->toBe([8, 1]);
+});
+
+test('bulk receipt print loads receipts in chunks without a query per receipt', function () {
+    $organization = Organization::factory()->create();
+    ReceiptTemplate::factory()->for($organization)->create(['copies_per_page' => 1]);
+    $firstReceipt = createReceiptFromMeterReading($organization, ['account_number' => '000001']);
+    $billingPeriodId = $firstReceipt->billing_period_id;
+
+    foreach (range(2, 5) as $accountNumber) {
+        createReceiptFromMeterReading($organization, ['account_number' => sprintf('%06d', $accountNumber)]);
+    }
+
+    $bulkPrintQueryCount = function () use ($organization, $billingPeriodId): array {
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+
+        $content = bulkPrintResponse($this->get(route('filament.admin.receipts.print-bulk', [
+            'tenant' => $organization,
+            'billing_period_id' => $billingPeriodId,
+        ])))->assertSuccessful()->getContent();
+
+        $queryCount = count(DB::getQueryLog());
+        DB::disableQueryLog();
+
+        return [$queryCount, $content];
+    };
+
+    $this->actingAs(actingAsReceiptTenant($organization));
+
+    [$fewReceiptsQueryCount] = $bulkPrintQueryCount();
+
+    $clients = Client::factory()
+        ->for($organization)
+        ->count(ReceiptPrintController::BULK_PRINT_CHUNK_SIZE)
+        ->sequence(fn (Sequence $sequence): array => ['account_number' => sprintf('%06d', $sequence->index + 6)])
+        ->create();
+
+    foreach ($clients as $client) {
+        Receipt::factory()->for($organization)->for($client)->create([
+            'period' => '202605',
+            'account_number' => $client->account_number,
+            'receipt_number' => "202605-{$client->account_number}",
+        ]);
+    }
+
+    [$manyReceiptsQueryCount, $content] = $bulkPrintQueryCount();
+    $receiptsCount = ReceiptPrintController::BULK_PRINT_CHUNK_SIZE + 5;
+    $pages = bulkPrintPages($content);
+
+    preg_match_all('/202605-(\d{6})/', $content, $receiptNumberMatches);
+    $printedAccountNumbers = array_values(array_unique($receiptNumberMatches[1]));
+
+    expect($manyReceiptsQueryCount - $fewReceiptsQueryCount)->toBeLessThanOrEqual(10)
+        ->and(substr_count($content, 'data-receipt-copy='))->toBe($receiptsCount)
+        ->and($printedAccountNumbers)->toBe(collect(range(1, $receiptsCount))->map(fn (int $accountNumber): string => sprintf('%06d', $accountNumber))->all())
+        ->and($pages)->toHaveCount((int) ceil($receiptsCount / 8))
+        ->and(collect($pages)->map(fn (array $pageCopies): int => count($pageCopies))->unique()->values()->all())->toBe([8, 5])
+        ->and($content)->toContain("Квитанций: {$receiptsCount}. Листов A4: ".count($pages).',');
+});
+
+test('bulk receipt print refuses a filter selection larger than the print limit', function () {
+    config(['receipts.print_selection_limit' => 2]);
+
+    $organization = Organization::factory()->create();
+    $receipts = collect(range(0, 2))->map(fn (int $index): Receipt => createReceiptFromMeterReading($organization, [
+        'account_number' => (string) (100060 + $index),
+        'name' => "Абонент {$index}",
+    ]));
+
+    $this->actingAs(actingAsReceiptTenant($organization));
+
+    $this->get(route('filament.admin.receipts.print-bulk', [
+        'tenant' => $organization,
+        'billing_period_id' => $receipts->first()->billing_period_id,
+    ]))
+        ->assertUnprocessable()
+        ->assertHeader('X-Content-Type-Options', 'nosniff')
+        ->assertSeeText('Слишком много квитанций для одной печати')
+        ->assertSeeText('Выбрано 3 квитанций, а за один раз можно напечатать не больше 2.')
+        ->assertSeeText('Сузьте фильтры')
+        ->assertDontSeeText('Абонент 0')
+        ->assertDontSee('class="receipt-a4-page"', false)
+        ->assertDontSee('window.print()', false);
+
+    config(['receipts.print_selection_limit' => 3]);
+
+    bulkPrintResponse($this->get(route('filament.admin.receipts.print-bulk', [
+        'tenant' => $organization,
+        'billing_period_id' => $receipts->first()->billing_period_id,
+    ])))
+        ->assertSuccessful()
+        ->assertSeeText('Квитанций: 3')
+        ->assertDontSeeText('Слишком много квитанций');
+});
+
+test('bulk receipt print refuses a selection larger than the print limit', function () {
+    config(['receipts.print_selection_limit' => 2]);
+
+    $organization = Organization::factory()->create();
+    $receipts = collect(range(0, 2))->map(fn (int $index): Receipt => createReceiptFromMeterReading($organization, [
+        'account_number' => (string) (100070 + $index),
+        'name' => "Абонент {$index}",
+    ]));
+
+    $user = actingAsReceiptTenant($organization);
+    $this->actingAs($user);
+
+    $this->get(route('filament.admin.receipts.print-bulk', [
+        'tenant' => $organization,
+        'selection' => ReceiptPrintSelection::store($user, $organization, $receipts->map->getKey()),
+    ]))
+        ->assertUnprocessable()
+        ->assertSeeText('Слишком много квитанций для одной печати')
+        ->assertSeeText('Выбрано 3 квитанций, а за один раз можно напечатать не больше 2.')
+        ->assertDontSeeText('Абонент 0')
+        ->assertDontSee('window.print()', false);
+
+    bulkPrintResponse($this->get(route('filament.admin.receipts.print-bulk', [
+        'tenant' => $organization,
+        'selection' => ReceiptPrintSelection::store($user, $organization, $receipts->take(2)->map->getKey()),
+    ])))
+        ->assertSuccessful()
+        ->assertSeeText('Квитанций: 2')
+        ->assertSeeText('Абонент 0')
+        ->assertDontSeeText('Абонент 2');
+});
+
+test('bulk receipt print orders receipts with the id as the last sort key', function () {
+    $organization = Organization::factory()->create();
+    $receipt = createReceiptFromMeterReading($organization, ['account_number' => '100095']);
+
+    $this->actingAs(actingAsReceiptTenant($organization));
+
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+
+    bulkPrintResponse($this->get(route('filament.admin.receipts.print-bulk', [
+        'tenant' => $organization,
+        'billing_period_id' => $receipt->billing_period_id,
+    ])))->assertSuccessful();
+
+    $orderedReceiptQueries = collect(DB::getQueryLog())
+        ->pluck('query')
+        ->filter(fn (string $query): bool => str_contains($query, 'from `receipts`') && str_contains($query, 'order by'));
+
+    DB::disableQueryLog();
+
+    expect($orderedReceiptQueries)->toHaveCount(2)
+        ->and($orderedReceiptQueries->every(fn (string $query): bool => str_ends_with(
+            $query,
+            'order by `account_number` asc, `receipt_number` asc, `receipts`.`id` asc',
+        )))->toBeTrue();
+});
+
+test('bulk receipt print closes the page with an error state when a chunk fails while streaming', function () {
+    $organization = Organization::factory()->create();
+    $receipt = createReceiptFromMeterReading($organization, [
+        'account_number' => '100096',
+        'name' => 'Абонент печати',
+    ]);
+
+    $this->actingAs(actingAsReceiptTenant($organization));
+
+    Exceptions::fake();
+
+    $this->app->bind(BuildReceiptPrintViewData::class, fn (): BuildReceiptPrintViewData => new class(app(BuildReceiptMeterReadingLines::class)) extends BuildReceiptPrintViewData
+    {
+        public function handleMany(Collection $receipts): array
+        {
+            throw new RuntimeException('Сбой отрисовки квитанций.');
+        }
+    });
+
+    $content = bulkPrintResponse($this->get(route('filament.admin.receipts.print-bulk', [
+        'tenant' => $organization,
+        'billing_period_id' => $receipt->billing_period_id,
+    ])))
+        ->assertSuccessful()
+        ->assertSeeText('Печать прервана')
+        ->assertSeeText('листы скрыты и не печатаются')
+        ->assertDontSeeText('Абонент печати')
+        ->getContent();
+
+    expect($content)->not->toContain("window.addEventListener('load'")
+        ->and($content)->toContain('.receipt-bulk-print-button')
+        ->and($content)->toMatch('/<section class="receipt-bulk-print-error[^"]*\\bprint:hidden\\b[^"]*">/')
+        ->and(trim($content))->toEndWith('</html>');
+
+    Exceptions::assertReported(fn (RuntimeException $exception): bool => $exception->getMessage() === 'Сбой отрисовки квитанций.');
+});
+
+test('bulk receipt print does not print a receipt moved to another organization while streaming', function () {
+    $otherOrganization = Organization::factory()->create();
+    $organization = Organization::factory()->create();
+    $receipt = createReceiptFromMeterReading($organization, [
+        'account_number' => '100097',
+        'name' => 'Перенесённый абонент',
+    ]);
+
+    $this->actingAs(actingAsReceiptTenant($organization));
+
+    Exceptions::fake();
+
+    $receiptMoved = false;
+    DB::listen(function (QueryExecuted $query) use (&$receiptMoved, $receipt, $otherOrganization): void {
+        if ($receiptMoved || ! str_starts_with($query->sql, 'select `receipts`.`id` from `receipts`')) {
+            return;
+        }
+
+        $receiptMoved = true;
+        DB::statement('SET FOREIGN_KEY_CHECKS=0');
+        DB::table('receipts')->where('id', $receipt->getKey())->update(['organization_id' => $otherOrganization->getKey()]);
+        DB::statement('SET FOREIGN_KEY_CHECKS=1');
+    });
+
+    bulkPrintResponse($this->get(route('filament.admin.receipts.print-bulk', [
+        'tenant' => $organization,
+        'billing_period_id' => $receipt->billing_period_id,
+    ])))
+        ->assertSuccessful()
+        ->assertSeeText('Печать прервана')
+        ->assertDontSeeText('Перенесённый абонент')
+        ->assertDontSee('data-receipt-copy=', false);
+
+    expect($receiptMoved)->toBeTrue();
+
+    Exceptions::assertReported(RuntimeException::class);
 });
 
 test('admin users can open a current tenant bulk receipt print view for a billing period', function () {
@@ -965,16 +1309,11 @@ test('admin users can open a current tenant bulk receipt print view for a billin
     $user = actingAsReceiptTenant($organization);
     $this->actingAs($user);
 
-    $this->get(route('filament.admin.receipts.print-bulk', [
+    bulkPrintResponse($this->get(route('filament.admin.receipts.print-bulk', [
         'tenant' => $organization,
         'billing_period_id' => $firstReceipt->billing_period_id,
-    ]))
+    ])))
         ->assertSuccessful()
-        ->assertViewIs('receipts.bulk-print')
-        ->assertViewHasAll([
-            'periodLabel',
-            'receiptPrintData',
-        ])
         ->assertSeeText('Квитанций: 2');
 });
 
@@ -1005,11 +1344,11 @@ test('bulk receipt print filters receipts with a positive amount due', function 
 
     $this->actingAs(actingAsReceiptTenant($organization));
 
-    $this->get(route('filament.admin.receipts.print-bulk', [
+    bulkPrintResponse($this->get(route('filament.admin.receipts.print-bulk', [
         'tenant' => $organization,
         'billing_period_id' => $positiveReceipt->billing_period_id,
         'amount_due_positive' => 1,
-    ]))
+    ])))
         ->assertSuccessful()
         ->assertSeeText('Квитанций: 1')
         ->assertSeeText('Положительный долг')
@@ -1027,10 +1366,10 @@ test('bulk receipt print requires a scope filter when filtering by a positive am
 
     $this->actingAs(actingAsReceiptTenant($organization));
 
-    $this->get(route('filament.admin.receipts.print-bulk', [
+    bulkPrintResponse($this->get(route('filament.admin.receipts.print-bulk', [
         'tenant' => $organization,
         'amount_due_positive' => 1,
-    ]))->assertNotFound();
+    ])))->assertNotFound();
 });
 
 test('bulk receipt print includes every receipt when the positive amount due filter is omitted', function () {
@@ -1052,10 +1391,10 @@ test('bulk receipt print includes every receipt when the positive amount due fil
 
     $this->actingAs(actingAsReceiptTenant($organization));
 
-    $this->get(route('filament.admin.receipts.print-bulk', [
+    bulkPrintResponse($this->get(route('filament.admin.receipts.print-bulk', [
         'tenant' => $organization,
         'billing_period_id' => $positiveReceipt->billing_period_id,
-    ]))
+    ])))
         ->assertSuccessful()
         ->assertSeeText('Квитанций: 3')
         ->assertSeeText('Положительный долг')
@@ -1114,28 +1453,28 @@ test('admin users can open a current tenant bulk receipt print view for address 
     $user = actingAsReceiptTenant($organization);
     $this->actingAs($user);
 
-    $this->get(route('filament.admin.receipts.print-bulk', [
+    bulkPrintResponse($this->get(route('filament.admin.receipts.print-bulk', [
         'tenant' => $organization,
         'region_id' => $assignedRegion->getKey(),
-    ]))
+    ])))
         ->assertSuccessful()
         ->assertSeeText('Квитанций: 1')
         ->assertSeeText('Иванов Иван')
         ->assertDontSeeText('Петров Петр');
 
-    $this->get(route('filament.admin.receipts.print-bulk', [
+    bulkPrintResponse($this->get(route('filament.admin.receipts.print-bulk', [
         'tenant' => $organization,
         'street_id' => $assignedStreet->getKey(),
-    ]))
+    ])))
         ->assertSuccessful()
         ->assertSeeText('Квитанций: 1')
         ->assertSeeText('Иванов Иван')
         ->assertDontSeeText('Петров Петр');
 
-    $this->get(route('filament.admin.receipts.print-bulk', [
+    bulkPrintResponse($this->get(route('filament.admin.receipts.print-bulk', [
         'tenant' => $organization,
         'controller_id' => $controller->getKey(),
-    ]))
+    ])))
         ->assertSuccessful()
         ->assertSeeText('Квитанций: 1')
         ->assertSeeText('Иванов Иван')
@@ -1153,12 +1492,11 @@ test('admin users see an empty bulk receipt print view when a tenant period has 
     $user = actingAsReceiptTenant($organization);
     $this->actingAs($user);
 
-    $this->get(route('filament.admin.receipts.print-bulk', [
+    bulkPrintResponse($this->get(route('filament.admin.receipts.print-bulk', [
         'tenant' => $organization,
         'billing_period_id' => $billingPeriod,
-    ]))
+    ])))
         ->assertSuccessful()
-        ->assertViewIs('receipts.bulk-print')
         ->assertSeeText('Нет квитанций для печати')
         ->assertDontSee('window.print()');
 });
@@ -1173,15 +1511,15 @@ test('admin users cannot open another tenant bulk receipt print view', function 
     $user = actingAsReceiptTenant($organization);
     $this->actingAs($user);
 
-    $this->get(route('filament.admin.receipts.print-bulk', [
+    bulkPrintResponse($this->get(route('filament.admin.receipts.print-bulk', [
         'tenant' => $organization,
         'billing_period_id' => $receipt->billing_period_id,
-    ]))->assertNotFound();
+    ])))->assertNotFound();
 
-    $this->get(route('filament.admin.receipts.print-bulk', [
+    bulkPrintResponse($this->get(route('filament.admin.receipts.print-bulk', [
         'tenant' => $organization,
         'selection' => ReceiptPrintSelection::store($user, $organization, [$receipt->getKey()]),
-    ]))->assertNotFound();
+    ])))->assertNotFound();
 });
 
 test('print selected bulk action opens bulk print of every selected receipt through a selection token', function () {
@@ -1207,10 +1545,10 @@ test('print selected bulk action opens bulk print of every selected receipt thro
         ->and(ReceiptPrintSelection::resolve($token, $user, $organization)?->sort()->values()->all())
         ->toBe($selectedReceipts->map->getKey()->sort()->values()->all());
 
-    $this->get(route('filament.admin.receipts.print-bulk', [
+    bulkPrintResponse($this->get(route('filament.admin.receipts.print-bulk', [
         'tenant' => $organization,
         'selection' => $token,
-    ]))
+    ])))
         ->assertSuccessful()
         ->assertSeeText('Квитанций: 10')
         ->assertSeeText('Абонент 9')
@@ -1254,10 +1592,10 @@ test('print selected bulk action prints every receipt of select all across table
         ->and(ReceiptPrintSelection::resolve($token, $user, $organization)?->sort()->values()->all())
         ->toBe($remainingReceipts->map->getKey()->sort()->values()->all());
 
-    $this->get(route('filament.admin.receipts.print-bulk', [
+    bulkPrintResponse($this->get(route('filament.admin.receipts.print-bulk', [
         'tenant' => $organization,
         'selection' => $token,
-    ]))
+    ])))
         ->assertSuccessful()
         ->assertSeeText('Квитанций: 10')
         ->assertSeeText('100080')
@@ -1315,8 +1653,8 @@ test('bulk receipt print selection token can be reopened by its owner until it e
         'selection' => ReceiptPrintSelection::store($user, $organization, [$receipt->getKey()]),
     ]);
 
-    $this->get($printUrl)->assertSuccessful()->assertSeeText('Квитанций: 1');
-    $this->get($printUrl)->assertSuccessful()->assertSeeText('Квитанций: 1');
+    bulkPrintResponse($this->get($printUrl))->assertSuccessful()->assertSeeText('Квитанций: 1');
+    bulkPrintResponse($this->get($printUrl))->assertSuccessful()->assertSeeText('Квитанций: 1');
 
     $this->travel(ReceiptPrintSelection::LIFETIME + 1)->seconds();
 
@@ -1342,11 +1680,11 @@ test('bulk receipt print rejects a selection token of another user or another or
     $token = ReceiptPrintSelection::store($user, $organization, [$receipt->getKey()]);
     $foreignToken = ReceiptPrintSelection::store($user, $otherOrganization, [$foreignReceipt->getKey()]);
 
-    $this->actingAs($user)
+    bulkPrintResponse($this->actingAs($user)
         ->get(route('filament.admin.receipts.print-bulk', [
             'tenant' => $organization,
             'selection' => $token,
-        ]))
+        ])))
         ->assertSuccessful()
         ->assertSeeText('Квитанций: 1');
 

@@ -203,7 +203,7 @@ test('bulk print applies the organization html template', function () {
     $content = $this->get(route('filament.admin.receipts.print-bulk', [
         'tenant' => $organization,
         'billing_period_id' => $billingPeriod->getKey(),
-    ]))->getContent();
+    ]))->assertSuccessful()->streamedContent();
 
     expect(substr_count($content, 'data-receipt-copy='))->toBe(2)
         ->and(substr_count($content, 'Счёт за воду'))->toBe(2)

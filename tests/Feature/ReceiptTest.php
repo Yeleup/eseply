@@ -12,6 +12,7 @@ use App\Models\MeterReading;
 use App\Models\Organization;
 use App\Models\Payment;
 use App\Models\Receipt;
+use App\Models\ReceiptTemplate;
 use App\Models\Region;
 use App\Models\Street;
 use App\Models\Tariff;
@@ -830,8 +831,58 @@ test('admin users can open a current tenant bulk receipt print view for selected
     $content = $response->getContent();
 
     expect(substr_count($content, 'data-receipt-copy='))->toBe(4)
-        ->and(substr_count($content, 'receipt-sheet-bulk'))->toBeGreaterThanOrEqual(2)
+        ->and(substr_count($content, 'class="receipt-a4-page"'))->toBe(1)
+        ->and(substr_count($content, 'class="receipt-a4-cell"'))->toBe(4)
         ->and($secondReceipt->billing_period_id)->toBe($firstReceipt->billing_period_id);
+});
+
+test('bulk receipt print lays out up to eight copies per A4 page without splitting a receipt', function () {
+    $organization = Organization::factory()->create();
+    $receipts = collect(range(0, 4))->map(fn (int $index): Receipt => createReceiptFromMeterReading($organization, [
+        'account_number' => (string) (100020 + $index),
+        'name' => "Абонент {$index}",
+    ]));
+
+    $this->actingAs(actingAsReceiptTenant($organization));
+
+    $response = $this->get(route('filament.admin.receipts.print-bulk', [
+        'tenant' => $organization,
+        'receipt_ids' => $receipts->map->getKey()->all(),
+    ]));
+
+    $response
+        ->assertSuccessful()
+        ->assertSeeText('Листов A4: 2, до 8 экземпляров на листе.');
+
+    $pages = collect($response->viewData('printPages'));
+
+    expect($pages)->toHaveCount(2)
+        ->and($pages->map(fn (array $pageCopies): int => count($pageCopies))->all())->toBe([8, 2])
+        ->and(collect($pages->first())->pluck('copyTitle')->all())->toBe([
+            'Для организации', 'Для абонента',
+            'Для организации', 'Для абонента',
+            'Для организации', 'Для абонента',
+            'Для организации', 'Для абонента',
+        ])
+        ->and(substr_count($response->getContent(), 'class="receipt-a4-page"'))->toBe(2)
+        ->and(substr_count($response->getContent(), 'data-receipt-copy='))->toBe(10);
+});
+
+test('bulk receipt print fits eight single-copy receipts on one A4 page', function () {
+    $organization = Organization::factory()->create();
+    ReceiptTemplate::factory()->for($organization)->create(['copies_per_page' => 1]);
+    $receipts = collect(range(0, 8))->map(fn (int $index): Receipt => createReceiptFromMeterReading($organization, [
+        'account_number' => (string) (100040 + $index),
+    ]));
+
+    $this->actingAs(actingAsReceiptTenant($organization));
+
+    $pages = collect($this->get(route('filament.admin.receipts.print-bulk', [
+        'tenant' => $organization,
+        'receipt_ids' => $receipts->map->getKey()->all(),
+    ]))->assertSuccessful()->viewData('printPages'));
+
+    expect($pages->map(fn (array $pageCopies): int => count($pageCopies))->all())->toBe([8, 1]);
 });
 
 test('admin users can open a current tenant bulk receipt print view for a billing period', function () {

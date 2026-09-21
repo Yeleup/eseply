@@ -26,6 +26,13 @@ class ReceiptPrintController extends Controller
         'controller_id',
     ];
 
+    /**
+     * Массовая печать раскладывает экземпляры сеткой 2×4 на листе A4.
+     * Число чётное, поэтому оба экземпляра одной квитанции всегда
+     * попадают на один лист.
+     */
+    public const BULK_COPIES_PER_A4_PAGE = 8;
+
     public function single(string $tenantKey, Receipt $receipt, BuildReceiptPrintViewData $buildReceiptPrintViewData): Response
     {
         $tenant = Filament::getTenant();
@@ -93,14 +100,37 @@ class ReceiptPrintController extends Controller
                 ->get();
         }
 
+        $receiptPrintData = $receipts
+            ->map(fn (Receipt $receipt): array => $buildReceiptPrintViewData->handle($receipt))
+            ->all();
+
         return response()
             ->view('receipts.bulk-print', [
                 'periodLabel' => $periodLabel,
-                'receiptPrintData' => $receipts
-                    ->map(fn (Receipt $receipt): array => $buildReceiptPrintViewData->handle($receipt))
-                    ->all(),
+                'receiptPrintData' => $receiptPrintData,
+                'printPages' => $this->printPages($receiptPrintData),
             ], 200)
             ->header('X-Content-Type-Options', 'nosniff');
+    }
+
+    /**
+     * @param  list<array{renderedCopies: array<string, string>}>  $receiptPrintData
+     * @return list<list<array{copyTitle: string, renderedCopy: string}>>
+     */
+    private function printPages(array $receiptPrintData): array
+    {
+        return collect($receiptPrintData)
+            ->flatMap(fn (array $printData): array => collect($printData['renderedCopies'])
+                ->map(fn (string $renderedCopy, string $copyTitle): array => [
+                    'copyTitle' => $copyTitle,
+                    'renderedCopy' => $renderedCopy,
+                ])
+                ->values()
+                ->all())
+            ->chunk(self::BULK_COPIES_PER_A4_PAGE)
+            ->map(fn (Collection $pageCopies): array => $pageCopies->values()->all())
+            ->values()
+            ->all();
     }
 
     /**

@@ -19,7 +19,7 @@
                     <p class="text-sm font-semibold uppercase tracking-[0.22em] text-teal-800">PDF</p>
                     <h1 class="mt-1 text-2xl font-semibold tracking-tight">Массовая печать квитанций</h1>
                     <p class="mt-1 text-sm text-zinc-600">
-                        Фильтр: {{ $periodLabel }}. Квитанций: {{ count($receiptPrintData) }}.
+                        Фильтр: {{ $periodLabel }}. Квитанций: {{ count($receiptPrintData) }}. Листов A4: {{ count($printPages) }}, до {{ \App\Http\Controllers\ReceiptPrintController::BULK_COPIES_PER_A4_PAGE }} экземпляров на листе.
                     </p>
                 </div>
 
@@ -34,10 +34,12 @@
                 @endif
             </div>
 
-            @forelse ($receiptPrintData as $printData)
-                <section class="receipt-sheet receipt-sheet-bulk {{ $printData['copiesPerPage'] === 1 ? 'receipt-sheet-single' : '' }}">
-                    @foreach ($printData['renderedCopies'] as $copyTitle => $renderedCopy)
-                        @include('receipts.partials.print-copy', ['copyTitle' => $copyTitle, 'renderedCopy' => $renderedCopy])
+            @forelse ($printPages as $pageCopies)
+                <section class="receipt-a4-page">
+                    @foreach ($pageCopies as $pageCopy)
+                        <div class="receipt-a4-cell">
+                            @include('receipts.partials.print-copy', $pageCopy)
+                        </div>
                     @endforeach
                 </section>
             @empty

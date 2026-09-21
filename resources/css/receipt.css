@@ -5,13 +5,52 @@
     max-width: 42rem;
 }
 
-.receipt-sheet-bulk + .receipt-sheet-bulk {
-    margin-top: 1.5rem;
+/*
+ * Массовая печать: лист A4 — сетка 2×4, до 8 экземпляров на лист.
+ * Экземпляр вёрстается в ширину половины A5 (~141mm) и уменьшается
+ * через zoom до ячейки 99×70mm, поэтому шаблоны организаций не меняются.
+ */
+.receipt-a4-page {
+    --receipt-a4-zoom: 0.7;
+
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: repeat(4, minmax(0, 1fr));
+    gap: 2mm;
+    margin-inline: auto;
+    width: 200mm;
+    height: 287mm;
+    background: #fff;
+    page: receipt-a4;
+}
+
+.receipt-a4-cell {
+    overflow: hidden;
+    border: 1px dashed #a1a1aa;
+}
+
+.receipt-a4-cell .receipt-copy {
+    zoom: var(--receipt-a4-zoom);
+    min-height: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    padding: 3mm;
 }
 
 @media screen {
     .receipt-copy {
         min-height: 20rem;
+    }
+
+    .receipt-a4-page + .receipt-a4-page {
+        margin-top: 1.5rem;
+    }
+
+    .receipt-a4-page {
+        padding: 5mm;
+        box-sizing: content-box;
+        box-shadow: 0 1px 3px rgb(0 0 0 / 0.12);
     }
 }
 
@@ -19,6 +58,11 @@
     @page {
         size: A5 portrait;
         margin: 4mm;
+    }
+
+    @page receipt-a4 {
+        size: A4 portrait;
+        margin: 5mm;
     }
 
     .receipt-sheet {
@@ -32,12 +76,12 @@
         grid-template-rows: minmax(0, 1fr);
     }
 
-    .receipt-sheet-bulk {
+    .receipt-a4-page {
         break-after: page;
         page-break-after: always;
     }
 
-    .receipt-sheet-bulk:last-child {
+    .receipt-a4-page:last-child {
         break-after: auto;
         page-break-after: auto;
     }

@@ -2027,7 +2027,7 @@
                         <p class="text-sm font-semibold uppercase tracking-[0.22em] text-teal-800 dark:text-teal-300">ReceiptResource</p>
                         <h2 class="mt-2 text-3xl font-semibold tracking-tight">Печать квитанций A5</h2>
                         <p class="mt-3 max-w-2xl text-sm text-zinc-600 dark:text-zinc-300">
-                            Раздел «Квитанции» доступен в навигации. Один лист A5 содержит два компактных экземпляра: для организации и для абонента. Bulk-печать в таблице квитанций использует тот же шаблон для выбранных строк.
+                            Раздел «Квитанции» доступен в навигации. Один лист A5 содержит два компактных экземпляра: для организации и для абонента. Bulk-печать в таблице квитанций использует тот же шаблон для выбранных строк и раскладывает экземпляры на A4 сеткой 2×4 — до 8 экземпляров на листе.
                         </p>
                     </div>
 
@@ -2063,9 +2063,16 @@
                             <li>Выбран контроллер: печатаются квитанции абонентов из его зоны ответственности.</li>
                             <li>Выбраны квитанции: доступно «Печатать выбранные».</li>
                             <li>В строке таблицы нет стандартного просмотра, только действие «Печать».</li>
+                            <li>Массовая печать: лист A4, сетка 2×4, до 8 экземпляров (8 квитанций при одном экземпляре, 4 — при двух).</li>
                             <li>Нет квитанций: показывается пустое состояние.</li>
                             <li>Чужая квитанция: доступ закрыт tenant-проверкой.</li>
                         </ul>
+
+                        <div class="mt-4 grid aspect-[210/297] w-28 grid-cols-2 grid-rows-4 gap-0.5 rounded-sm bg-white p-1 shadow-sm dark:bg-zinc-100" aria-label="Схема листа A4 массовой печати">
+                            @foreach (range(1, 8) as $cellNumber)
+                                <div class="flex items-center justify-center border border-dashed border-zinc-400 text-[8px] font-semibold text-zinc-500">{{ $cellNumber }}</div>
+                            @endforeach
+                        </div>
                     </div>
                 </div>
 

@@ -35,11 +35,4 @@ return [
         ],
     ],
 
-    'xpayment' => [
-        'base_url' => env('XPAYMENT_BASE_URL', 'https://api.xpayment.kz/v1'),
-        'webhook_secret' => env('XPAYMENT_WEBHOOK_SECRET'),
-        'timeout' => env('XPAYMENT_TIMEOUT', 10),
-        'connect_timeout' => env('XPAYMENT_CONNECT_TIMEOUT', 3),
-    ],
-
 ];

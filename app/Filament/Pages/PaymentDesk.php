@@ -500,8 +500,8 @@ class PaymentDesk extends Page implements HasTable
     }
 
     /**
-     * Kaspi payments arrive through the XPayment webhook and are reconciled with
-     * the provider, so correcting them by hand here would split the two records.
+     * Payments recorded by an external payment provider mirror the provider's record,
+     * so correcting them by hand here would split the two records.
      */
     private function canCorrect(Payment $payment): bool
     {

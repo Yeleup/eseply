@@ -9,7 +9,6 @@ use App\Filament\Resources\Clients\RelationManagers\AccrualsRelationManager;
 use App\Filament\Resources\Clients\RelationManagers\BalanceAdjustmentsRelationManager;
 use App\Filament\Resources\Clients\RelationManagers\MetersRelationManager;
 use App\Filament\Resources\Clients\RelationManagers\PaymentsRelationManager;
-use App\Filament\Resources\Clients\RelationManagers\PaymentTransactionsRelationManager;
 use App\Filament\Resources\Clients\RelationManagers\ReceiptsRelationManager;
 use App\Filament\Resources\Clients\Schemas\ClientForm;
 use App\Filament\Resources\Clients\Tables\ClientsTable;
@@ -62,7 +61,6 @@ class ClientResource extends Resource
         return [
             MetersRelationManager::class,
             PaymentsRelationManager::class,
-            PaymentTransactionsRelationManager::class,
             BalanceAdjustmentsRelationManager::class,
             AccrualsRelationManager::class,
             ReceiptsRelationManager::class,

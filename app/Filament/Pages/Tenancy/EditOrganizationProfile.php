@@ -94,17 +94,6 @@ class EditOrganizationProfile extends EditTenantProfile
                             ->required()
                             ->maxLength(255),
                     ]),
-                Section::make('XPayment / Kaspi')
-                    ->columns(1)
-                    ->schema([
-                        TextInput::make('xpayment_api_key')
-                            ->label('API key устройства')
-                            ->password()
-                            ->revealable()
-                            ->maxLength(255)
-                            ->helperText('Уникальный xdev_* ключ этой организации. Оставьте пустым, чтобы не менять сохранённый ключ.')
-                            ->dehydrated(fn (?string $state): bool => filled($state)),
-                    ]),
             ]);
     }
 
@@ -119,7 +108,6 @@ class EditOrganizationProfile extends EditTenantProfile
         if ($organization instanceof Organization) {
             $data['utility_service_name'] = $organization->utilityService?->name;
             $data['utility_service_unit_of_measurement'] = $organization->utilityService?->unit_of_measurement;
-            $data['xpayment_api_key'] = null;
         }
 
         return $data;

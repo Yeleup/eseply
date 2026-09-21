@@ -656,6 +656,75 @@ test('строки идут в порядке обхода: дом 2 раньш�
         ->assertCanSeeTableRecords([$second, $tenth], inOrder: true);
 });
 
+/**
+ * Three meters whose account numbers put string and numeric order at odds,
+ * placed so that the walking order differs from both of them.
+ *
+ * @return array{short: Meter, long: Meter, middle: Meter}
+ */
+function readingEntryMetersWithAccountNumbers(): array
+{
+    ['organization' => $organization, 'utilityService' => $utilityService, 'region' => $region, 'street' => $street] = readingEntryOrganization();
+    billingPeriodFor($organization);
+    readingEntryOperator($organization);
+
+    $address = ['region_id' => $region->id, 'street_id' => $street->id];
+
+    return [
+        'long' => readingEntryMeter($organization, $utilityService, [...$address, 'house' => '1', 'account_number' => '10000000']),
+        'middle' => readingEntryMeter($organization, $utilityService, [...$address, 'house' => '2', 'account_number' => '9999999']),
+        'short' => readingEntryMeter($organization, $utilityService, [...$address, 'house' => '3', 'account_number' => '7010480']),
+    ];
+}
+
+test('без выбранной сортировки строки идут по адресу, а не по лицевому счёту', function (): void {
+    ['short' => $short, 'long' => $long, 'middle' => $middle] = readingEntryMetersWithAccountNumbers();
+
+    Livewire::test(MeterReadingEntry::class)
+        ->assertSet('tableSort', null)
+        ->assertCanSeeTableRecords([$long, $middle, $short], inOrder: true);
+});
+
+test('лицевые счета разной длины сортируются как числа', function (string $direction, array $expectedOrder): void {
+    $meters = readingEntryMetersWithAccountNumbers();
+
+    Livewire::test(MeterReadingEntry::class)
+        ->sortTable('client.account_number', $direction)
+        ->assertCanSeeTableRecords(array_map(fn (string $key): Meter => $meters[$key], $expectedOrder), inOrder: true);
+})->with([
+    'по возрастанию' => ['asc', ['short', 'middle', 'long']],
+    'по убыванию' => ['desc', ['long', 'middle', 'short']],
+]);
+
+test('счётчики одного лицевого счёта при сортировке идут по номеру счётчика', function (): void {
+    ['organization' => $organization, 'utilityService' => $utilityService] = readingEntryOrganization();
+    billingPeriodFor($organization);
+    readingEntryOperator($organization);
+
+    $first = readingEntryMeter($organization, $utilityService, ['account_number' => '5000000'], ['number' => 'MTR-B']);
+    $second = Meter::factory()->for($organization)->for($first->client)->for($utilityService)
+        ->create(['number' => 'MTR-A', 'initial_reading' => 100, 'status' => 'active']);
+    $other = readingEntryMeter($organization, $utilityService, ['account_number' => '6000000'], ['number' => 'MTR-0']);
+
+    Livewire::test(MeterReadingEntry::class)
+        ->sortTable('client.account_number', 'desc')
+        ->assertCanSeeTableRecords([$other, $second, $first], inOrder: true);
+});
+
+test('сохранение показания не сбрасывает выбранную сортировку по лицевому счёту', function (): void {
+    ['short' => $short, 'long' => $long, 'middle' => $middle] = readingEntryMetersWithAccountNumbers();
+
+    Livewire::test(MeterReadingEntry::class)
+        ->sortTable('client.account_number', 'desc')
+        ->call('updateTableColumnState', 'current_reading', (string) $middle->getKey(), '150')
+        ->assertHasNoErrors()
+        ->assertSet('tableSort', 'client.account_number:desc')
+        ->assertCanSeeTableRecords([$long, $short], inOrder: true)
+        ->assertCanNotSeeTableRecords([$middle]);
+
+    expect(MeterReading::query()->where('meter_id', $middle->id)->value('current_reading'))->toBe(150);
+});
+
 test('все счётчики абонента идут отдельными соседними строками', function (): void {
     ['organization' => $organization, 'utilityService' => $utilityService, 'region' => $region, 'street' => $street] = readingEntryOrganization();
     $billingPeriod = billingPeriodFor($organization);

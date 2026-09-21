@@ -37,8 +37,6 @@ class PaymentFactory extends Factory
     {
         return $this->state(fn (): array => [
             'method' => PaymentMethod::Kaspi,
-            'external_provider' => 'xpayment',
-            'external_payment_id' => fake()->uuid(),
         ]);
     }
 }

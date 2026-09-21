@@ -2,13 +2,11 @@
 
 namespace App\Filament\Resources\Clients\RelationManagers;
 
-use App\Actions\CreateKaspiPaymentTransaction;
 use App\Filament\Support\BillingPeriodOptions;
 use App\Filament\Support\CurrentBillingPeriod;
 use App\Filament\Support\OrganizationMemberAccess;
 use App\Models\Payment;
 use App\PaymentMethod;
-use Filament\Actions\Action;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
@@ -18,17 +16,14 @@ use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
-use Filament\Notifications\Notification;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
-use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
-use Throwable;
 
 class PaymentsRelationManager extends RelationManager
 {
@@ -133,60 +128,6 @@ class PaymentsRelationManager extends RelationManager
                         $data['received_by_user_id'] = auth()->id();
 
                         return $data;
-                    }),
-                Action::make('createKaspiRemotePayment')
-                    ->label('Отправить Kaspi оплату')
-                    ->icon(Heroicon::OutlinedDevicePhoneMobile)
-                    ->color('danger')
-                    ->modalHeading('Отправить удалённую Kaspi оплату')
-                    ->modalSubmitActionLabel('Отправить')
-                    ->disabled(fn (): bool => CurrentBillingPeriod::missing($this->ownerRecord->organization))
-                    ->tooltip(fn (): ?string => CurrentBillingPeriod::missingTooltip($this->ownerRecord->organization))
-                    ->schema(fn (): array => [
-                        Section::make('Удалённая Kaspi оплата')
-                            ->columns(2)
-                            ->schema([
-                                TextInput::make('amount')
-                                    ->label('Сумма')
-                                    ->numeric()
-                                    ->step('0.01')
-                                    ->minValue(1)
-                                    ->required(),
-                                TextInput::make('payer_phone')
-                                    ->label('Телефон плательщика')
-                                    ->tel()
-                                    ->maxLength(255)
-                                    ->required(),
-                                Textarea::make('note')
-                                    ->label('Примечание')
-                                    ->columnSpanFull(),
-                            ]),
-                    ])
-                    ->action(function (array $data): void {
-                        try {
-                            $paymentTransaction = app(CreateKaspiPaymentTransaction::class)->handle(
-                                client: $this->ownerRecord,
-                                amount: $data['amount'],
-                                payerPhone: (string) ($data['payer_phone'] ?? ''),
-                                note: $data['note'] ?? null,
-                            );
-                        } catch (Throwable $exception) {
-                            report($exception);
-
-                            Notification::make()
-                                ->title('Не удалось отправить Kaspi оплату')
-                                ->body($exception->getMessage())
-                                ->danger()
-                                ->send();
-
-                            return;
-                        }
-
-                        Notification::make()
-                            ->title('Kaspi-заявка отправлена')
-                            ->body("Удалённая оплата отправлена на телефон {$paymentTransaction->payer_phone}.")
-                            ->success()
-                            ->send();
                     }),
             ])
             ->recordActions([

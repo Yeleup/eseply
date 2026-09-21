@@ -2019,26 +2019,6 @@
                                     </tbody>
                                 </table>
                             </div>
-
-                            <div class="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 dark:border-red-900/60 dark:bg-red-950/20">
-                                <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                                    <div>
-                                        <p class="text-xs font-semibold uppercase tracking-wide text-red-700 dark:text-red-300">Kaspi удалённая оплата</p>
-                                        <p class="mt-1 text-sm font-medium text-red-950 dark:text-red-100">Заявка отправлена клиенту</p>
-                                    </div>
-                                    <span class="rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-900 dark:bg-amber-900/50 dark:text-amber-100">pending</span>
-                                </div>
-                                <dl class="mt-4 grid grid-cols-2 gap-3 text-xs">
-                                    <div>
-                                        <dt class="text-zinc-500 dark:text-zinc-400">Сумма</dt>
-                                        <dd class="mt-1 font-semibold">2 500.00 KZT</dd>
-                                    </div>
-                                    <div>
-                                        <dt class="text-zinc-500 dark:text-zinc-400">Телефон</dt>
-                                        <dd class="mt-1 font-semibold text-red-700 dark:text-red-300">+7 700 123 45 67</dd>
-                                    </div>
-                                </dl>
-                            </div>
                         </div>
                     </div>
 

@@ -21,7 +21,6 @@ function tablesGuardedByBillingPeriodOrganizationKey(): array
         'balance_adjustments',
         'billing_period_closure_errors',
         'meter_readings',
-        'payment_transactions',
         'payments',
         'receipts',
     ];

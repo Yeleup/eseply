@@ -10,7 +10,6 @@ use App\Filament\Resources\Clients\RelationManagers\AccrualsRelationManager;
 use App\Filament\Resources\Clients\RelationManagers\BalanceAdjustmentsRelationManager;
 use App\Filament\Resources\Clients\RelationManagers\MetersRelationManager;
 use App\Filament\Resources\Clients\RelationManagers\PaymentsRelationManager;
-use App\Filament\Resources\Clients\RelationManagers\PaymentTransactionsRelationManager;
 use App\Filament\Resources\Clients\RelationManagers\ReceiptsRelationManager;
 use App\Filament\Resources\Meters\MeterResource;
 use App\Filament\Resources\Payments\PaymentResource;
@@ -29,6 +28,7 @@ use App\Models\Street;
 use App\Models\User;
 use App\Models\UtilityService;
 use App\OrganizationMemberRole;
+use App\PaymentMethod;
 use Filament\Facades\Filament;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -1032,7 +1032,6 @@ test('client resource shows accounting records as related tables', function () {
     expect(ClientResource::getRelations())->toBe([
         MetersRelationManager::class,
         PaymentsRelationManager::class,
-        PaymentTransactionsRelationManager::class,
         BalanceAdjustmentsRelationManager::class,
         AccrualsRelationManager::class,
         ReceiptsRelationManager::class,
@@ -1221,10 +1220,18 @@ test('client related tables can create meters, payments and balance adjustments 
         'ownerRecord' => $client,
         'pageClass' => EditClient::class,
     ])
+        ->assertActionDoesNotExist('createKaspiRemotePayment')
         ->callTableAction('create', data: [
             'amount' => 3500,
             'paid_at' => '2026-05-29',
             'note' => 'Оплата из карточки абонента',
+        ])
+        ->assertHasNoTableActionErrors()
+        ->callTableAction('create', data: [
+            'amount' => 1200,
+            'method' => PaymentMethod::Kaspi->value,
+            'paid_at' => '2026-05-29',
+            'note' => 'Kaspi перевод абонента',
         ])
         ->assertHasNoTableActionErrors();
 
@@ -1252,6 +1259,11 @@ test('client related tables can create meters, payments and balance adjustments 
             ->forPeriod('202605')
             ->where('amount', 3500)
             ->exists())->toBeTrue()
+        ->and(Payment::query()
+            ->whereBelongsTo($client)
+            ->where('amount', 1200)
+            ->firstOrFail()
+            ->method)->toBe(PaymentMethod::Kaspi)
         ->and(BalanceAdjustment::query()
             ->whereBelongsTo($organization)
             ->whereBelongsTo($client)

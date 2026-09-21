@@ -306,6 +306,32 @@ test('приём оплаты создаёт запись и пересчиты�
         ->and((float) $receipt->closing_balance)->toBe(1200.0);
 });
 
+test('кассир принимает оплату способом Kaspi вручную и может её исправить', function (): void {
+    ['organization' => $organization, 'utilityService' => $utilityService] = paymentDeskOrganization();
+    $billingPeriod = billingPeriodFor($organization);
+    paymentDeskOperator($organization);
+
+    $client = paymentDeskDebtFromReading($organization, $utilityService, $billingPeriod, 30);
+
+    Livewire::test(PaymentDesk::class)
+        ->call('selectClient', $client->id)
+        ->fillForm(['amount' => 1500, 'method' => PaymentMethod::Kaspi->value, 'paid_at' => today()->toDateString()])
+        ->call('acceptPayment')
+        ->assertHasNoFormErrors()
+        ->assertNotified('Оплата принята');
+
+    $payment = Payment::query()->where('client_id', $client->id)->firstOrFail();
+
+    expect($payment->method)->toBe(PaymentMethod::Kaspi)
+        ->and($payment->method->getLabel())->toBe('Kaspi')
+        ->and((float) Receipt::query()->where('client_id', $client->id)->value('paid_amount'))->toBe(1500.0);
+
+    Livewire::test(PaymentDesk::class)
+        ->assertCanSeeTableRecords([$payment])
+        ->assertActionVisible(TestAction::make(EditAction::getDefaultName())->table($payment))
+        ->assertActionVisible(TestAction::make(DeleteAction::getDefaultName())->table($payment));
+});
+
 test('кнопка «Вся сумма» подставляет долг', function (): void {
     ['organization' => $organization, 'utilityService' => $utilityService] = paymentDeskOrganization();
     $billingPeriod = billingPeriodFor($organization);
@@ -452,7 +478,7 @@ test('ручную оплату можно исправить и удалить'
         ->and((float) Receipt::query()->where('client_id', $client->id)->value('paid_amount'))->toBe(0.0);
 });
 
-test('оплату из Kaspi через провайдера исправить нельзя', function (): void {
+test('оплату, записанную внешним провайдером, исправить нельзя', function (): void {
     ['organization' => $organization, 'utilityService' => $utilityService] = paymentDeskOrganization();
     $billingPeriod = billingPeriodFor($organization);
     paymentDeskOperator($organization);
@@ -465,8 +491,8 @@ test('оплату из Kaspi через провайдера исправить
         'billing_period_id' => $billingPeriod->id,
         'amount' => 1000,
         'method' => PaymentMethod::Kaspi->value,
-        'external_provider' => 'xpayment',
-        'external_payment_id' => 'xp-123',
+        'external_provider' => 'legacy-provider',
+        'external_payment_id' => 'ext-123',
     ]);
 
     Livewire::test(PaymentDesk::class)

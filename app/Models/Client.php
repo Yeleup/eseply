@@ -90,11 +90,6 @@ class Client extends Model
         return $this->hasMany(Payment::class);
     }
 
-    public function paymentTransactions(): HasMany
-    {
-        return $this->hasMany(PaymentTransaction::class);
-    }
-
     public function balanceAdjustments(): HasMany
     {
         return $this->hasMany(BalanceAdjustment::class);

@@ -371,3 +371,24 @@ it('показывает контроллеру в таблице прогрес
         ->assertSee('Абаев Абай')
         ->assertDontSee('Букеев Букей');
 });
+
+it('не опрашивает сервер из виджетов дашборда', function (string $widget): void {
+    $organization = dashboardPageOrganization();
+    BillingPeriod::openFor($organization, '202608');
+
+    actingAsDashboardMember($organization, OrganizationMemberRole::Operator);
+
+    if (property_exists($widget, 'pollingInterval')) {
+        expect((new ReflectionProperty($widget, 'pollingInterval'))->getValue(new $widget))->toBeNull();
+    }
+
+    Livewire::test($widget)
+        ->assertOk()
+        ->assertDontSee('wire:poll', false);
+})->with([
+    DashboardStatsWidget::class,
+    DashboardFinanceStatsWidget::class,
+    DashboardChargesChartWidget::class,
+    DashboardControllerProgressWidget::class,
+    DashboardRegionBreakdownWidget::class,
+]);

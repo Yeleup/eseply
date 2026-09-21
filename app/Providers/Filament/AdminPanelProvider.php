@@ -63,7 +63,7 @@ class AdminPanelProvider extends PanelProvider
             ->tenantProfile(EditOrganizationProfile::class)
             ->searchableTenantMenu()
             ->databaseNotifications()
-            ->databaseNotificationsPolling('30s')
+            ->databaseNotificationsPolling('60s')
             ->renderHook(
                 PanelsRenderHook::PAGE_START,
                 function (): View {

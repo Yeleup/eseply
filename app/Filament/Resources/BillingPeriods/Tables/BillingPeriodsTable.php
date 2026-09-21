@@ -4,6 +4,7 @@ namespace App\Filament\Resources\BillingPeriods\Tables;
 
 use App\BillingPeriodStatus;
 use App\Filament\Resources\BillingPeriods\BillingPeriodResource;
+use App\Filament\Support\CurrentBillingPeriod;
 use App\Models\BillingPeriod;
 use Filament\Actions\Action;
 use Filament\Support\Icons\Heroicon;
@@ -17,7 +18,7 @@ class BillingPeriodsTable
     public static function configure(Table $table): Table
     {
         return $table
-            ->poll('5s')
+            ->poll(fn (): ?string => CurrentBillingPeriod::closingPollingInterval())
             ->modifyQueryUsing(fn (Builder $query): Builder => $query->orderByDesc('starts_on'))
             ->columns([
                 TextColumn::make('label')

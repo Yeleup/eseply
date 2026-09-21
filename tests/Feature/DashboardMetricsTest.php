@@ -756,3 +756,129 @@ it('берёт суммы среза по районам из начислени
         ->and($breakdown[0]['charged'])->toBe(555.0)
         ->and($breakdown[0]['debt'])->toBe(555.0);
 });
+
+it('кэширует показатели дашборда на 60 секунд', function (): void {
+    $organization = dashboardOrganization();
+    $billingPeriod = BillingPeriod::openFor($organization, '202608');
+    $region = dashboardRegion($organization, 'Алмалинский');
+    $operator = dashboardOperator($organization);
+    $metrics = app(DashboardMetrics::class);
+
+    dashboardMeteredClient($organization, $region, '100001');
+
+    expect($metrics->operations($organization, $billingPeriod, $operator)['clients_total'])->toBe(1);
+
+    dashboardMeteredClient($organization, $region, '100002');
+
+    Carbon::setTestNow(now()->addSeconds(DashboardMetrics::CACHE_TTL - 1));
+
+    expect($metrics->operations($organization, $billingPeriod, $operator)['clients_total'])->toBe(1);
+
+    Carbon::setTestNow(now()->addSeconds(2));
+
+    expect($metrics->operations($organization, $billingPeriod, $operator)['clients_total'])->toBe(2);
+});
+
+it('не отдаёт контроллеру кэш оператора и оператору кэш контроллера', function (bool $controllerFirst): void {
+    $organization = dashboardOrganization();
+    $billingPeriod = BillingPeriod::openFor($organization, '202608');
+
+    $assignedRegion = dashboardRegion($organization, 'Алмалинский');
+    $otherRegion = dashboardRegion($organization, 'Бостандыкский');
+
+    dashboardReading(dashboardMeter($organization, dashboardMeteredClient($organization, $assignedRegion, '100001'), 'MTR-001'), $billingPeriod, 10);
+    dashboardReading(dashboardMeter($organization, dashboardMeteredClient($organization, $otherRegion, '100002'), 'MTR-002'), $billingPeriod, 90);
+
+    $operator = dashboardOperator($organization);
+    $controller = dashboardController($organization, $assignedRegion);
+    $otherController = dashboardController($organization, $otherRegion);
+    $metrics = app(DashboardMetrics::class);
+
+    $members = $controllerFirst
+        ? [$controller, $otherController, $operator]
+        : [$operator, $controller, $otherController];
+
+    $operations = [];
+    $progress = [];
+
+    foreach ($members as $member) {
+        $operations[$member->id] = $metrics->operations($organization, $billingPeriod, $member);
+        $progress[$member->id] = $metrics->controllerProgress($organization, $billingPeriod, $member);
+    }
+
+    expect($operations[$operator->id]['clients_total'])->toBe(2)
+        ->and($operations[$operator->id]['consumption'])->toBe(100)
+        ->and($operations[$controller->id]['clients_total'])->toBe(1)
+        ->and($operations[$controller->id]['consumption'])->toBe(10)
+        ->and($operations[$otherController->id]['clients_total'])->toBe(1)
+        ->and($operations[$otherController->id]['consumption'])->toBe(90)
+        ->and(array_column($progress[$operator->id], 'controller_id'))->toEqualCanonicalizing([$controller->id, $otherController->id])
+        ->and(array_column($progress[$controller->id], 'controller_id'))->toBe([$controller->id])
+        ->and(array_column($progress[$otherController->id], 'controller_id'))->toBe([$otherController->id]);
+})->with([
+    'сначала оператор' => false,
+    'сначала контроллер' => true,
+]);
+
+it('не смешивает кэш разных организаций и расчётных месяцев', function (): void {
+    $organization = dashboardOrganization();
+    $otherOrganization = dashboardOrganization();
+
+    $region = dashboardRegion($organization, 'Алмалинский');
+    $otherRegion = dashboardRegion($otherOrganization, 'Чужой');
+    $meter = dashboardMeter($organization, dashboardMeteredClient($organization, $region, '100001'), 'MTR-001');
+
+    $julyPeriod = BillingPeriod::openFor($organization, '202607');
+    dashboardReading($meter, $julyPeriod, 7);
+    $julyPeriod = dashboardCloseBillingPeriod($julyPeriod);
+
+    $augustPeriod = BillingPeriod::openFor($organization, '202608');
+    $otherAugustPeriod = BillingPeriod::openFor($otherOrganization, '202608');
+    dashboardReading($meter, $augustPeriod, 10);
+    dashboardReading(
+        dashboardMeter($otherOrganization, dashboardMeteredClient($otherOrganization, $otherRegion, '200001'), 'MTR-002'),
+        $otherAugustPeriod,
+        99,
+    );
+
+    Payment::factory()->create([
+        'organization_id' => $otherOrganization->id,
+        'client_id' => Client::query()->where('organization_id', $otherOrganization->id)->value('id'),
+        'billing_period_id' => $otherAugustPeriod->id,
+        'period' => null,
+        'amount' => 500,
+    ]);
+
+    $metrics = app(DashboardMetrics::class);
+    $operator = dashboardOperator($organization);
+    $otherOperator = dashboardOperator($otherOrganization);
+
+    expect($metrics->operations($organization, $augustPeriod, $operator)['consumption'])->toBe(10)
+        ->and($metrics->operations($organization, $julyPeriod, $operator)['consumption'])->toBe(7)
+        ->and($metrics->operations($otherOrganization, $otherAugustPeriod, $otherOperator)['consumption'])->toBe(99)
+        ->and($metrics->finance($organization, $augustPeriod)['paid'])->toBe(0.0)
+        ->and($metrics->finance($otherOrganization, $otherAugustPeriod)['paid'])->toBe(500.0)
+        ->and(array_column($metrics->monthlyTotals($organization), 'period'))->toHaveCount(2)
+        ->and(array_column($metrics->monthlyTotals($otherOrganization), 'paid'))->toBe([500.0])
+        ->and(array_column($metrics->regionBreakdown($organization, $augustPeriod), 'region'))->toBe(['Алмалинский'])
+        ->and(array_column($metrics->regionBreakdown($otherOrganization, $otherAugustPeriod), 'region'))->toBe(['Чужой']);
+});
+
+it('не показывает пользователю без роли в организации ни строк прогресса, ни операционных цифр', function (): void {
+    $organization = dashboardOrganization();
+    $billingPeriod = BillingPeriod::openFor($organization, '202608');
+    $region = dashboardRegion($organization, 'Алмалинский');
+
+    dashboardReading(dashboardMeter($organization, dashboardMeteredClient($organization, $region, '100001'), 'MTR-001'), $billingPeriod, 10);
+
+    $controller = dashboardController($organization, $region);
+    $outsider = dashboardOperator(dashboardOrganization());
+    $metrics = app(DashboardMetrics::class);
+
+    expect($metrics->controllerProgress($organization, $billingPeriod, $outsider))->toBe([])
+        ->and($metrics->operations($organization, $billingPeriod, $outsider)['clients_total'])->toBe(0)
+        ->and($metrics->operations($organization, $billingPeriod, $outsider)['consumption'])->toBe(0)
+        ->and(array_column($metrics->controllerProgress($organization, $billingPeriod, dashboardOperator($organization)), 'controller_id'))->toBe([$controller->id])
+        ->and($metrics->operations($organization, $billingPeriod, dashboardOperator($organization))['consumption'])->toBe(10)
+        ->and($metrics->controllerProgress($organization, $billingPeriod, $outsider))->toBe([]);
+});

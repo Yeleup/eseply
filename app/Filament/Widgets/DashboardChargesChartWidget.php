@@ -19,6 +19,11 @@ class DashboardChargesChartWidget extends ChartWidget
     protected static ?int $sort = 3;
 
     /**
+     * The dashboard refreshes on page load and when the billing period changes.
+     */
+    protected ?string $pollingInterval = null;
+
+    /**
      * Accruals, receipts and payments are operator-only data.
      */
     public static function canView(): bool

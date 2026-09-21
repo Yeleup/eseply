@@ -21,7 +21,6 @@ use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Js;
 use Livewire\Component;
 
@@ -151,25 +150,50 @@ class ReceiptsTable
                     ->icon(Heroicon::OutlinedPrinter)
                     ->color('gray')
                     ->fetchSelectedRecords(false)
-                    ->action(fn (Collection $records, Component $livewire) => self::openSelectedReceiptsPrint($records, $livewire))
+                    ->action(fn (Builder $selectedRecordsQuery, BulkAction $action, Component $livewire) => self::openSelectedReceiptsPrint($selectedRecordsQuery, $action, $livewire))
                     ->deselectRecordsAfterCompletion(),
             ]);
     }
 
     /**
      * Действие монтируется, поэтому получает актуальный выбор строк,
-     * включая отмеченные после последней перерисовки таблицы. Выбор
-     * сохраняется под токеном, а печать открывается в новой вкладке.
+     * включая отмеченные после последней перерисовки таблицы и «Выбрать все»
+     * с исключёнными строками. Читаются только id, не больше лимита плюс один:
+     * выборка сверх лимита отклоняется, а выбор строк остаётся на месте.
+     * Выбор сохраняется под токеном, а печать открывается в новой вкладке.
      *
-     * @param  Collection<int, int|string>  $receiptIds
+     * @param  Builder<Receipt>  $selectedRecordsQuery
      */
-    private static function openSelectedReceiptsPrint(Collection $receiptIds, Component $livewire): void
+    private static function openSelectedReceiptsPrint(Builder $selectedRecordsQuery, BulkAction $action, Component $livewire): void
     {
         $tenant = Filament::getTenant();
         $user = auth()->user();
 
-        if (! $tenant instanceof Organization || ! $user instanceof User || $receiptIds->isEmpty()) {
+        if (! $tenant instanceof Organization || ! $user instanceof User) {
             return;
+        }
+
+        $selectionLimit = ReceiptPrintSelection::limit();
+        $receiptIds = $selectedRecordsQuery
+            ->toBase()
+            ->limit($selectionLimit + 1)
+            ->pluck($selectedRecordsQuery->getModel()->getQualifiedKeyName());
+
+        if ($receiptIds->isEmpty()) {
+            return;
+        }
+
+        if ($receiptIds->count() > $selectionLimit) {
+            Notification::make()
+                ->title(__('filament-receipts.notifications.print_selected_too_many.title', [
+                    'limit' => number_format($selectionLimit, thousands_separator: ' '),
+                ]))
+                ->body(__('filament-receipts.notifications.print_selected_too_many.body'))
+                ->danger()
+                ->persistent()
+                ->send();
+
+            $action->cancel();
         }
 
         $printUrl = route('filament.admin.receipts.print-bulk', [

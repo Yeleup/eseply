@@ -19,6 +19,15 @@ class ReceiptPrintSelection
     public const int LIFETIME = 1800;
 
     /**
+     * Максимум квитанций в одной выборке «Печатать выбранные» — порядок
+     * квитанций одной организации за расчётный месяц на целевом масштабе.
+     */
+    public static function limit(): int
+    {
+        return max(1, (int) config('receipts.print_selection_limit', 10000));
+    }
+
+    /**
      * @param  iterable<int|string>  $receiptIds
      */
     public static function store(User $user, Organization $organization, iterable $receiptIds): string

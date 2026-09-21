@@ -24,6 +24,7 @@ use Filament\Facades\Filament;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
 
 uses(RefreshDatabase::class);
@@ -40,6 +41,29 @@ function actingAsReceiptTenant(Organization $organization): User
     Filament::bootCurrentPanel();
 
     return $user;
+}
+
+/**
+ * Токен выбора из `window.open(...)`, который bulk-действие «Печатать выбранные»
+ * отправляет в браузер; null, если печать не открывалась.
+ */
+function openedReceiptPrintSelectionToken(Testable $component): ?string
+{
+    $windowOpenExpressions = collect($component->effects['xjs'] ?? [])
+        ->pluck('expression')
+        ->filter(fn (string $expression): bool => str_starts_with($expression, 'window.open('));
+
+    if ($windowOpenExpressions->isEmpty()) {
+        return null;
+    }
+
+    expect($windowOpenExpressions)->toHaveCount(1)
+        ->and($windowOpenExpressions->first())->toContain("'_blank'")
+        ->and($windowOpenExpressions->first())->not->toContain('receipt_ids');
+
+    preg_match('/[?&]selection=([A-Za-z0-9]{40})/', $windowOpenExpressions->first(), $matches);
+
+    return $matches[1] ?? null;
 }
 
 /**
@@ -1176,16 +1200,7 @@ test('print selected bulk action opens bulk print of every selected receipt thro
         ->assertHasNoTableBulkActionErrors()
         ->assertNotified('Печать выбранных квитанций открыта в новой вкладке');
 
-    $windowOpenExpressions = collect($component->effects['xjs'] ?? [])
-        ->pluck('expression')
-        ->filter(fn (string $expression): bool => str_starts_with($expression, 'window.open('));
-
-    expect($windowOpenExpressions)->toHaveCount(1)
-        ->and($windowOpenExpressions->first())->toContain("'_blank'")
-        ->and($windowOpenExpressions->first())->not->toContain('receipt_ids');
-
-    preg_match('/[?&]selection=([A-Za-z0-9]{40})/', $windowOpenExpressions->first(), $matches);
-    $token = $matches[1] ?? null;
+    $token = openedReceiptPrintSelectionToken($component);
 
     expect($token)->not->toBeNull()
         ->and(ReceiptPrintSelection::resolve($token, $user, $organization)?->sort()->values()->all())
@@ -1199,6 +1214,95 @@ test('print selected bulk action opens bulk print of every selected receipt thro
         ->assertSeeText('Квитанций: 10')
         ->assertSeeText('Абонент 9')
         ->assertDontSeeText('Абонент 10');
+});
+
+test('print selected bulk action prints every receipt of select all except the deselected ones', function () {
+    $organization = Organization::factory()->create();
+    $receipts = collect(range(0, 4))->map(fn (int $index): Receipt => createReceiptFromMeterReading($organization, [
+        'account_number' => (string) (100080 + $index),
+        'name' => "Абонент {$index}",
+    ]));
+    $deselectedReceipts = $receipts->only([1, 3]);
+    $remainingReceipts = $receipts->except([1, 3]);
+
+    $user = actingAsReceiptTenant($organization);
+    $this->actingAs($user);
+
+    $component = Livewire::test(ListReceipts::class)
+        ->set('isTrackingDeselectedTableRecords', true)
+        ->set('deselectedTableRecords', $deselectedReceipts->map(fn (Receipt $receipt): string => (string) $receipt->getKey())->values()->all())
+        ->callTableBulkAction('printSelected', [])
+        ->assertHasNoTableBulkActionErrors();
+
+    $token = openedReceiptPrintSelectionToken($component);
+
+    expect($token)->not->toBeNull()
+        ->and(ReceiptPrintSelection::resolve($token, $user, $organization)?->sort()->values()->all())
+        ->toBe($remainingReceipts->map->getKey()->sort()->values()->all());
+
+    $this->get(route('filament.admin.receipts.print-bulk', [
+        'tenant' => $organization,
+        'selection' => $token,
+    ]))
+        ->assertSuccessful()
+        ->assertSeeText('Квитанций: 3')
+        ->assertSeeText('Абонент 0')
+        ->assertDontSeeText('Абонент 1')
+        ->assertDontSeeText('Абонент 3');
+});
+
+test('print selected bulk action rejects a selection above the limit and keeps the selection', function () {
+    config(['receipts.print_selection_limit' => 2]);
+
+    $organization = Organization::factory()->create();
+    $receipts = collect(range(0, 2))->map(fn (int $index): Receipt => createReceiptFromMeterReading($organization, [
+        'account_number' => (string) (100090 + $index),
+    ]));
+
+    $user = actingAsReceiptTenant($organization);
+    $this->actingAs($user);
+
+    $component = Livewire::test(ListReceipts::class)
+        ->callTableBulkAction('printSelected', $receipts)
+        ->assertNotified('Выбрано больше 2 квитанций')
+        ->assertSet('selectedTableRecords', $receipts->map(fn (Receipt $receipt): string => (string) $receipt->getKey())->all());
+
+    expect(openedReceiptPrintSelectionToken($component))->toBeNull();
+
+    $component = Livewire::test(ListReceipts::class)
+        ->set('isTrackingDeselectedTableRecords', true)
+        ->callTableBulkAction('printSelected', [])
+        ->assertNotified('Выбрано больше 2 квитанций');
+
+    expect(openedReceiptPrintSelectionToken($component))->toBeNull();
+
+    $component = Livewire::test(ListReceipts::class)
+        ->callTableBulkAction('printSelected', $receipts->take(2))
+        ->assertNotified('Печать выбранных квитанций открыта в новой вкладке');
+
+    expect(openedReceiptPrintSelectionToken($component))->not->toBeNull();
+});
+
+test('bulk receipt print selection token can be reopened by its owner until it expires', function () {
+    $organization = Organization::factory()->create();
+    $receipt = createReceiptFromMeterReading($organization, [
+        'account_number' => '100095',
+    ]);
+
+    $user = actingAsReceiptTenant($organization);
+    $this->actingAs($user);
+
+    $printUrl = route('filament.admin.receipts.print-bulk', [
+        'tenant' => $organization,
+        'selection' => ReceiptPrintSelection::store($user, $organization, [$receipt->getKey()]),
+    ]);
+
+    $this->get($printUrl)->assertSuccessful()->assertSeeText('Квитанций: 1');
+    $this->get($printUrl)->assertSuccessful()->assertSeeText('Квитанций: 1');
+
+    $this->travel(ReceiptPrintSelection::LIFETIME + 1)->seconds();
+
+    $this->get($printUrl)->assertNotFound();
 });
 
 test('bulk receipt print rejects a selection token of another user or another organization', function () {

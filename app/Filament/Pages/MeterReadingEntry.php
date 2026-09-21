@@ -107,9 +107,10 @@ class MeterReadingEntry extends Page implements HasTable
             ->filters($this->filters($organization, $billingPeriod?->getKey()))
             ->headerActions([$this->largeConsumptionConfirmationAction()])
             ->recordActions([$this->detailsAction()])
-            ->recordClasses(fn (Meter $record): array => $this->hasNegativeConsumption($record)
-                ? ['fi-readings-negative']
-                : [])
+            ->recordClasses(fn (Meter $record): array => array_filter([
+                $this->hasNegativeConsumption($record) ? 'fi-readings-negative' : null,
+                $this->hasPendingReading($record) ? 'fi-readings-pending' : null,
+            ]))
             ->recordUrl(null)
             ->defaultPaginationPageOption(50)
             ->emptyStateHeading('Нет счётчиков по выбранному адресу')
@@ -231,7 +232,14 @@ class MeterReadingEntry extends Page implements HasTable
                 // of the error the controller has to see.
                 ->disabled(fn (): bool => ! $this->canEnterReadings())
                 ->updateStateUsing(fn (Meter $record, mixed $state): mixed => $this->saveReading($record, $state))
-                ->extraInputAttributes(['class' => 'fi-readings-input']),
+                ->extraInputAttributes(fn (Meter $record): array => [
+                    'class' => $this->hasPendingReading($record)
+                        ? 'fi-readings-input fi-readings-input-pending'
+                        : 'fi-readings-input',
+                    'title' => $this->hasPendingReading($record)
+                        ? 'Показание не сохранено: подтвердите или измените значение.'
+                        : null,
+                ]),
 
             TextColumn::make('consumption_for_entry')
                 ->label('Расход')
@@ -567,6 +575,11 @@ class MeterReadingEntry extends Page implements HasTable
     private function minimumReadingFor(Meter $meter): int
     {
         return OrganizationMemberAccess::minimumMeterReading($this->previousReading($meter));
+    }
+
+    private function hasPendingReading(Meter $meter): bool
+    {
+        return array_key_exists($meter->getKey(), $this->pendingReadings);
     }
 
     private function warnAboutNegativeConsumption(Meter $meter, MeterReading $reading): void

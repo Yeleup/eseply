@@ -508,6 +508,7 @@ test('контроллёр подтверждает расход больше т
     $page
         ->unmountAction()
         ->assertActionNotMounted()
+        ->assertSeeHtml('fi-readings-pending')
         ->assertTableColumnStateSet('current_reading', 221, $meter);
 
     $page

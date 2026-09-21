@@ -270,17 +270,22 @@ class MeterReading extends Model
             return null;
         }
 
+        $previousBillingPeriodIds = BillingPeriod::query()
+            ->where('organization_id', $billingPeriod->organization_id)
+            ->whereDate('starts_on', '<', $billingPeriod->starts_on->toDateString())
+            ->orderByDesc('starts_on')
+            ->limit(3)
+            ->pluck('id');
+
+        if ($previousBillingPeriodIds->isEmpty()) {
+            return null;
+        }
+
         $consumptions = self::query()
             ->where('meter_id', (int) $meterId)
+            ->whereIn('billing_period_id', $previousBillingPeriodIds)
             ->taken()
             ->where('consumption', '>=', 0)
-            ->whereHas(
-                'billingPeriod',
-                fn (Builder $query): Builder => $query->whereDate('starts_on', '<', $billingPeriod->starts_on->toDateString()),
-            )
-            ->orderByBillingPeriodDesc()
-            ->orderByDesc('id')
-            ->limit(3)
             ->pluck('consumption');
 
         if ($consumptions->isEmpty()) {
@@ -361,7 +366,9 @@ class MeterReading extends Model
             $meterReading->previous_reading = $previousReading;
             $meterReading->current_reading = $currentReading;
 
-            if ($currentReading !== null && $currentReading > self::MAXIMUM_CURRENT_READING) {
+            if ($meterReading->isDirty('current_reading')
+                && $currentReading !== null
+                && $currentReading > self::MAXIMUM_CURRENT_READING) {
                 throw ValidationException::withMessages([
                     'current_reading' => self::maximumCurrentReadingMessage(),
                 ]);

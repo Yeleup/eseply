@@ -33,6 +33,16 @@
     & .fi-ta-row.fi-readings-negative {
         @apply bg-amber-50 dark:bg-amber-400/10;
     }
+
+    /* A controller cancelled the large-consumption confirmation. Keep the
+       typed value visible for correction, but make clear that it is not stored. */
+    & .fi-ta-row.fi-readings-pending {
+        @apply bg-primary-50 dark:bg-primary-400/10;
+    }
+
+    & .fi-readings-input-pending {
+        @apply border-primary-400 ring-1 ring-primary-300 dark:border-primary-400 dark:ring-primary-500/60;
+    }
 }
 
 /**

@@ -838,8 +838,12 @@
                         <p class="text-sm font-medium text-teal-700 dark:text-teal-300">Проверка перед сохранением</p>
                         <h3 class="mt-1 text-base font-semibold">Подтверждение большого расхода</h3>
                         <p class="mt-1 max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
-                            Окно показывается контролёру, когда расход строго больше тройного среднего за предыдущие месяцы. Отмена возвращает к полю с тем же значением; оператор сохраняет без этого шага.
+                            Окно показывается контролёру, когда расход строго больше тройного среднего за три непосредственно предшествующих месяца. Отмена возвращает к полю с тем же значением и явной меткой «не сохранено»; оператор сохраняет без этого шага.
                         </p>
+                    </div>
+
+                    <div class="mt-4 max-w-xl rounded-lg border border-primary-200 bg-primary-50 p-3 text-sm text-primary-800 dark:border-primary-400/30 dark:bg-primary-400/10 dark:text-primary-200">
+                        <span class="font-semibold">Не сохранено:</span> контролёр отменил подтверждение. Поле с показанием 14 381 остаётся доступным для исправления.
                     </div>
 
                     <div class="mt-4 max-w-xl rounded-xl border border-zinc-200 bg-white shadow-xl dark:border-zinc-800 dark:bg-zinc-950">

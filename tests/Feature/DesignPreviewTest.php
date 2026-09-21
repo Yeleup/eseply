@@ -48,6 +48,7 @@ test('the readings entry preview shows every required state', function () {
         'Подтверждение большого расхода',
         'Подтвердите большой расход',
         'Вернуться к вводу',
+        'Не сохранено:',
     ] as $marker) {
         $response->assertSee($marker);
     }

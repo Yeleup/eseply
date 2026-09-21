@@ -847,6 +847,31 @@ test('a controller confirms large consumption in the meter card readings table',
     expect(MeterReading::query()->whereBelongsTo($meter)->forPeriod('202605')->value('current_reading'))->toBe(221);
 });
 
+test('a controller confirms large consumption when editing the meter card readings table', function (): void {
+    ['organization' => $organization, 'region' => $region, 'meter' => $meter] = readingResourceMeterWithConsumptionHistory();
+    $reading = MeterReading::query()->create([
+        'meter_id' => $meter->id,
+        'billing_period_id' => BillingPeriod::currentEditableFor($organization)?->id,
+        'previous_reading' => 160,
+        'current_reading' => 200,
+    ]);
+    actingAsReadingResourceMember($organization, OrganizationMemberRole::Controller, $region);
+
+    Livewire::test(ReadingsRelationManager::class, [
+        'ownerRecord' => $meter,
+        'pageClass' => EditMeter::class,
+    ])
+        ->callTableAction('edit', $reading, data: ['current_reading' => 221])
+        ->assertActionMounted([
+            TestAction::make('edit')->table($reading),
+            'confirmLargeConsumption',
+        ])
+        ->callMountedAction()
+        ->assertActionNotMounted();
+
+    expect($reading->refresh()->current_reading)->toBe(221);
+});
+
 test('a controller confirms large consumption in the client card meter action', function (): void {
     ['organization' => $organization, 'region' => $region, 'client' => $client, 'meter' => $meter] = readingResourceMeterWithConsumptionHistory();
     actingAsReadingResourceMember($organization, OrganizationMemberRole::Controller, $region);

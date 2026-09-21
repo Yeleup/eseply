@@ -722,6 +722,35 @@ test('meter reading model rejects a value greater than 99999', function (): void
     expect(MeterReading::query()->whereBelongsTo($meter)->exists())->toBeFalse();
 });
 
+test('an existing reading greater than 99999 can keep its note without changing its reading', function (): void {
+    $organization = Organization::factory()->create();
+    $meter = Meter::factory()->for($organization)->create();
+    $billingPeriod = billingPeriodFor($organization);
+
+    $readingId = DB::table('meter_readings')->insertGetId([
+        'organization_id' => $organization->id,
+        'meter_id' => $meter->id,
+        'client_id' => $meter->client_id,
+        'utility_service_id' => $meter->utility_service_id,
+        'billing_period_id' => $billingPeriod->id,
+        'previous_reading' => 0,
+        'current_reading' => MeterReading::MAXIMUM_CURRENT_READING + 1,
+        'consumption' => MeterReading::MAXIMUM_CURRENT_READING + 1,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    $reading = MeterReading::query()->findOrFail($readingId);
+    $reading->update(['note' => 'Сохранённое старое показание']);
+
+    expect($reading->refresh()->current_reading)->toBe(MeterReading::MAXIMUM_CURRENT_READING + 1)
+        ->and($reading->note)->toBe('Сохранённое старое показание');
+
+    expect(fn (): bool => $reading->update([
+        'current_reading' => MeterReading::MAXIMUM_CURRENT_READING + 2,
+    ]))->toThrow(ValidationException::class, MeterReading::maximumCurrentReadingMessage());
+});
+
 test('meter forms reject a fractional initial reading', function () {
     $organization = Organization::factory()->create();
     $utilityService = UtilityService::factory()->for($organization)->create();

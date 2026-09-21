@@ -15,6 +15,7 @@ use Filament\Facades\Filament;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Contracts\HasTable;
+use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
@@ -27,6 +28,7 @@ class ReceiptsTable
         'region_id',
         'street_id',
         'controller_id',
+        'amount_due_positive',
     ];
 
     public static function configure(Table $table): Table
@@ -113,6 +115,10 @@ class ReceiptsTable
                         $query,
                         self::filterValue($data),
                     )),
+                Filter::make('amount_due_positive')
+                    ->label(__('filament-receipts.filters.amount_due_positive'))
+                    ->toggle()
+                    ->query(fn (Builder $query): Builder => $query->where('closing_balance', '>', 0)),
             ])
             ->headerActions([
                 Action::make('printFiltered')
@@ -181,6 +187,10 @@ class ReceiptsTable
 
     private static function selectedFilterValue(HasTable $livewire, string $filterKey): int
     {
+        if ($filterKey === 'amount_due_positive') {
+            return (int) ($livewire->getTableFilterState($filterKey)['isActive'] ?? false);
+        }
+
         return (int) ($livewire->getTableFilterState($filterKey)['value'] ?? 0);
     }
 

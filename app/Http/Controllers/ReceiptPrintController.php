@@ -24,6 +24,7 @@ class ReceiptPrintController extends Controller
         'region_id',
         'street_id',
         'controller_id',
+        'amount_due_positive',
     ];
 
     /**
@@ -213,6 +214,10 @@ class ReceiptPrintController extends Controller
                 'client',
                 fn (Builder $query): Builder => $query->visibleToOrganizationMember($controller, $tenant),
             );
+        }
+
+        if ($filters['amount_due_positive'] > 0) {
+            $receiptsQuery->where('closing_balance', '>', 0);
         }
 
         return $periodLabel;

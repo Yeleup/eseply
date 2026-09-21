@@ -669,6 +669,40 @@ test('receipt resource list page is registered with a bulk print action', functi
         ->assertTableBulkActionHasIcon('printSelected', Heroicon::OutlinedPrinter);
 });
 
+test('receipt resource list filters receipts with a positive amount due', function () {
+    $organization = Organization::factory()->create();
+    $positiveReceipt = createReceiptFromMeterReading($organization, [
+        'account_number' => '30003',
+        'name' => 'Положительный долг',
+    ]);
+    $zeroReceipt = createReceiptFromMeterReading($organization, [
+        'account_number' => '30004',
+        'name' => 'Нулевой долг',
+    ]);
+    $zeroReceipt->update(['closing_balance' => 0]);
+    $negativeReceipt = createReceiptFromMeterReading($organization, [
+        'account_number' => '30005',
+        'name' => 'Переплата',
+    ]);
+    $negativeReceipt->update(['closing_balance' => -100]);
+
+    $user = actingAsReceiptTenant($organization);
+    $this->actingAs($user);
+
+    Livewire::test(ListReceipts::class)
+        ->assertTableFilterExists('amount_due_positive')
+        ->assertCanSeeTableRecords([$positiveReceipt, $zeroReceipt, $negativeReceipt])
+        ->assertTableActionHidden('printFiltered')
+        ->filterTable('amount_due_positive')
+        ->assertCanSeeTableRecords([$positiveReceipt])
+        ->assertCanNotSeeTableRecords([$zeroReceipt, $negativeReceipt])
+        ->assertTableActionVisible('printFiltered')
+        ->assertTableActionHasUrl('printFiltered', route('filament.admin.receipts.print-bulk', [
+            'tenant' => $organization,
+            'amount_due_positive' => 1,
+        ]));
+});
+
 test('admin users can open a current tenant receipt print view', function () {
     $organization = Organization::factory()->create([
         'name' => 'ТОО Водоканал',
@@ -912,6 +946,76 @@ test('admin users can open a current tenant bulk receipt print view for a billin
             'receiptPrintData',
         ])
         ->assertSeeText('Квитанций: 2');
+});
+
+test('bulk receipt print filters receipts with a positive amount due', function () {
+    $organization = Organization::factory()->create();
+    $positiveReceipt = createReceiptFromMeterReading($organization, [
+        'account_number' => '100012',
+        'name' => 'Положительный долг',
+    ]);
+    $zeroReceipt = createReceiptFromMeterReading($organization, [
+        'account_number' => '100013',
+        'name' => 'Нулевой долг',
+    ]);
+    $zeroReceipt->update(['closing_balance' => 0]);
+    $negativeReceipt = createReceiptFromMeterReading($organization, [
+        'account_number' => '100014',
+        'name' => 'Переплата',
+    ]);
+    $negativeReceipt->update(['closing_balance' => -100]);
+
+    // Фикстуры чужой организации создаются до установки тенанта: после
+    // Filament::setTenant() фабрики принудительно проставляют его organization_id.
+    $otherOrganization = Organization::factory()->create();
+    $foreignReceipt = createReceiptFromMeterReading($otherOrganization, [
+        'account_number' => '90002',
+        'name' => 'Чужой положительный долг',
+    ]);
+
+    $this->actingAs(actingAsReceiptTenant($organization));
+
+    $this->get(route('filament.admin.receipts.print-bulk', [
+        'tenant' => $organization,
+        'billing_period_id' => $positiveReceipt->billing_period_id,
+        'amount_due_positive' => 1,
+    ]))
+        ->assertSuccessful()
+        ->assertSeeText('Квитанций: 1')
+        ->assertSeeText('Положительный долг')
+        ->assertDontSeeText('Нулевой долг')
+        ->assertDontSeeText('Переплата')
+        ->assertDontSeeText($foreignReceipt->client_name);
+});
+
+test('bulk receipt print includes every receipt when the positive amount due filter is omitted', function () {
+    $organization = Organization::factory()->create();
+    $positiveReceipt = createReceiptFromMeterReading($organization, [
+        'account_number' => '100015',
+        'name' => 'Положительный долг',
+    ]);
+    $zeroReceipt = createReceiptFromMeterReading($organization, [
+        'account_number' => '100016',
+        'name' => 'Нулевой долг',
+    ]);
+    $zeroReceipt->update(['closing_balance' => 0]);
+    $negativeReceipt = createReceiptFromMeterReading($organization, [
+        'account_number' => '100017',
+        'name' => 'Переплата',
+    ]);
+    $negativeReceipt->update(['closing_balance' => -100]);
+
+    $this->actingAs(actingAsReceiptTenant($organization));
+
+    $this->get(route('filament.admin.receipts.print-bulk', [
+        'tenant' => $organization,
+        'billing_period_id' => $positiveReceipt->billing_period_id,
+    ]))
+        ->assertSuccessful()
+        ->assertSeeText('Квитанций: 3')
+        ->assertSeeText('Положительный долг')
+        ->assertSeeText('Нулевой долг')
+        ->assertSeeText('Переплата');
 });
 
 test('admin users can open a current tenant bulk receipt print view for address and controller filters', function () {

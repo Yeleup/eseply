@@ -10,11 +10,11 @@ use App\Models\Region;
 use App\Models\Street;
 use App\Models\User;
 use App\OrganizationMemberRole;
+use App\Support\ReceiptPrintSelection;
 use Filament\Facades\Filament;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
-use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 
 class ReceiptPrintController extends Controller
@@ -68,10 +68,10 @@ class ReceiptPrintController extends Controller
             404,
         );
 
-        $receiptIds = $this->receiptIds($request);
+        $receiptIds = $this->selectedReceiptIds($request, $user, $tenant);
         $filters = $this->printFilters($request);
 
-        abort_unless($receiptIds->isNotEmpty() || $this->hasPrintFilters($filters), 404);
+        abort_unless($receiptIds !== null || $this->hasPrintFilters($filters), 404);
 
         $receiptsQuery = Receipt::query()
             ->whereBelongsTo($tenant)
@@ -85,7 +85,7 @@ class ReceiptPrintController extends Controller
             ->orderBy('account_number')
             ->orderBy('receipt_number');
 
-        if ($receiptIds->isNotEmpty()) {
+        if ($receiptIds !== null) {
             $receipts = $receiptsQuery
                 ->whereKey($receiptIds)
                 ->get();
@@ -225,16 +225,23 @@ class ReceiptPrintController extends Controller
     }
 
     /**
-     * @return Collection<int, int>
+     * Выбранные квитанции передаются токеном `selection`, который выдаёт
+     * bulk-действие «Печатать выбранные». Чужой, просроченный или
+     * неизвестный токен даёт 404.
+     *
+     * @return Collection<int, int>|null
      */
-    private function receiptIds(Request $request): Collection
+    private function selectedReceiptIds(Request $request, User $user, Organization $tenant): ?Collection
     {
-        return collect(Arr::wrap($request->input('receipt_ids', [])))
-            ->filter(fn (mixed $receiptId): bool => is_numeric($receiptId))
-            ->map(fn (mixed $receiptId): int => (int) $receiptId)
-            ->filter(fn (int $receiptId): bool => $receiptId > 0)
-            ->unique()
-            ->values();
+        if (! $request->has('selection')) {
+            return null;
+        }
+
+        $receiptIds = ReceiptPrintSelection::resolve($request->string('selection')->toString(), $user, $tenant);
+
+        abort_unless($receiptIds?->isNotEmpty(), 404);
+
+        return $receiptIds;
     }
 
     /**

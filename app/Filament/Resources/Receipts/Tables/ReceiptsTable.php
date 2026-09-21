@@ -9,9 +9,11 @@ use App\Models\Region;
 use App\Models\Street;
 use App\Models\User;
 use App\OrganizationMemberRole;
+use App\Support\ReceiptPrintSelection;
 use Filament\Actions\Action;
 use Filament\Actions\BulkAction;
 use Filament\Facades\Filament;
+use Filament\Notifications\Notification;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Contracts\HasTable;
@@ -19,7 +21,9 @@ use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Js;
+use Livewire\Component;
 
 class ReceiptsTable
 {
@@ -146,13 +150,45 @@ class ReceiptsTable
                     ->label(__('filament-receipts.actions.print_selected'))
                     ->icon(Heroicon::OutlinedPrinter)
                     ->color('gray')
-                    ->url(fn (Collection $records): string => route('filament.admin.receipts.print-bulk', [
-                        'tenant' => Filament::getTenant(),
-                        'receipt_ids' => $records->modelKeys(),
-                    ]))
-                    ->openUrlInNewTab()
+                    ->fetchSelectedRecords(false)
+                    ->action(fn (Collection $records, Component $livewire) => self::openSelectedReceiptsPrint($records, $livewire))
                     ->deselectRecordsAfterCompletion(),
             ]);
+    }
+
+    /**
+     * Действие монтируется, поэтому получает актуальный выбор строк,
+     * включая отмеченные после последней перерисовки таблицы. Выбор
+     * сохраняется под токеном, а печать открывается в новой вкладке.
+     *
+     * @param  Collection<int, int|string>  $receiptIds
+     */
+    private static function openSelectedReceiptsPrint(Collection $receiptIds, Component $livewire): void
+    {
+        $tenant = Filament::getTenant();
+        $user = auth()->user();
+
+        if (! $tenant instanceof Organization || ! $user instanceof User || $receiptIds->isEmpty()) {
+            return;
+        }
+
+        $printUrl = route('filament.admin.receipts.print-bulk', [
+            'tenant' => $tenant,
+            'selection' => ReceiptPrintSelection::store($user, $tenant, $receiptIds),
+        ]);
+
+        $livewire->js('window.open('.Js::from($printUrl).", '_blank')");
+
+        Notification::make()
+            ->title(__('filament-receipts.notifications.print_selected_opened.title'))
+            ->body(__('filament-receipts.notifications.print_selected_opened.body'))
+            ->success()
+            ->actions([
+                Action::make('openPrint')
+                    ->label(__('filament-receipts.actions.open'))
+                    ->url($printUrl, shouldOpenInNewTab: true),
+            ])
+            ->send();
     }
 
     /**

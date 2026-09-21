@@ -19,12 +19,13 @@ class ReceiptPrintSelection
     public const int LIFETIME = 1800;
 
     /**
-     * Максимум квитанций в одной выборке «Печатать выбранные» — порядок
-     * квитанций одной организации за расчётный месяц на целевом масштабе.
+     * Максимум квитанций в одной выборке «Печатать выбранные». Печать
+     * синхронная: около двух запросов и 35 КБ памяти на квитанцию, поэтому
+     * 1 000 квитанций укладываются в лимиты памяти и времени одного запроса.
      */
     public static function limit(): int
     {
-        return max(1, (int) config('receipts.print_selection_limit', 10000));
+        return max(1, (int) config('receipts.print_selection_limit', 1000));
     }
 
     /**

@@ -1198,7 +1198,8 @@ test('print selected bulk action opens bulk print of every selected receipt thro
     $component = Livewire::test(ListReceipts::class)
         ->callTableBulkAction('printSelected', $selectedReceipts)
         ->assertHasNoTableBulkActionErrors()
-        ->assertNotified('Печать выбранных квитанций открыта в новой вкладке');
+        ->assertNotified('Печать выбранных квитанций открыта в новой вкладке')
+        ->assertDispatched('deselectAllTableRecords');
 
     $token = openedReceiptPrintSelectionToken($component);
 
@@ -1216,23 +1217,36 @@ test('print selected bulk action opens bulk print of every selected receipt thro
         ->assertDontSeeText('Абонент 10');
 });
 
-test('print selected bulk action prints every receipt of select all except the deselected ones', function () {
+test('print selected bulk action prints every receipt of select all across table pages except the deselected ones', function () {
     $organization = Organization::factory()->create();
-    $receipts = collect(range(0, 4))->map(fn (int $index): Receipt => createReceiptFromMeterReading($organization, [
-        'account_number' => (string) (100080 + $index),
-        'name' => "Абонент {$index}",
-    ]));
-    $deselectedReceipts = $receipts->only([1, 3]);
-    $remainingReceipts = $receipts->except([1, 3]);
+    $receipts = collect(range(0, 11))->map(function (int $index) use ($organization): Receipt {
+        $receipt = createReceiptFromMeterReading($organization, [
+            'account_number' => (string) (100080 + $index),
+            'name' => "Абонент {$index}",
+        ]);
+        $receipt->update(['issued_at' => now()->subMinutes($index)]);
+
+        return $receipt;
+    });
+    $deselectedReceipts = $receipts->only([1, 10]);
+    $remainingReceipts = $receipts->except([1, 10]);
 
     $user = actingAsReceiptTenant($organization);
     $this->actingAs($user);
 
     $component = Livewire::test(ListReceipts::class)
+        ->set('tableRecordsPerPage', 5)
+        ->assertCanSeeTableRecords($receipts->slice(0, 5))
+        ->assertCanNotSeeTableRecords($receipts->slice(5))
         ->set('isTrackingDeselectedTableRecords', true)
+        ->set('deselectedTableRecords', [(string) $receipts[1]->getKey()])
+        ->call('gotoPage', 3)
+        ->assertCanSeeTableRecords($receipts->slice(10))
+        ->assertCanNotSeeTableRecords($receipts->slice(0, 10))
         ->set('deselectedTableRecords', $deselectedReceipts->map(fn (Receipt $receipt): string => (string) $receipt->getKey())->values()->all())
         ->callTableBulkAction('printSelected', [])
-        ->assertHasNoTableBulkActionErrors();
+        ->assertHasNoTableBulkActionErrors()
+        ->assertDispatched('deselectAllTableRecords');
 
     $token = openedReceiptPrintSelectionToken($component);
 
@@ -1245,10 +1259,11 @@ test('print selected bulk action prints every receipt of select all except the d
         'selection' => $token,
     ]))
         ->assertSuccessful()
-        ->assertSeeText('Квитанций: 3')
-        ->assertSeeText('Абонент 0')
-        ->assertDontSeeText('Абонент 1')
-        ->assertDontSeeText('Абонент 3');
+        ->assertSeeText('Квитанций: 10')
+        ->assertSeeText('100080')
+        ->assertSeeText('100091')
+        ->assertDontSeeText('100081')
+        ->assertDontSeeText('100090');
 });
 
 test('print selected bulk action rejects a selection above the limit and keeps the selection', function () {
@@ -1265,6 +1280,7 @@ test('print selected bulk action rejects a selection above the limit and keeps t
     $component = Livewire::test(ListReceipts::class)
         ->callTableBulkAction('printSelected', $receipts)
         ->assertNotified('Выбрано больше 2 квитанций')
+        ->assertNotDispatched('deselectAllTableRecords')
         ->assertSet('selectedTableRecords', $receipts->map(fn (Receipt $receipt): string => (string) $receipt->getKey())->all());
 
     expect(openedReceiptPrintSelectionToken($component))->toBeNull();
@@ -1272,13 +1288,15 @@ test('print selected bulk action rejects a selection above the limit and keeps t
     $component = Livewire::test(ListReceipts::class)
         ->set('isTrackingDeselectedTableRecords', true)
         ->callTableBulkAction('printSelected', [])
-        ->assertNotified('Выбрано больше 2 квитанций');
+        ->assertNotified('Выбрано больше 2 квитанций')
+        ->assertNotDispatched('deselectAllTableRecords');
 
     expect(openedReceiptPrintSelectionToken($component))->toBeNull();
 
     $component = Livewire::test(ListReceipts::class)
         ->callTableBulkAction('printSelected', $receipts->take(2))
-        ->assertNotified('Печать выбранных квитанций открыта в новой вкладке');
+        ->assertNotified('Печать выбранных квитанций открыта в новой вкладке')
+        ->assertDispatched('deselectAllTableRecords');
 
     expect(openedReceiptPrintSelectionToken($component))->not->toBeNull();
 });

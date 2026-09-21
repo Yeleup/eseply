@@ -13,6 +13,6 @@ return [
     |
     */
 
-    'print_selection_limit' => (int) env('RECEIPT_PRINT_SELECTION_LIMIT', 10000),
+    'print_selection_limit' => (int) env('RECEIPT_PRINT_SELECTION_LIMIT', 1000),
 
 ];

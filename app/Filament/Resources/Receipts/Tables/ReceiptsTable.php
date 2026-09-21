@@ -150,8 +150,7 @@ class ReceiptsTable
                     ->icon(Heroicon::OutlinedPrinter)
                     ->color('gray')
                     ->fetchSelectedRecords(false)
-                    ->action(fn (Builder $selectedRecordsQuery, BulkAction $action, Component $livewire) => self::openSelectedReceiptsPrint($selectedRecordsQuery, $action, $livewire))
-                    ->deselectRecordsAfterCompletion(),
+                    ->action(fn (Builder $selectedRecordsQuery, BulkAction $action, Component&HasTable $livewire) => self::openSelectedReceiptsPrint($selectedRecordsQuery, $action, $livewire)),
             ]);
     }
 
@@ -160,11 +159,13 @@ class ReceiptsTable
      * включая отмеченные после последней перерисовки таблицы и «Выбрать все»
      * с исключёнными строками. Читаются только id, не больше лимита плюс один:
      * выборка сверх лимита отклоняется, а выбор строк остаётся на месте.
-     * Выбор сохраняется под токеном, а печать открывается в новой вкладке.
+     * Выбор сохраняется под токеном, печать открывается в новой вкладке, и
+     * только после этого выбор снимается: `deselectRecordsAfterCompletion()`
+     * снял бы его и при отказе.
      *
      * @param  Builder<Receipt>  $selectedRecordsQuery
      */
-    private static function openSelectedReceiptsPrint(Builder $selectedRecordsQuery, BulkAction $action, Component $livewire): void
+    private static function openSelectedReceiptsPrint(Builder $selectedRecordsQuery, BulkAction $action, Component&HasTable $livewire): void
     {
         $tenant = Filament::getTenant();
         $user = auth()->user();
@@ -202,6 +203,7 @@ class ReceiptsTable
         ]);
 
         $livewire->js('window.open('.Js::from($printUrl).", '_blank')");
+        $livewire->deselectAllTableRecords();
 
         Notification::make()
             ->title(__('filament-receipts.notifications.print_selected_opened.title'))

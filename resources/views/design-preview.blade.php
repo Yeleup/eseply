@@ -2088,6 +2088,26 @@
                         <button class="mt-5 rounded-lg bg-zinc-950 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-white">
                             Печатать по фильтру
                         </button>
+
+                        <div class="mt-6 grid gap-3">
+                            <div class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-sm dark:border-teal-500/30 dark:bg-teal-500/10">
+                                <span class="font-medium text-teal-900 dark:text-teal-100">Выбрано 1 000 записей · выбор остаётся после отказа</span>
+                                <button class="rounded-md border border-zinc-300 bg-white px-3 py-1 text-xs font-semibold shadow-sm dark:border-zinc-700 dark:bg-zinc-900">Печатать выбранные</button>
+                            </div>
+
+                            <div class="rounded-lg border border-emerald-200 bg-emerald-50 p-4 shadow-sm dark:border-emerald-500/30 dark:bg-emerald-500/10">
+                                <p class="text-sm font-semibold text-emerald-900 dark:text-emerald-100">Печать выбранных квитанций открыта в новой вкладке</p>
+                                <p class="mt-1 text-sm text-emerald-800 dark:text-emerald-200">Если вкладка не открылась, нажмите «Открыть».</p>
+                                <a href="#" class="mt-2 inline-block text-sm font-semibold text-emerald-900 underline underline-offset-2 dark:text-emerald-100">Открыть</a>
+                            </div>
+
+                            <div class="rounded-lg border border-red-200 bg-red-50 p-4 shadow-sm dark:border-red-900/60 dark:bg-red-950/30">
+                                <p class="text-sm font-semibold text-red-800 dark:text-red-200">Выбрано больше 1 000 квитанций</p>
+                                <p class="mt-1 text-sm text-red-700 dark:text-red-300">
+                                    Сузьте выбор или используйте «Печатать по фильтру»: одна массовая печать выбранных строк ограничена 1 000 квитанциями. Уведомление не исчезает само, отмеченные строки остаются отмеченными.
+                                </p>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm leading-6 text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
@@ -2095,7 +2115,8 @@
                         <ul class="mt-3 list-disc space-y-2 pl-5">
                             <li>Выбран любой фильтр: появляется «Печатать по фильтру».</li>
                             <li>Выбран контроллер: печатаются квитанции абонентов из его зоны ответственности.</li>
-                            <li>Выбраны квитанции: доступно «Печатать выбранные».</li>
+                            <li>Выбраны квитанции: доступно «Печатать выбранные» — печать открывается в новой вкладке, выбор снимается.</li>
+                            <li>Выбрано больше 1 000 квитанций: печать не открывается, выбор строк остаётся.</li>
                             <li>В строке таблицы нет стандартного просмотра, только действие «Печать».</li>
                             <li>Массовая печать: лист A4, сетка 2×4, до 8 экземпляров (8 квитанций при одном экземпляре, 4 — при двух).</li>
                             <li>Нет квитанций: показывается пустое состояние.</li>

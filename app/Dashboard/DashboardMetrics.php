@@ -225,7 +225,8 @@ final class DashboardMetrics
     /**
      * Meter reading progress of every controller of the organization.
      *
-     * A controller only ever sees their own row.
+     * A controller only ever sees their own row; a user who is neither an
+     * operator nor a controller of the organization sees no rows.
      *
      * @return list<array{
      *     controller_id:int, name:string, email:string,
@@ -248,6 +249,13 @@ final class DashboardMetrics
      */
     private function computeControllerProgress(Organization $organization, BillingPeriod $billingPeriod, User $user): array
     {
+        $isOperator = $user->isOrganizationOperator($organization);
+        $isController = ! $isOperator && $user->isOrganizationController($organization);
+
+        if (! $isOperator && ! $isController) {
+            return [];
+        }
+
         $query = User::query()
             ->select(['users.id', 'users.name', 'users.email'])
             ->join('organization_user', 'organization_user.user_id', '=', 'users.id')
@@ -260,7 +268,7 @@ final class DashboardMetrics
             ->orderBy('users.name')
             ->orderBy('users.id');
 
-        if ($user->isOrganizationController($organization)) {
+        if ($isController) {
             $query->where('users.id', $user->getKey());
         }
 

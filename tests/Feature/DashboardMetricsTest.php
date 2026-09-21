@@ -863,3 +863,22 @@ it('не смешивает кэш разных организаций и рас
         ->and(array_column($metrics->regionBreakdown($organization, $augustPeriod), 'region'))->toBe(['Алмалинский'])
         ->and(array_column($metrics->regionBreakdown($otherOrganization, $otherAugustPeriod), 'region'))->toBe(['Чужой']);
 });
+
+it('не показывает пользователю без роли в организации ни строк прогресса, ни операционных цифр', function (): void {
+    $organization = dashboardOrganization();
+    $billingPeriod = BillingPeriod::openFor($organization, '202608');
+    $region = dashboardRegion($organization, 'Алмалинский');
+
+    dashboardReading(dashboardMeter($organization, dashboardMeteredClient($organization, $region, '100001'), 'MTR-001'), $billingPeriod, 10);
+
+    $controller = dashboardController($organization, $region);
+    $outsider = dashboardOperator(dashboardOrganization());
+    $metrics = app(DashboardMetrics::class);
+
+    expect($metrics->controllerProgress($organization, $billingPeriod, $outsider))->toBe([])
+        ->and($metrics->operations($organization, $billingPeriod, $outsider)['clients_total'])->toBe(0)
+        ->and($metrics->operations($organization, $billingPeriod, $outsider)['consumption'])->toBe(0)
+        ->and(array_column($metrics->controllerProgress($organization, $billingPeriod, dashboardOperator($organization)), 'controller_id'))->toBe([$controller->id])
+        ->and($metrics->operations($organization, $billingPeriod, dashboardOperator($organization))['consumption'])->toBe(10)
+        ->and($metrics->controllerProgress($organization, $billingPeriod, $outsider))->toBe([]);
+});

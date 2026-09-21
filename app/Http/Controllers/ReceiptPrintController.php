@@ -24,14 +24,6 @@ class ReceiptPrintController extends Controller
         'region_id',
         'street_id',
         'controller_id',
-        'amount_due_positive',
-    ];
-
-    private const PRINT_SCOPE_FILTER_KEYS = [
-        'billing_period_id',
-        'region_id',
-        'street_id',
-        'controller_id',
     ];
 
     /**
@@ -79,7 +71,7 @@ class ReceiptPrintController extends Controller
         $receiptIds = $this->receiptIds($request);
         $filters = $this->printFilters($request);
 
-        abort_unless($receiptIds->isNotEmpty() || $this->hasPrintScopeFilters($filters), 404);
+        abort_unless($receiptIds->isNotEmpty() || $this->hasPrintFilters($filters), 404);
 
         $receiptsQuery = Receipt::query()
             ->whereBelongsTo($tenant)
@@ -152,15 +144,17 @@ class ReceiptPrintController extends Controller
             $filters[$filterKey] = $request->integer($filterKey);
         }
 
+        $filters['amount_due_positive'] = $request->integer('amount_due_positive');
+
         return $filters;
     }
 
     /**
      * @param  array<string, int>  $filters
      */
-    private function hasPrintScopeFilters(array $filters): bool
+    private function hasPrintFilters(array $filters): bool
     {
-        foreach (self::PRINT_SCOPE_FILTER_KEYS as $filterKey) {
+        foreach (self::PRINT_FILTER_KEYS as $filterKey) {
             if ($filters[$filterKey] > 0) {
                 return true;
             }

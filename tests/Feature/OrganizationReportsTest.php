@@ -1289,6 +1289,29 @@ test('unpaid receipts report uses receipt payment totals', function () {
     expect(collect($unpaidRows)->flatten()->contains('Абонент с долгом'))->toBeFalse();
 });
 
+test('debts report shows the empty state without an editable billing period', function () {
+    $fixture = turnoverBalanceSheetFixture();
+    $organization = $fixture['organization'];
+
+    actingAsReportsTenant($organization);
+
+    Livewire::test(ViewReport::class, ['report' => 'debts'])
+        ->assertOk()
+        ->assertCanNotSeeTableRecords([$fixture['debtor'], $fixture['overpaid']])
+        ->assertSee('Расчётный месяц не открыт')
+        ->assertSee('Откройте расчётный месяц, чтобы увидеть долги.');
+
+    $download = Livewire::test(ViewReport::class, ['report' => 'debts'])
+        ->assertOk()
+        ->callAction('downloadExcel')
+        ->assertFileDownloaded(
+            'debts-'.$organization->getKey().'-no-open-period-'.today()->format('Y-m-d').'.xlsx',
+            contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        );
+
+    expect(downloadedXlsxRows($download->effects['download']))->toHaveCount(1);
+});
+
 test('debts report takes every active client with a debt through the turnover engine', function () {
     $fixture = turnoverBalanceSheetFixture();
     $organization = $fixture['organization'];

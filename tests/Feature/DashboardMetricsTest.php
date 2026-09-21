@@ -439,6 +439,22 @@ it('считает долг открытого месяца по всем або
         ->and($finance['charged_documents'])->toBe(1);
 });
 
+it('считает текущий долг по всем абонентам и в незакрытом месяце со статусом', function (BillingPeriodStatus $status): void {
+    ['organization' => $organization, 'august' => $august] = dashboardOpenPeriodWithCarriedDebt();
+    $august->forceFill(['status' => $status])->save();
+
+    $finance = app(DashboardMetrics::class)->finance($organization, $august->refresh());
+    $breakdown = app(DashboardMetrics::class)->regionBreakdown($organization, $august);
+
+    expect($finance['debt'])->toBe(950.0)
+        ->and($finance['debtors_count'])->toBe(3)
+        ->and($finance['debt_is_current'])->toBeTrue()
+        ->and(array_sum(array_column($breakdown, 'debt')))->toBe(950.0);
+})->with([
+    'processing' => [BillingPeriodStatus::Processing],
+    'failed' => [BillingPeriodStatus::Failed],
+]);
+
 it('считает долг открытого месяца в срезе по районам по всем абонентам', function (): void {
     ['organization' => $organization, 'august' => $august] = dashboardOpenPeriodWithCarriedDebt();
 

@@ -123,6 +123,10 @@ class DebtsReport implements OrganizationReport
                 [TurnoverBalanceValues::VOLUME],
             ));
         } else {
+            foreach (TurnoverBalanceValues::aliases() as $alias) {
+                $values->selectRaw("0 as {$alias}");
+            }
+
             $values->whereRaw('1 = 0');
         }
 

@@ -1,4 +1,4 @@
-name: ${DOCKER_PROJECT_NAME:-laravel-app}
+name: ${DOCKER_PROJECT_NAME:?Set DOCKER_PROJECT_NAME in .env (main checkout - make init, git worktree - make worktree-setup)}
 
 x-app-environment: &app-environment
   APP_DEBUG: ${APP_DEBUG:-false}
@@ -46,7 +46,7 @@ services:
       context: .
       dockerfile: Dockerfile
       target: app
-    image: ${DOCKER_PROJECT_NAME:-laravel-app}-app
+    image: ${DOCKER_PROJECT_NAME:?Set DOCKER_PROJECT_NAME in .env}-app
     ports:
       - '${APP_PORT:-8500}:8000'
     environment:
@@ -61,14 +61,20 @@ services:
 
   queue:
     <<: *app-service
-    image: ${DOCKER_PROJECT_NAME:-laravel-app}-app
+    image: ${DOCKER_PROJECT_NAME:?Set DOCKER_PROJECT_NAME in .env}-app
+    environment:
+      <<: *app-environment
+      RUN_MIGRATIONS: 0
     healthcheck:
       disable: true
     command: ['php', 'artisan', 'queue:work', '--queue=default', '--sleep=1', '--tries=3', '--max-time=3600', '--no-interaction']
 
   scheduler:
     <<: *app-service
-    image: ${DOCKER_PROJECT_NAME:-laravel-app}-app
+    image: ${DOCKER_PROJECT_NAME:?Set DOCKER_PROJECT_NAME in .env}-app
+    environment:
+      <<: *app-environment
+      RUN_MIGRATIONS: 0
     healthcheck:
       disable: true
     command: ['php', 'artisan', 'schedule:work']

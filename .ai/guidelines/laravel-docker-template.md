@@ -13,6 +13,8 @@ This applies to:
 - `docker-compose.yml`
 - `docker-compose.override.yml`
 - `docker/app/*`
+- `docker/worktree/*`
+- `orca.yaml`
 - Docker-related README instructions
 
 Keep the template reusable. Do not copy project-specific secrets, local machine paths, app names, generated files, or one-off values into `laravel-docker-template` unless the change is intentionally part of the reusable template.

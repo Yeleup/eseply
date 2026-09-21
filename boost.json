@@ -13,6 +13,7 @@
         "laravel-best-practices",
         "pest-testing",
         "tailwindcss-development",
+        "implement-review",
         "xpayment"
     ]
 }

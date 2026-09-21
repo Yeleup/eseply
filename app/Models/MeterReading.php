@@ -36,6 +36,8 @@ class MeterReading extends Model
 
     public const BELOW_PREVIOUS_READING_MESSAGE = 'Показание не может быть меньше предыдущего (:previous). Если счётчик перекрутился или заменён, показание вводит оператор.';
 
+    public const int MAXIMUM_CURRENT_READING = 99_999;
+
     public const PHOTO_DISK = 'public';
 
     /**
@@ -207,6 +209,92 @@ class MeterReading extends Model
         return str_replace(':previous', (string) ($previousReading ?? 0), self::BELOW_PREVIOUS_READING_MESSAGE);
     }
 
+    public static function maximumCurrentReadingMessage(): string
+    {
+        return __('meter-readings.validation.current_reading.max', [
+            'max' => self::MAXIMUM_CURRENT_READING,
+        ]);
+    }
+
+    /**
+     * @param  array{current_reading: int, consumption: int, average_consumption: float}  $confirmation
+     */
+    public static function largeConsumptionConfirmationDescription(array $confirmation): string
+    {
+        return __('meter-readings.confirmation.large_consumption.description', [
+            'current' => $confirmation['current_reading'],
+            'consumption' => $confirmation['consumption'],
+            'average' => self::formatAverageConsumption($confirmation['average_consumption']),
+        ]);
+    }
+
+    /**
+     * Returns the values that must be shown before a controller confirms an
+     * unusually large consumption, or `null` when confirmation is unnecessary.
+     *
+     * @return array{current_reading: int, consumption: int, average_consumption: float}|null
+     */
+    public static function largeConsumptionConfirmationFor(
+        int|string|null $meterId,
+        int|string|null $billingPeriodId,
+        ?int $previousReading,
+        mixed $currentReading,
+    ): ?array {
+        $reading = self::wholeReading($currentReading);
+
+        if ($meterId === null || $meterId === '' || $billingPeriodId === null || $billingPeriodId === '' || $reading === null) {
+            return null;
+        }
+
+        $consumption = $reading - ($previousReading ?? 0);
+        $averageConsumption = self::averageConsumptionForPreviousBillingMonths($meterId, $billingPeriodId);
+
+        if ($averageConsumption === null || $averageConsumption <= 0 || $consumption <= 3 * $averageConsumption) {
+            return null;
+        }
+
+        return [
+            'current_reading' => $reading,
+            'consumption' => $consumption,
+            'average_consumption' => $averageConsumption,
+        ];
+    }
+
+    private static function averageConsumptionForPreviousBillingMonths(
+        int|string $meterId,
+        int|string $billingPeriodId,
+    ): ?float {
+        $billingPeriod = BillingPeriod::query()->find((int) $billingPeriodId);
+
+        if (! $billingPeriod instanceof BillingPeriod) {
+            return null;
+        }
+
+        $consumptions = self::query()
+            ->where('meter_id', (int) $meterId)
+            ->taken()
+            ->where('consumption', '>=', 0)
+            ->whereHas(
+                'billingPeriod',
+                fn (Builder $query): Builder => $query->whereDate('starts_on', '<', $billingPeriod->starts_on->toDateString()),
+            )
+            ->orderByBillingPeriodDesc()
+            ->orderByDesc('id')
+            ->limit(3)
+            ->pluck('consumption');
+
+        if ($consumptions->isEmpty()) {
+            return null;
+        }
+
+        return (float) $consumptions->avg();
+    }
+
+    private static function formatAverageConsumption(float $averageConsumption): string
+    {
+        return rtrim(rtrim(number_format($averageConsumption, 2, ',', ' '), '0'), ',');
+    }
+
     public static function photoDirectoryFor(int|string $organizationId): string
     {
         return MeterReadingPhotoStorage::directoryFor($organizationId);
@@ -272,6 +360,13 @@ class MeterReading extends Model
 
             $meterReading->previous_reading = $previousReading;
             $meterReading->current_reading = $currentReading;
+
+            if ($currentReading !== null && $currentReading > self::MAXIMUM_CURRENT_READING) {
+                throw ValidationException::withMessages([
+                    'current_reading' => self::maximumCurrentReadingMessage(),
+                ]);
+            }
+
             // No reading means no consumption, not a consumption of minus the
             // previous value: the row must stay neutral in every SUM it lands
             // in — the receipt volume, the accrual and the reports.

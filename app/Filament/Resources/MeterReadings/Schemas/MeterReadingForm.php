@@ -86,7 +86,9 @@ class MeterReadingForm
             ->label('Текущее показание')
             ->integer()
             ->minValue(0)
+            ->maxValue(MeterReading::MAXIMUM_CURRENT_READING)
             ->rules([
+                'max:'.MeterReading::MAXIMUM_CURRENT_READING,
                 fn (TextInput $component): Closure => function (string $attribute, mixed $value, Closure $fail) use ($component, $previousReading, $storedReading): void {
                     if (blank($value) || OrganizationMemberAccess::canEnterMeterReadingBelowPrevious()) {
                         return;
@@ -108,6 +110,9 @@ class MeterReadingForm
 
                     $fail(MeterReading::belowPreviousReadingMessage($previous));
                 },
+            ])
+            ->validationMessages([
+                'max' => MeterReading::maximumCurrentReadingMessage(),
             ])
             ->required();
     }

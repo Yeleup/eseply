@@ -10,6 +10,7 @@ use App\Models\Meter;
 use App\Models\MeterReading;
 use App\Models\Organization;
 use App\Models\User;
+use Filament\Actions\Action;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
@@ -38,6 +39,11 @@ class ReadingsRelationManager extends RelationManager
     protected static ?string $modelLabel = 'показание';
 
     protected static ?string $pluralModelLabel = 'показания';
+
+    /**
+     * @var array{meter_id: int, billing_period_id: int, current_reading: int}|null
+     */
+    protected ?array $confirmedLargeConsumption = null;
 
     public function form(Schema $schema): Schema
     {
@@ -134,6 +140,19 @@ class ReadingsRelationManager extends RelationManager
                     ->visible(fn (): bool => $this->canCreateReadingForOwner())
                     ->disabled(fn (): bool => CurrentBillingPeriod::missing($this->ownerRecord->organization))
                     ->tooltip(fn (): ?string => CurrentBillingPeriod::missingTooltip($this->ownerRecord->organization))
+                    ->extraModalFooterActions([$this->largeConsumptionConfirmationAction()])
+                    ->before(function (Action $action, array $data): void {
+                        $billingPeriod = $this->currentBillingPeriod();
+                        $previousReading = $this->previousReadingForPeriod($billingPeriod->getKey());
+
+                        $this->confirmLargeConsumptionIfNeeded(
+                            action: $action,
+                            meter: $this->ownerRecord,
+                            billingPeriodId: $billingPeriod->getKey(),
+                            previousReading: $previousReading,
+                            currentReading: $data['current_reading'] ?? null,
+                        );
+                    })
                     ->mutateDataUsing(function (array $data): array {
                         abort_unless($this->canCreateReadingForOwner(), 403);
 
@@ -149,6 +168,18 @@ class ReadingsRelationManager extends RelationManager
             ->recordActions([
                 EditAction::make()
                     ->visible(fn (MeterReading $record): bool => $this->canEditReading($record))
+                    ->extraModalFooterActions([$this->largeConsumptionConfirmationAction()])
+                    ->before(function (Action $action, MeterReading $record, array $data): void {
+                        $previousReading = $this->previousReadingForPeriod($record->billing_period_id);
+
+                        $this->confirmLargeConsumptionIfNeeded(
+                            action: $action,
+                            meter: $this->ownerRecord,
+                            billingPeriodId: $record->billing_period_id,
+                            previousReading: $previousReading,
+                            currentReading: $data['current_reading'] ?? null,
+                        );
+                    })
                     // `previous_reading` is `readOnly()`, which in Filament is a
                     // render-time attribute only: the field is still dehydrated
                     // and comes back from the browser. Recomputing it here keeps
@@ -231,5 +262,73 @@ class ReadingsRelationManager extends RelationManager
         return ($meterReading->billingPeriod?->isEditable() ?? false)
             && $this->canCreateReadingForOwner()
             && OrganizationMemberAccess::canUpdateMeterReading($meterReading);
+    }
+
+    private function confirmLargeConsumptionIfNeeded(
+        Action $action,
+        Meter $meter,
+        int $billingPeriodId,
+        int $previousReading,
+        mixed $currentReading,
+    ): void {
+        $tenant = Filament::getTenant();
+        $user = auth()->user();
+
+        if (! $tenant instanceof Organization || ! $user instanceof User || ! $user->isOrganizationController($tenant)) {
+            return;
+        }
+
+        $confirmation = MeterReading::largeConsumptionConfirmationFor(
+            meterId: $meter->getKey(),
+            billingPeriodId: $billingPeriodId,
+            previousReading: $previousReading,
+            currentReading: $currentReading,
+        );
+
+        if ($confirmation === null || $this->hasConfirmedLargeConsumption($meter, $billingPeriodId, $currentReading)) {
+            return;
+        }
+
+        $this->mountAction('confirmLargeConsumption', [
+            'meter_id' => (int) $meter->getKey(),
+            'billing_period_id' => $billingPeriodId,
+            ...$confirmation,
+        ]);
+
+        $action->halt();
+    }
+
+    private function hasConfirmedLargeConsumption(Meter $meter, int $billingPeriodId, mixed $currentReading): bool
+    {
+        return $this->confirmedLargeConsumption === [
+            'meter_id' => (int) $meter->getKey(),
+            'billing_period_id' => $billingPeriodId,
+            'current_reading' => MeterReading::wholeReading($currentReading),
+        ];
+    }
+
+    private function largeConsumptionConfirmationAction(): Action
+    {
+        return Action::make('confirmLargeConsumption')
+            ->extraAttributes(['class' => 'hidden'])
+            ->requiresConfirmation()
+            ->modalHeading(__('meter-readings.confirmation.large_consumption.heading'))
+            ->modalDescription(fn (array $arguments): string => MeterReading::largeConsumptionConfirmationDescription([
+                'current_reading' => (int) ($arguments['current_reading'] ?? 0),
+                'consumption' => (int) ($arguments['consumption'] ?? 0),
+                'average_consumption' => (float) ($arguments['average_consumption'] ?? 0),
+            ]))
+            ->modalSubmitActionLabel(__('meter-readings.confirmation.large_consumption.submit'))
+            ->modalCancelActionLabel(__('meter-readings.confirmation.large_consumption.cancel'))
+            ->action(function (array $arguments): void {
+                $this->confirmedLargeConsumption = [
+                    'meter_id' => (int) ($arguments['meter_id'] ?? 0),
+                    'billing_period_id' => (int) ($arguments['billing_period_id'] ?? 0),
+                    'current_reading' => (int) ($arguments['current_reading'] ?? 0),
+                ];
+
+                $this->unmountAction();
+                $this->callMountedAction();
+            });
     }
 }

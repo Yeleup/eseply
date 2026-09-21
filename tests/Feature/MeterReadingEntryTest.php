@@ -2,6 +2,7 @@
 
 use App\BillingPeriodStatus;
 use App\Filament\Pages\MeterReadingEntry;
+use App\Models\BillingPeriod;
 use App\Models\City;
 use App\Models\Client;
 use App\Models\Meter;
@@ -130,6 +131,42 @@ function enterReading(Meter $meter, mixed $value): Testable
 {
     return Livewire::test(MeterReadingEntry::class)
         ->call('updateTableColumnState', 'current_reading', (string) $meter->getKey(), $value);
+}
+
+/**
+ * @return array{organization: Organization, utilityService: UtilityService, region: Region, street: Street, meter: Meter}
+ */
+function readingEntryMeterWithConsumptionHistory(array $consumptions = [10, 20, 30]): array
+{
+    ['organization' => $organization, 'utilityService' => $utilityService, 'region' => $region, 'street' => $street] = readingEntryOrganization();
+    $meter = readingEntryMeter($organization, $utilityService, [
+        'region_id' => $region->id,
+        'street_id' => $street->id,
+    ]);
+    $previousReading = 100;
+
+    foreach ($consumptions as $index => $consumption) {
+        $billingPeriod = billingPeriodFor($organization, sprintf('20260%d', $index + 2));
+        $currentReading = $previousReading + $consumption;
+
+        MeterReading::query()->create([
+            'meter_id' => $meter->id,
+            'billing_period_id' => $billingPeriod->id,
+            'previous_reading' => $previousReading,
+            'current_reading' => $currentReading,
+        ]);
+
+        $billingPeriod->forceFill([
+            'status' => BillingPeriodStatus::Closed,
+            'closed_at' => now(),
+        ])->save();
+
+        $previousReading = $currentReading;
+    }
+
+    billingPeriodFor($organization, '202605');
+
+    return compact('organization', 'utilityService', 'region', 'street', 'meter');
 }
 
 // --- Доступ -----------------------------------------------------------------
@@ -429,6 +466,131 @@ test('дробное значение отклоняется валидацие�
         ->assertReturned(fn (mixed $value): bool => is_array($value) && array_key_exists('error', $value));
 
     expect(MeterReading::query()->count())->toBe(0);
+});
+
+test('страница ввода показаний принимает 99999 и отклоняет большее значение до сохранения', function (): void {
+    ['organization' => $organization, 'utilityService' => $utilityService] = readingEntryOrganization();
+    billingPeriodFor($organization);
+    readingEntryOperator($organization);
+
+    $meter = readingEntryMeter($organization, $utilityService, [], ['initial_reading' => 0]);
+
+    enterReading($meter, (string) MeterReading::MAXIMUM_CURRENT_READING);
+
+    enterReading($meter, (string) (MeterReading::MAXIMUM_CURRENT_READING + 1))
+        ->assertReturned(fn (mixed $value): bool => is_array($value)
+            && str_contains($value['error'] ?? '', MeterReading::maximumCurrentReadingMessage()));
+
+    expect(MeterReading::query()->whereBelongsTo($meter)->sole()->current_reading)
+        ->toBe(MeterReading::MAXIMUM_CURRENT_READING);
+});
+
+test('контроллёр подтверждает расход больше трёх средних расходов и отмена не меняет показание', function (): void {
+    ['organization' => $organization, 'region' => $region, 'meter' => $meter] = readingEntryMeterWithConsumptionHistory();
+    readingEntryController($organization, $region);
+
+    expect(MeterReading::largeConsumptionConfirmationFor(
+        meterId: $meter->id,
+        billingPeriodId: BillingPeriod::currentEditableFor($organization)?->id,
+        previousReading: 160,
+        currentReading: 221,
+    ))->not->toBeNull();
+
+    $page = Livewire::test(MeterReadingEntry::class)
+        ->call('updateTableColumnState', 'current_reading', (string) $meter->getKey(), '221')
+        ->assertActionMounted(TestAction::make('confirmLargeConsumption')->table());
+
+    expect(MeterReading::query()
+        ->whereBelongsTo($meter)
+        ->forPeriod('202605')
+        ->exists())->toBeFalse();
+
+    $page
+        ->unmountAction()
+        ->assertActionNotMounted()
+        ->assertTableColumnStateSet('current_reading', 221, $meter);
+
+    $page
+        ->call('updateTableColumnState', 'current_reading', (string) $meter->getKey(), '221')
+        ->assertActionMounted(TestAction::make('confirmLargeConsumption')->table())
+        ->callMountedAction()
+        ->assertActionNotMounted();
+
+    $reading = MeterReading::query()
+        ->whereBelongsTo($meter)
+        ->forPeriod('202605')
+        ->sole();
+
+    expect($reading->current_reading)->toBe(221)
+        ->and($reading->consumption)->toBe(61);
+});
+
+test('контроллёр сохраняет расход ниже или ровно трём средним без подтверждения', function (): void {
+    ['organization' => $organization, 'region' => $region, 'meter' => $meter] = readingEntryMeterWithConsumptionHistory();
+    readingEntryController($organization, $region);
+
+    Livewire::test(MeterReadingEntry::class)
+        ->call('updateTableColumnState', 'current_reading', (string) $meter->getKey(), '220')
+        ->assertActionNotMounted();
+
+    $reading = MeterReading::query()
+        ->whereBelongsTo($meter)
+        ->forPeriod('202605')
+        ->sole();
+
+    expect($reading->current_reading)->toBe(220)
+        ->and($reading->consumption)->toBe(60);
+});
+
+test('контроллёр не видит подтверждение без истории или при нулевом среднем расходе', function (): void {
+    ['organization' => $organization, 'utilityService' => $utilityService, 'region' => $region, 'street' => $street] = readingEntryOrganization();
+
+    $meterWithoutHistory = readingEntryMeter($organization, $utilityService, [
+        'region_id' => $region->id,
+        'street_id' => $street->id,
+    ]);
+    $meterWithZeroAverage = readingEntryMeter($organization, $utilityService, [
+        'region_id' => $region->id,
+        'street_id' => $street->id,
+    ], ['initial_reading' => 500]);
+
+    $previousPeriod = BillingPeriod::openFor($organization, '202604');
+    MeterReading::query()->create([
+        'meter_id' => $meterWithZeroAverage->id,
+        'billing_period_id' => $previousPeriod->id,
+        'previous_reading' => 500,
+        'current_reading' => 500,
+    ]);
+    $previousPeriod->forceFill([
+        'status' => BillingPeriodStatus::Closed,
+        'closed_at' => now(),
+    ])->save();
+
+    billingPeriodFor($organization);
+
+    readingEntryController($organization, $region);
+
+    Livewire::test(MeterReadingEntry::class)
+        ->call('updateTableColumnState', 'current_reading', (string) $meterWithoutHistory->getKey(), '99999')
+        ->assertActionNotMounted();
+
+    Livewire::test(MeterReadingEntry::class)
+        ->call('updateTableColumnState', 'current_reading', (string) $meterWithZeroAverage->getKey(), '99999')
+        ->assertActionNotMounted();
+
+    expect(MeterReading::query()->whereBelongsTo($meterWithoutHistory)->forPeriod('202605')->exists())->toBeTrue()
+        ->and(MeterReading::query()->whereBelongsTo($meterWithZeroAverage)->forPeriod('202605')->exists())->toBeTrue();
+});
+
+test('оператор сохраняет большой расход без подтверждения', function (): void {
+    ['organization' => $organization, 'meter' => $meter] = readingEntryMeterWithConsumptionHistory();
+    readingEntryOperator($organization);
+
+    Livewire::test(MeterReadingEntry::class)
+        ->call('updateTableColumnState', 'current_reading', (string) $meter->getKey(), '221')
+        ->assertActionNotMounted();
+
+    expect(MeterReading::query()->whereBelongsTo($meter)->forPeriod('202605')->value('current_reading'))->toBe(221);
 });
 
 test('пустое значение ничего не удаляет', function (mixed $emptyValue): void {

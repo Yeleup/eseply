@@ -818,12 +818,56 @@
                                     <input inputmode="numeric" class="mt-2 w-full rounded-md border border-red-400 bg-white px-3 py-1.5 text-sm dark:border-red-500 dark:bg-zinc-950" value="12.7">
                                     <p class="mt-1 text-xs text-red-700 dark:text-red-300">Показание должно быть целым числом.</p>
                                 </div>
+                                <div class="rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
+                                    <p class="text-xs text-red-700 dark:text-red-300">Больше допустимого</p>
+                                    <input inputmode="numeric" class="mt-2 w-full rounded-md border border-red-400 bg-white px-3 py-1.5 text-sm dark:border-red-500 dark:bg-zinc-950" value="100000">
+                                    <p class="mt-1 text-xs text-red-700 dark:text-red-300">Показание не может быть больше 99999.</p>
+                                </div>
                                 <div class="rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900 sm:col-span-2">
                                     <p class="text-xs text-red-700 dark:text-red-300">Меньше предыдущего — у контроллера</p>
                                     <input inputmode="numeric" class="mt-2 w-full rounded-md border border-red-400 bg-white px-3 py-1.5 text-sm dark:border-red-500 dark:bg-zinc-950" value="14180">
                                     <p class="mt-1 text-xs text-red-700 dark:text-red-300">Показание не может быть меньше предыдущего (14320). Если счётчик перекрутился или заменён, показание вводит оператор.</p>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="border-b border-zinc-200 p-4 dark:border-zinc-800">
+                    <div>
+                        <p class="text-sm font-medium text-teal-700 dark:text-teal-300">Проверка перед сохранением</p>
+                        <h3 class="mt-1 text-base font-semibold">Подтверждение большого расхода</h3>
+                        <p class="mt-1 max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
+                            Окно показывается контролёру, когда расход строго больше тройного среднего за предыдущие месяцы. Отмена возвращает к полю с тем же значением; оператор сохраняет без этого шага.
+                        </p>
+                    </div>
+
+                    <div class="mt-4 max-w-xl rounded-xl border border-zinc-200 bg-white shadow-xl dark:border-zinc-800 dark:bg-zinc-950">
+                        <div class="border-b border-zinc-200 px-5 py-4 dark:border-zinc-800">
+                            <p class="text-base font-semibold text-zinc-950 dark:text-white">Подтвердите большой расход</p>
+                            <p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Проверьте цифры со счётчика перед сохранением.</p>
+                        </div>
+
+                        <dl class="grid grid-cols-1 gap-3 px-5 py-4 text-sm sm:grid-cols-3">
+                            <div class="rounded-lg bg-zinc-50 p-3 dark:bg-zinc-900">
+                                <dt class="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Показание</dt>
+                                <dd class="mt-1 text-base font-semibold text-zinc-950 dark:text-white">14 381</dd>
+                            </div>
+                            <div class="rounded-lg bg-amber-50 p-3 dark:bg-amber-950/30">
+                                <dt class="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">Расход</dt>
+                                <dd class="mt-1 text-base font-semibold text-amber-900 dark:text-amber-100">61</dd>
+                            </div>
+                            <div class="rounded-lg bg-zinc-50 p-3 dark:bg-zinc-900">
+                                <dt class="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Средний расход</dt>
+                                <dd class="mt-1 text-base font-semibold text-zinc-950 dark:text-white">20</dd>
+                            </div>
+                        </dl>
+
+                        <p class="px-5 pb-4 text-sm text-zinc-600 dark:text-zinc-300">Расход 61 больше тройного среднего (60). Сохранить показание?</p>
+
+                        <div class="flex flex-col-reverse gap-2 border-t border-zinc-200 px-5 py-4 sm:flex-row sm:justify-end dark:border-zinc-800">
+                            <button type="button" class="h-10 rounded-lg border border-zinc-300 bg-white px-4 text-sm font-semibold text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200">Вернуться к вводу</button>
+                            <button type="button" class="h-10 rounded-lg bg-teal-600 px-4 text-sm font-semibold text-white">Подтвердить и сохранить</button>
                         </div>
                     </div>
                 </div>

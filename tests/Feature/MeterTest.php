@@ -3,6 +3,7 @@
 use App\Filament\Resources\Clients\Pages\EditClient;
 use App\Filament\Resources\Clients\RelationManagers\MetersRelationManager;
 use App\Filament\Resources\MeterReadings\Pages\CreateMeterReading;
+use App\Filament\Resources\MeterReadings\Pages\EditMeterReading;
 use App\Filament\Resources\MeterReadings\Pages\ListMeterReadings;
 use App\Filament\Resources\Meters\MeterResource;
 use App\Filament\Resources\Meters\Pages\CreateMeter;
@@ -643,6 +644,82 @@ test('meter reading forms reject fractional readings', function () {
         ->assertHasTableActionErrors(['current_reading']);
 
     expect(MeterReading::query()->whereBelongsTo($meter)->count())->toBe(0);
+});
+
+test('meter reading forms accept 99999 and reject greater values on the server', function (): void {
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create();
+    $client = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create(['billing_type' => 'meter']);
+    $resourceMeter = Meter::factory()->for($organization)->for($client)->for($utilityService)->create();
+    $relationMeter = Meter::factory()->for($organization)->for($client)->for($utilityService)->create();
+    $clientActionMeter = Meter::factory()->for($organization)->for($client)->for($utilityService)->create();
+    billingPeriodFor($organization);
+    actingAsMeterTenant($organization);
+
+    Livewire::test(CreateMeterReading::class)
+        ->fillForm([
+            'meter_id' => $resourceMeter->id,
+            'current_reading' => MeterReading::MAXIMUM_CURRENT_READING,
+        ])
+        ->call('create')
+        ->assertHasNoFormErrors();
+
+    $resourceReading = MeterReading::query()->whereBelongsTo($resourceMeter)->sole();
+
+    Livewire::test(EditMeterReading::class, ['record' => $resourceReading->getRouteKey()])
+        ->fillForm(['current_reading' => MeterReading::MAXIMUM_CURRENT_READING + 1])
+        ->call('save')
+        ->assertHasFormErrors(['current_reading']);
+
+    Livewire::test(ReadingsRelationManager::class, [
+        'ownerRecord' => $relationMeter,
+        'pageClass' => EditMeter::class,
+    ])
+        ->callTableAction('create', data: ['current_reading' => MeterReading::MAXIMUM_CURRENT_READING])
+        ->assertHasNoTableActionErrors();
+
+    $relationReading = MeterReading::query()->whereBelongsTo($relationMeter)->sole();
+
+    Livewire::test(ReadingsRelationManager::class, [
+        'ownerRecord' => $relationMeter,
+        'pageClass' => EditMeter::class,
+    ])
+        ->callTableAction('edit', $relationReading, data: ['current_reading' => MeterReading::MAXIMUM_CURRENT_READING + 1])
+        ->assertHasTableActionErrors(['current_reading']);
+
+    Livewire::test(MetersRelationManager::class, [
+        'ownerRecord' => $client,
+        'pageClass' => EditClient::class,
+    ])
+        ->callTableAction('addReading', $clientActionMeter, data: ['current_reading' => MeterReading::MAXIMUM_CURRENT_READING])
+        ->assertHasNoTableActionErrors();
+
+    Livewire::test(MetersRelationManager::class, [
+        'ownerRecord' => $client,
+        'pageClass' => EditClient::class,
+    ])
+        ->callTableAction('addReading', $clientActionMeter, data: ['current_reading' => MeterReading::MAXIMUM_CURRENT_READING + 1])
+        ->assertHasTableActionErrors(['current_reading']);
+
+    expect($resourceReading->refresh()->current_reading)->toBe(MeterReading::MAXIMUM_CURRENT_READING)
+        ->and($relationReading->refresh()->current_reading)->toBe(MeterReading::MAXIMUM_CURRENT_READING)
+        ->and(MeterReading::query()->whereBelongsTo($clientActionMeter)->sole()->current_reading)->toBe(MeterReading::MAXIMUM_CURRENT_READING);
+});
+
+test('meter reading model rejects a value greater than 99999', function (): void {
+    $organization = Organization::factory()->create();
+    $meter = Meter::factory()->for($organization)->create();
+    billingPeriodFor($organization);
+
+    expect(fn (): MeterReading => MeterReading::query()->create([
+        'meter_id' => $meter->id,
+        'current_reading' => MeterReading::MAXIMUM_CURRENT_READING + 1,
+    ]))->toThrow(ValidationException::class, MeterReading::maximumCurrentReadingMessage());
+
+    expect(MeterReading::query()->whereBelongsTo($meter)->exists())->toBeFalse();
 });
 
 test('meter forms reject a fractional initial reading', function () {

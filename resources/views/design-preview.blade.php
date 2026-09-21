@@ -2091,7 +2091,7 @@
 
                         <div class="mt-6 grid gap-3">
                             <div class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-sm dark:border-teal-500/30 dark:bg-teal-500/10">
-                                <span class="font-medium text-teal-900 dark:text-teal-100">Выбрано 1 000 записей · выбор остаётся после отказа</span>
+                                <span class="font-medium text-teal-900 dark:text-teal-100">Выбрано 10 000 записей · выбор остаётся после отказа</span>
                                 <button class="rounded-md border border-zinc-300 bg-white px-3 py-1 text-xs font-semibold shadow-sm dark:border-zinc-700 dark:bg-zinc-900">Печатать выбранные</button>
                             </div>
 
@@ -2102,9 +2102,9 @@
                             </div>
 
                             <div class="rounded-lg border border-red-200 bg-red-50 p-4 shadow-sm dark:border-red-900/60 dark:bg-red-950/30">
-                                <p class="text-sm font-semibold text-red-800 dark:text-red-200">Выбрано больше 1 000 квитанций</p>
+                                <p class="text-sm font-semibold text-red-800 dark:text-red-200">Выбрано больше 10 000 квитанций</p>
                                 <p class="mt-1 text-sm text-red-700 dark:text-red-300">
-                                    Сузьте выбор или используйте «Печатать по фильтру»: одна массовая печать выбранных строк ограничена 1 000 квитанциями. Уведомление не исчезает само, отмеченные строки остаются отмеченными.
+                                    Сузьте выбор или используйте «Печатать по фильтру»: одна массовая печать выбранных строк ограничена 10 000 квитанциями. Уведомление не исчезает само, отмеченные строки остаются отмеченными.
                                 </p>
                             </div>
                         </div>
@@ -2116,10 +2116,12 @@
                             <li>Выбран любой фильтр: появляется «Печатать по фильтру».</li>
                             <li>Выбран контроллер: печатаются квитанции абонентов из его зоны ответственности.</li>
                             <li>Выбраны квитанции: доступно «Печатать выбранные» — печать открывается в новой вкладке, выбор снимается.</li>
-                            <li>Выбрано больше 1 000 квитанций: печать не открывается, выбор строк остаётся.</li>
+                            <li>Выбрано больше 10 000 квитанций: печать не открывается, выбор строк остаётся.</li>
                             <li>В строке таблицы нет стандартного просмотра, только действие «Печать».</li>
                             <li>Массовая печать: лист A4, сетка 2×4, до 8 экземпляров (8 квитанций при одном экземпляре, 4 — при двух).</li>
                             <li>Нет квитанций: показывается пустое состояние.</li>
+                            <li>Больше 10 000 квитанций: вместо печати — «Слишком много квитанций для одной печати» с просьбой сузить фильтры.</li>
+                            <li>Сбой во время выдачи: «Печать прервана», листы и кнопка печати скрыты, автопечати нет.</li>
                             <li>Чужая квитанция: доступ закрыт tenant-проверкой.</li>
                         </ul>
 
@@ -2129,6 +2131,26 @@
                             @endforeach
                         </div>
                     </div>
+                </div>
+
+                <div class="border-b border-zinc-200 p-6 dark:border-zinc-800">
+                    <p class="text-xs font-semibold uppercase tracking-[0.22em] text-amber-700 dark:text-amber-300">Массовая печать: превышен предел</p>
+                    <section class="mt-3 rounded-2xl border border-dashed border-amber-300 bg-amber-50 p-8 text-center shadow-sm dark:border-amber-500/40 dark:bg-amber-500/10">
+                        <h2 class="text-xl font-semibold tracking-tight text-amber-950 dark:text-amber-100">Слишком много квитанций для одной печати</h2>
+                        <p class="mt-2 text-sm text-amber-900 dark:text-amber-200">
+                            Выбрано 12 480 квитанций, а за один раз можно напечатать не больше 10 000.
+                            Сузьте фильтры — выберите регион, улицу или контроллера — или отметьте меньше квитанций и напечатайте их частями.
+                        </p>
+                    </section>
+
+                    <p class="mt-6 text-xs font-semibold uppercase tracking-[0.22em] text-rose-700 dark:text-rose-300">Массовая печать: сбой во время выдачи</p>
+                    <section class="mt-3 rounded-2xl border border-dashed border-rose-300 bg-rose-50 p-8 text-center shadow-sm dark:border-rose-500/40 dark:bg-rose-500/10">
+                        <h2 class="text-xl font-semibold tracking-tight text-rose-950 dark:text-rose-100">Печать прервана</h2>
+                        <p class="mt-2 text-sm text-rose-900 dark:text-rose-200">
+                            Не удалось сформировать все квитанции, поэтому листы скрыты и не печатаются.
+                            Обновите страницу, чтобы сформировать печать заново; если ошибка повторится, сузьте фильтры или обратитесь к администратору.
+                        </p>
+                    </section>
                 </div>
 
                 <div class="bg-stone-100 p-6 dark:bg-zinc-950">

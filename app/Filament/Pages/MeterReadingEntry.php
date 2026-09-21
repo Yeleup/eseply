@@ -104,6 +104,14 @@ class MeterReadingEntry extends Page implements HasTable
             ->query($this->metersQuery($organization, $user, $billingPeriod))
             ->stackedOnMobile()
             ->columns($this->columns())
+            // A closure, not orderBy() in the query: Filament appends the column
+            // sort after the query's own orders, so an address order baked into
+            // the query would always win over the sort the controller picked.
+            // Filament calls this closure even when a column sort is active, so
+            // the walking route is only applied while no column sort is chosen.
+            ->defaultSort(fn (Builder $query): Builder => $this->hasActiveColumnSort($table)
+                ? $query
+                : $this->orderByWalkingRoute($query))
             ->filters($this->filters($organization, $billingPeriod?->getKey()))
             ->headerActions([$this->largeConsumptionConfirmationAction()])
             ->recordActions([$this->detailsAction()])
@@ -192,7 +200,8 @@ class MeterReadingEntry extends Page implements HasTable
             TextColumn::make('client.account_number')
                 ->label('Лицевой счёт')
                 ->searchable(query: fn (Builder $query, string $search): Builder => $query
-                    ->where('clients.account_number', 'like', '%'.$search.'%')),
+                    ->where('clients.account_number', 'like', '%'.$search.'%'))
+                ->sortable(query: fn (Builder $query, string $direction): Builder => $this->orderByAccountNumber($query, $direction)),
 
             TextColumn::make('number')
                 ->label('Счётчик')
@@ -387,12 +396,52 @@ class MeterReadingEntry extends Page implements HasTable
                 'client.street',
                 'readings' => fn (HasMany $query): HasMany => $query
                     ->where('billing_period_id', $billingPeriod?->getKey()),
-            ])
-            // Walking order of the zone. `length()` first, so house "2" sorts
-            // before house "10" instead of after it.
+            ]);
+    }
+
+    /**
+     * A sort on a column that is not sortable or not visible is ignored by
+     * Filament, so it must not switch the walking route off either.
+     */
+    private function hasActiveColumnSort(Table $table): bool
+    {
+        $sortColumn = $this->getTableSortColumn();
+
+        return filled($sortColumn) && $table->getSortableVisibleColumn($sortColumn) !== null;
+    }
+
+    /**
+     * Walking order of the zone, used while no column sort is chosen.
+     * `length()` first, so house "2" sorts before house "10" instead of after it.
+     *
+     * @param  Builder<Meter>  $query
+     * @return Builder<Meter>
+     */
+    private function orderByWalkingRoute(Builder $query): Builder
+    {
+        return $query
             ->orderBy('streets.name')
             ->orderByRaw('length(clients.house), clients.house')
             ->orderByRaw('length(clients.apartment), clients.apartment')
+            ->orderBy('meters.number');
+    }
+
+    /**
+     * Numeric order of account numbers that are digit strings of different
+     * lengths ("7010480" before "10000000"). Length first instead of a CAST, so
+     * the comparison stays on the column itself; the meters of one account keep
+     * their number order.
+     *
+     * @param  Builder<Meter>  $query
+     * @return Builder<Meter>
+     */
+    private function orderByAccountNumber(Builder $query, string $direction): Builder
+    {
+        $direction = $direction === 'desc' ? 'desc' : 'asc';
+
+        return $query
+            ->orderByRaw('length(clients.account_number) '.$direction)
+            ->orderBy('clients.account_number', $direction)
             ->orderBy('meters.number');
     }
 

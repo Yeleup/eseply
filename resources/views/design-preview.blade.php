@@ -666,7 +666,12 @@
                                 <thead class="bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500 dark:bg-zinc-950 dark:text-zinc-400">
                                     <tr>
                                         <th class="px-4 py-2 font-medium">Адрес</th>
-                                        <th class="px-4 py-2 font-medium">Лицевой счёт</th>
+                                        <th class="px-4 py-2 font-medium">
+                                            <button type="button" class="inline-flex items-center gap-1 uppercase tracking-wide transition hover:text-zinc-700 dark:hover:text-zinc-200" title="Сортировка по лицевому счёту: по возрастанию, по убыванию, по порядку обхода">
+                                                Лицевой счёт
+                                                <span aria-hidden="true" class="text-zinc-400">↕</span>
+                                            </button>
+                                        </th>
                                         <th class="px-4 py-2 font-medium">Счётчик</th>
                                         <th class="px-4 py-2 font-medium">Предыдущее</th>
                                         <th class="px-4 py-2 font-medium">Текущее показание</th>

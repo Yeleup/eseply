@@ -68,6 +68,13 @@ class MeterReadingEntry extends Page implements HasTable
 
     private ?bool $canEnterReadingsCache = null;
 
+    /**
+     * Values awaiting the controller's large-consumption confirmation.
+     *
+     * @var array<int, int>
+     */
+    public array $pendingReadings = [];
+
     public static function canAccess(): bool
     {
         return OrganizationMemberAccess::canAccessTenant();
@@ -98,10 +105,12 @@ class MeterReadingEntry extends Page implements HasTable
             ->stackedOnMobile()
             ->columns($this->columns())
             ->filters($this->filters($organization, $billingPeriod?->getKey()))
+            ->headerActions([$this->largeConsumptionConfirmationAction()])
             ->recordActions([$this->detailsAction()])
-            ->recordClasses(fn (Meter $record): array => $this->hasNegativeConsumption($record)
-                ? ['fi-readings-negative']
-                : [])
+            ->recordClasses(fn (Meter $record): array => array_filter([
+                $this->hasNegativeConsumption($record) ? 'fi-readings-negative' : null,
+                $this->hasPendingReading($record) ? 'fi-readings-pending' : null,
+            ]))
             ->recordUrl(null)
             ->defaultPaginationPageOption(50)
             ->emptyStateHeading('Нет счётчиков по выбранному адресу')
@@ -207,20 +216,30 @@ class MeterReadingEntry extends Page implements HasTable
                 ->rules(fn (Meter $record): array => [
                     'integer',
                     'min:'.$this->minimumReadingFor($record),
+                    'max:'.MeterReading::MAXIMUM_CURRENT_READING,
                 ])
                 ->validationMessages([
                     'min' => fn (Meter $record): ?string => OrganizationMemberAccess::canEnterMeterReadingBelowPrevious()
                         ? null
                         : MeterReading::belowPreviousReadingMessage($this->previousReading($record)),
+                    'max' => MeterReading::maximumCurrentReadingMessage(),
                 ])
-                ->getStateUsing(fn (Meter $record): ?int => $this->readingFor($record)?->current_reading)
+                ->getStateUsing(fn (Meter $record): ?int => $this->pendingReadings[$record->getKey()]
+                    ?? $this->readingFor($record)?->current_reading)
                 // Deliberately not tied to the billing period: `isDisabled()`
                 // is re-evaluated on every save, so a period closing while the
                 // page is open would turn the save into a silent no-op instead
                 // of the error the controller has to see.
                 ->disabled(fn (): bool => ! $this->canEnterReadings())
                 ->updateStateUsing(fn (Meter $record, mixed $state): mixed => $this->saveReading($record, $state))
-                ->extraInputAttributes(['class' => 'fi-readings-input']),
+                ->extraInputAttributes(fn (Meter $record): array => [
+                    'class' => $this->hasPendingReading($record)
+                        ? 'fi-readings-input fi-readings-input-pending'
+                        : 'fi-readings-input',
+                    'title' => $this->hasPendingReading($record)
+                        ? 'Показание не сохранено: подтвердите или измените значение.'
+                        : null,
+                ]),
 
             TextColumn::make('consumption_for_entry')
                 ->label('Расход')
@@ -413,7 +432,7 @@ class MeterReadingEntry extends Page implements HasTable
      * Writes one row. Reached through `updateTableColumnState`, which checks
      * neither policies nor anything the model throws, so both are handled here.
      */
-    protected function saveReading(Meter $meter, mixed $state): mixed
+    protected function saveReading(Meter $meter, mixed $state, bool $hasConfirmedLargeConsumption = false): mixed
     {
         $organization = $this->organization();
         $user = $this->currentUser();
@@ -435,6 +454,50 @@ class MeterReadingEntry extends Page implements HasTable
         try {
             $billingPeriod = BillingPeriod::requireCurrentEditableFor($organization);
             $existing = $this->storedReading($meter, $billingPeriod->getKey());
+            $previousReading = $existing instanceof MeterReading && $existing->isTaken()
+                ? (int) $existing->previous_reading
+                : MeterReading::previousReadingForBillingPeriod(
+                    $meter->getKey(),
+                    $billingPeriod->getKey(),
+                );
+
+            $currentReading = MeterReading::wholeReading($state);
+            $storedCurrentReading = $existing instanceof MeterReading
+                ? MeterReading::wholeReading($existing->current_reading)
+                : null;
+
+            // The hidden confirmation action can be invoked without the
+            // TextInputColumn validation, so retain the controller's lower
+            // boundary here as well. An operator's existing negative row may
+            // still be re-saved unchanged to attach a note or a photo.
+            if ($user->isOrganizationController($organization)
+                && $currentReading !== null
+                && $currentReading < ($previousReading ?? 0)
+                && $currentReading !== $storedCurrentReading) {
+                throw ValidationException::withMessages([
+                    'current_reading' => MeterReading::belowPreviousReadingMessage($previousReading),
+                ]);
+            }
+
+            $largeConsumptionConfirmation = $user->isOrganizationController($organization)
+                ? MeterReading::largeConsumptionConfirmationFor(
+                    meterId: $meter->getKey(),
+                    billingPeriodId: $billingPeriod->getKey(),
+                    previousReading: $previousReading,
+                    currentReading: $state,
+                )
+                : null;
+
+            if (! $hasConfirmedLargeConsumption && $largeConsumptionConfirmation !== null) {
+                $this->pendingReadings[$meter->getKey()] = $largeConsumptionConfirmation['current_reading'];
+
+                $this->mountAction('confirmLargeConsumption', [
+                    'meter_id' => (int) $meter->getKey(),
+                    ...$largeConsumptionConfirmation,
+                ], context: ['table' => true]);
+
+                return null;
+            }
 
             if ($existing instanceof MeterReading) {
                 abort_unless(OrganizationMemberAccess::canUpdateMeterReading($existing), 403);
@@ -446,12 +509,7 @@ class MeterReadingEntry extends Page implements HasTable
                     // created before a late reading of an earlier period
                     // landed, so the baseline is resolved again rather than
                     // carried over from that visit.
-                    'previous_reading' => $existing->isTaken()
-                        ? $existing->previous_reading
-                        : MeterReading::previousReadingForBillingPeriod(
-                            $meter->getKey(),
-                            $billingPeriod->getKey(),
-                        ),
+                    'previous_reading' => $previousReading,
                 ]);
 
                 $reading = $existing;
@@ -461,10 +519,7 @@ class MeterReadingEntry extends Page implements HasTable
                     // before it resolves the period, so a missing period would
                     // make it read the latest reading of any period at all.
                     'billing_period_id' => $billingPeriod->getKey(),
-                    'previous_reading' => MeterReading::previousReadingForBillingPeriod(
-                        $meter->getKey(),
-                        $billingPeriod->getKey(),
-                    ),
+                    'previous_reading' => $previousReading,
                     'current_reading' => $state,
                     'read_at' => today(),
                 ]);
@@ -480,9 +535,37 @@ class MeterReadingEntry extends Page implements HasTable
             return null;
         }
 
+        unset($this->pendingReadings[$meter->getKey()]);
+
         $this->warnAboutNegativeConsumption($meter, $reading);
 
         return $reading->current_reading;
+    }
+
+    private function largeConsumptionConfirmationAction(): Action
+    {
+        return Action::make('confirmLargeConsumption')
+            ->extraAttributes(['class' => 'hidden'])
+            ->requiresConfirmation()
+            ->modalHeading(__('meter-readings.confirmation.large_consumption.heading'))
+            ->modalDescription(fn (array $arguments): string => MeterReading::largeConsumptionConfirmationDescription([
+                'current_reading' => (int) ($arguments['current_reading'] ?? 0),
+                'consumption' => (int) ($arguments['consumption'] ?? 0),
+                'average_consumption' => (float) ($arguments['average_consumption'] ?? 0),
+            ]))
+            ->modalSubmitActionLabel(__('meter-readings.confirmation.large_consumption.submit'))
+            ->modalCancelActionLabel(__('meter-readings.confirmation.large_consumption.cancel'))
+            ->action(function (array $arguments): void {
+                $meter = Meter::query()->find($arguments['meter_id'] ?? null);
+
+                abort_unless($meter instanceof Meter, 404);
+
+                $this->saveReading(
+                    $meter,
+                    $arguments['current_reading'] ?? null,
+                    hasConfirmedLargeConsumption: true,
+                );
+            });
     }
 
     /**
@@ -492,6 +575,11 @@ class MeterReadingEntry extends Page implements HasTable
     private function minimumReadingFor(Meter $meter): int
     {
         return OrganizationMemberAccess::minimumMeterReading($this->previousReading($meter));
+    }
+
+    private function hasPendingReading(Meter $meter): bool
+    {
+        return array_key_exists($meter->getKey(), $this->pendingReadings);
     }
 
     private function warnAboutNegativeConsumption(Meter $meter, MeterReading $reading): void

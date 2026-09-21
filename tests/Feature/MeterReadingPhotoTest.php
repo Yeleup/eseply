@@ -1,5 +1,6 @@
 <?php
 
+use App\BillingPeriodStatus;
 use App\Filament\Resources\Clients\Pages\EditClient;
 use App\Filament\Resources\Clients\RelationManagers\MetersRelationManager;
 use App\Filament\Resources\MeterReadings\Pages\CreateMeterReading;
@@ -8,6 +9,7 @@ use App\Filament\Resources\MeterReadings\Pages\ListMeterReadings;
 use App\Filament\Resources\MeterReadings\Schemas\MeterReadingForm;
 use App\Filament\Resources\Meters\Pages\EditMeter;
 use App\Filament\Resources\Meters\RelationManagers\ReadingsRelationManager;
+use App\Models\BillingPeriod;
 use App\Models\Client;
 use App\Models\Meter;
 use App\Models\MeterReading;
@@ -18,6 +20,7 @@ use App\Models\User;
 use App\Models\UtilityService;
 use App\OrganizationMemberRole;
 use App\Support\MeterReadingPhotoStorage;
+use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -103,6 +106,52 @@ function readingResourceMeterFixture(int $previousReading): array
     billingPeriodFor($organization);
 
     return compact('organization', 'region', 'meter');
+}
+
+/**
+ * @return array{organization: Organization, region: Region, client: Client, meter: Meter}
+ */
+function readingResourceMeterWithConsumptionHistory(): array
+{
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create();
+    $region = Region::factory()->for($organization)->create();
+    $street = Street::factory()->for($region)->create();
+    $client = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->for($region)
+        ->for($street)
+        ->create(['billing_type' => 'meter']);
+    $meter = Meter::factory()
+        ->for($organization)
+        ->for($client)
+        ->for($utilityService)
+        ->create(['initial_reading' => 100]);
+    $previousReading = 100;
+
+    foreach ([10, 20, 30] as $index => $consumption) {
+        $billingPeriod = billingPeriodFor($organization, sprintf('20260%d', $index + 2));
+        $currentReading = $previousReading + $consumption;
+
+        MeterReading::query()->create([
+            'meter_id' => $meter->id,
+            'billing_period_id' => $billingPeriod->id,
+            'previous_reading' => $previousReading,
+            'current_reading' => $currentReading,
+        ]);
+
+        $billingPeriod->forceFill([
+            'status' => BillingPeriodStatus::Closed,
+            'closed_at' => now(),
+        ])->save();
+
+        $previousReading = $currentReading;
+    }
+
+    billingPeriodFor($organization, '202605');
+
+    return compact('organization', 'region', 'client', 'meter');
 }
 
 test('meter readings store an optional photo path', function () {
@@ -714,6 +763,136 @@ test('a controller can create a reading equal to the previous one', function () 
     expect($reading->previous_reading)->toBe(100)
         ->and($reading->current_reading)->toBe(100)
         ->and($reading->consumption)->toBe(0);
+});
+
+test('a controller confirms large consumption in the meter reading resource form', function (): void {
+    ['organization' => $organization, 'region' => $region, 'meter' => $meter] = readingResourceMeterWithConsumptionHistory();
+    actingAsReadingResourceMember($organization, OrganizationMemberRole::Controller, $region);
+
+    $page = Livewire::test(CreateMeterReading::class)
+        ->fillForm([
+            'meter_id' => $meter->id,
+            'current_reading' => 221,
+        ])
+        ->call('create')
+        ->assertActionMounted('confirmLargeConsumption');
+
+    expect(MeterReading::query()->whereBelongsTo($meter)->forPeriod('202605')->exists())->toBeFalse();
+
+    $page
+        ->unmountAction()
+        ->assertActionNotMounted()
+        ->call('create')
+        ->assertActionMounted('confirmLargeConsumption')
+        ->callMountedAction();
+
+    expect(MeterReading::query()->whereBelongsTo($meter)->forPeriod('202605')->value('current_reading'))->toBe(221);
+});
+
+test('a controller confirms large consumption when editing through the meter reading resource form', function (): void {
+    ['organization' => $organization, 'region' => $region, 'meter' => $meter] = readingResourceMeterWithConsumptionHistory();
+    $reading = MeterReading::query()->create([
+        'meter_id' => $meter->id,
+        'billing_period_id' => BillingPeriod::currentEditableFor($organization)?->id,
+        'previous_reading' => 160,
+        'current_reading' => 200,
+    ]);
+    actingAsReadingResourceMember($organization, OrganizationMemberRole::Controller, $region);
+
+    $page = Livewire::test(EditMeterReading::class, ['record' => $reading->getRouteKey()])
+        ->fillForm(['current_reading' => 221])
+        ->call('save')
+        ->assertActionMounted('confirmLargeConsumption');
+
+    expect($reading->refresh()->current_reading)->toBe(200);
+
+    $page
+        ->unmountAction()
+        ->assertActionNotMounted()
+        ->call('save')
+        ->assertActionMounted('confirmLargeConsumption')
+        ->callMountedAction()
+        ->assertActionNotMounted();
+
+    expect($reading->refresh()->current_reading)->toBe(221);
+});
+
+test('a controller confirms large consumption in the meter card readings table', function (): void {
+    ['organization' => $organization, 'region' => $region, 'meter' => $meter] = readingResourceMeterWithConsumptionHistory();
+    actingAsReadingResourceMember($organization, OrganizationMemberRole::Controller, $region);
+
+    $page = Livewire::test(ReadingsRelationManager::class, [
+        'ownerRecord' => $meter,
+        'pageClass' => EditMeter::class,
+    ])
+        ->callTableAction('create', data: ['current_reading' => 221])
+        ->assertActionMounted([
+            TestAction::make('create')->table(),
+            'confirmLargeConsumption',
+        ]);
+
+    expect(MeterReading::query()->whereBelongsTo($meter)->forPeriod('202605')->exists())->toBeFalse();
+
+    $page
+        ->unmountAction()
+        ->assertActionMounted(TestAction::make('create')->table())
+        ->callMountedAction()
+        ->assertActionMounted([
+            TestAction::make('create')->table(),
+            'confirmLargeConsumption',
+        ])
+        ->callMountedAction()
+        ->assertActionNotMounted();
+
+    expect(MeterReading::query()->whereBelongsTo($meter)->forPeriod('202605')->value('current_reading'))->toBe(221);
+});
+
+test('a controller confirms large consumption when editing the meter card readings table', function (): void {
+    ['organization' => $organization, 'region' => $region, 'meter' => $meter] = readingResourceMeterWithConsumptionHistory();
+    $reading = MeterReading::query()->create([
+        'meter_id' => $meter->id,
+        'billing_period_id' => BillingPeriod::currentEditableFor($organization)?->id,
+        'previous_reading' => 160,
+        'current_reading' => 200,
+    ]);
+    actingAsReadingResourceMember($organization, OrganizationMemberRole::Controller, $region);
+
+    Livewire::test(ReadingsRelationManager::class, [
+        'ownerRecord' => $meter,
+        'pageClass' => EditMeter::class,
+    ])
+        ->callTableAction('edit', $reading, data: ['current_reading' => 221])
+        ->assertActionMounted([
+            TestAction::make('edit')->table($reading),
+            'confirmLargeConsumption',
+        ])
+        ->callMountedAction()
+        ->assertActionNotMounted();
+
+    expect($reading->refresh()->current_reading)->toBe(221);
+});
+
+test('a controller confirms large consumption in the client card meter action', function (): void {
+    ['organization' => $organization, 'region' => $region, 'client' => $client, 'meter' => $meter] = readingResourceMeterWithConsumptionHistory();
+    actingAsReadingResourceMember($organization, OrganizationMemberRole::Controller, $region);
+
+    $page = Livewire::test(MetersRelationManager::class, [
+        'ownerRecord' => $client,
+        'pageClass' => EditClient::class,
+    ])
+        ->callTableAction('addReading', $meter, data: ['current_reading' => 221])
+        ->assertActionMounted([
+            TestAction::make('addReading')->table($meter),
+            'confirmLargeConsumption',
+        ]);
+
+    expect(MeterReading::query()->whereBelongsTo($meter)->forPeriod('202605')->exists())->toBeFalse();
+
+    $page
+        ->callMountedAction()
+        ->assertActionNotMounted();
+
+    expect(MeterReading::query()->whereBelongsTo($meter)->forPeriod('202605')->value('current_reading'))->toBe(221);
 });
 
 test('an operator can create a reading below the previous one', function () {

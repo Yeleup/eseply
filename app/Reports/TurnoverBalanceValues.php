@@ -149,12 +149,11 @@ final class TurnoverBalanceValues
      */
     public static function metricExpressions(string $prefix = ''): array
     {
-        $opening = '(coalesce('.$prefix.self::OPENING_BALANCE.', 0)'
-            .' + coalesce('.$prefix.self::OPENING_ADJUSTMENT.', 0))';
+        $opening = self::openingBalanceExpression($prefix);
         $accrued = 'coalesce('.$prefix.self::ACCRUED_AMOUNT.', 0)';
         $paid = 'coalesce('.$prefix.self::PAID_AMOUNT.', 0)';
         $adjustment = 'coalesce('.$prefix.self::ADJUSTMENT_AMOUNT.', 0)';
-        $closing = "({$opening} + {$accrued} - {$paid} + {$adjustment})";
+        $closing = self::closingBalanceExpression($prefix);
 
         return [
             'opening_debit' => "greatest({$opening}, 0)",
@@ -167,6 +166,30 @@ final class TurnoverBalanceValues
             'adjustment_amount' => $adjustment,
             'paid_amount' => $paid,
         ];
+    }
+
+    /**
+     * SQL expression of the signed opening balance, including the incoming balances of the period.
+     *
+     * @param  string  $prefix  Qualifier of the aliases, for example `report_rows.`.
+     */
+    public static function openingBalanceExpression(string $prefix = ''): string
+    {
+        return '(coalesce('.$prefix.self::OPENING_BALANCE.', 0)'
+            .' + coalesce('.$prefix.self::OPENING_ADJUSTMENT.', 0))';
+    }
+
+    /**
+     * SQL expression of the signed closing balance: positive is a debt, negative an overpayment.
+     *
+     * @param  string  $prefix  Qualifier of the aliases, for example `report_rows.`.
+     */
+    public static function closingBalanceExpression(string $prefix = ''): string
+    {
+        return '('.self::openingBalanceExpression($prefix)
+            .' + coalesce('.$prefix.self::ACCRUED_AMOUNT.', 0)'
+            .' - coalesce('.$prefix.self::PAID_AMOUNT.', 0)'
+            .' + coalesce('.$prefix.self::ADJUSTMENT_AMOUNT.', 0))';
     }
 
     /**

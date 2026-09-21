@@ -1,8 +1,10 @@
 <?php
 
+use App\BalanceAdjustmentType;
 use App\BillingPeriodStatus;
 use App\Dashboard\DashboardMetrics;
 use App\Models\Accrual;
+use App\Models\BalanceAdjustment;
 use App\Models\BillingPeriod;
 use App\Models\City;
 use App\Models\Client;
@@ -346,6 +348,128 @@ it('берёт начисление и долг открытого месяца 
         ->and($finance['debtors_count'])->toBe(1);
 });
 
+/**
+ * July is closed with the accruals of record, August is open: only one client
+ * has an August receipt, the others carry their balance from July.
+ *
+ * @return array{organization: Organization, august: BillingPeriod, north: Region, south: Region}
+ */
+function dashboardOpenPeriodWithCarriedDebt(): array
+{
+    $organization = dashboardOrganization();
+    $north = dashboardRegion($organization, 'Северный');
+    $south = dashboardRegion($organization, 'Южный');
+
+    $withReceipt = dashboardFixedClient($organization, $north, '100001');
+    $withoutReceipt = dashboardFixedClient($organization, $north, '100002');
+    $overpaid = dashboardFixedClient($organization, $south, '100003');
+    $withOpeningBalance = dashboardFixedClient($organization, $south, '100004');
+    $inactive = dashboardFixedClient($organization, $south, '100005');
+    $inactive->forceFill(['status' => 'inactive'])->save();
+
+    $july = BillingPeriod::openFor($organization, '202607');
+    dashboardCloseBillingPeriod($july);
+
+    foreach ([[$withReceipt, 500], [$withoutReceipt, 300], [$overpaid, -100], [$inactive, 1000]] as [$client, $closingBalance]) {
+        Accrual::factory()->create([
+            'organization_id' => $organization->id,
+            'client_id' => $client->id,
+            'billing_period_id' => $july->id,
+            'period' => null,
+            'amount' => 1000,
+            'closing_balance' => $closingBalance,
+        ]);
+    }
+
+    $august = BillingPeriod::openFor($organization, '202608');
+
+    Receipt::factory()->create([
+        'organization_id' => $organization->id,
+        'client_id' => $withReceipt->id,
+        'billing_period_id' => $august->id,
+        'period' => null,
+        'amount' => 200,
+        'paid_amount' => 0,
+        'adjustment_amount' => 0,
+        'opening_balance' => 500,
+        'closing_balance' => 700,
+    ]);
+
+    Payment::factory()->create([
+        'organization_id' => $organization->id,
+        'client_id' => $withReceipt->id,
+        'billing_period_id' => $august->id,
+        'period' => null,
+        'amount' => 100,
+    ]);
+
+    BalanceAdjustment::factory()->create([
+        'organization_id' => $organization->id,
+        'client_id' => $withOpeningBalance->id,
+        'billing_period_id' => $august->id,
+        'period' => null,
+        'type' => BalanceAdjustmentType::OpeningBalance->value,
+        'amount' => 50,
+    ]);
+
+    $otherOrganization = dashboardOrganization();
+    $otherClient = dashboardFixedClient($otherOrganization, dashboardRegion($otherOrganization, 'Чужой'), '900001');
+    $otherJuly = dashboardCloseBillingPeriod(BillingPeriod::openFor($otherOrganization, '202607'));
+    Accrual::factory()->create([
+        'organization_id' => $otherOrganization->id,
+        'client_id' => $otherClient->id,
+        'billing_period_id' => $otherJuly->id,
+        'period' => null,
+        'closing_balance' => 5000,
+    ]);
+
+    return ['organization' => $organization, 'august' => $august, 'north' => $north, 'south' => $south];
+}
+
+it('считает долг открытого месяца по всем абонентам, включая абонентов без квитанции', function (): void {
+    ['organization' => $organization, 'august' => $august] = dashboardOpenPeriodWithCarriedDebt();
+
+    $finance = app(DashboardMetrics::class)->finance($organization, $august);
+
+    /** 500 + 200 − 100 with a receipt, 300 carried without one, 50 opening balance; the overpaid and inactive clients are no debtors. */
+    expect($finance['debt'])->toBe(950.0)
+        ->and($finance['debtors_count'])->toBe(3)
+        ->and($finance['debt_is_current'])->toBeTrue()
+        ->and($finance['charged'])->toBe(200.0)
+        ->and($finance['charged_documents'])->toBe(1);
+});
+
+it('считает текущий долг по всем абонентам и в незакрытом месяце со статусом', function (BillingPeriodStatus $status): void {
+    ['organization' => $organization, 'august' => $august] = dashboardOpenPeriodWithCarriedDebt();
+    $august->forceFill(['status' => $status])->save();
+
+    $finance = app(DashboardMetrics::class)->finance($organization, $august->refresh());
+    $breakdown = app(DashboardMetrics::class)->regionBreakdown($organization, $august);
+
+    expect($finance['debt'])->toBe(950.0)
+        ->and($finance['debtors_count'])->toBe(3)
+        ->and($finance['debt_is_current'])->toBeTrue()
+        ->and(array_sum(array_column($breakdown, 'debt')))->toBe(950.0);
+})->with([
+    'processing' => [BillingPeriodStatus::Processing],
+    'failed' => [BillingPeriodStatus::Failed],
+]);
+
+it('считает долг открытого месяца в срезе по районам по всем абонентам', function (): void {
+    ['organization' => $organization, 'august' => $august] = dashboardOpenPeriodWithCarriedDebt();
+
+    $breakdown = app(DashboardMetrics::class)->regionBreakdown($organization, $august);
+
+    expect($breakdown)->toHaveCount(2)
+        ->and($breakdown[0]['region'])->toBe('Северный')
+        ->and($breakdown[0]['debt'])->toBe(900.0)
+        ->and($breakdown[0]['charged'])->toBe(200.0)
+        ->and($breakdown[0]['paid'])->toBe(100.0)
+        ->and($breakdown[1]['region'])->toBe('Южный')
+        ->and($breakdown[1]['debt'])->toBe(50.0)
+        ->and($breakdown[1]['charged'])->toBe(0.0);
+});
+
 it('берёт начисление и долг закрытого месяца из начислений', function (): void {
     $organization = dashboardOrganization();
     $billingPeriod = BillingPeriod::openFor($organization, '202608');
@@ -392,7 +516,8 @@ it('берёт начисление и долг закрытого месяца 
         ->and($finance['paid'])->toBe(250.0)
         ->and($finance['collection_percent'])->toBe(25.0)
         ->and($finance['debt'])->toBe(750.0)
-        ->and($finance['debtors_count'])->toBe(1);
+        ->and($finance['debtors_count'])->toBe(1)
+        ->and($finance['debt_is_current'])->toBeFalse();
 });
 
 it('отдаёт нулевой процент сбора при нулевом начислении', function (): void {
@@ -595,7 +720,7 @@ it('строит срез по районам и сортирует его по 
         ->and($breakdown[1]['clients'])->toBe(1)
         ->and($breakdown[1]['charged'])->toBe(100.0)
         ->and($breakdown[1]['paid'])->toBe(40.0)
-        ->and($breakdown[1]['debt'])->toBe(100.0)
+        ->and($breakdown[1]['debt'])->toBe(60.0)
         ->and($breakdown[1]['readings_percent'])->toBe(100.0);
 });
 

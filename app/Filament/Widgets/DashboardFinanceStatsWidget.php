@@ -69,8 +69,8 @@ class DashboardFinanceStatsWidget extends StatsOverviewWidget
                 ->description("{$metrics['payments_count']} оплат · сбор {$this->formatPercent($metrics['collection_percent'])}")
                 ->descriptionIcon(Heroicon::OutlinedBanknotes)
                 ->color('success'),
-            Stat::make('Долг на конец месяца', $this->formatMoney($metrics['debt']))
-                ->description("{$metrics['debtors_count']} абонентов")
+            Stat::make('Долг абонентов', $this->formatMoney($metrics['debt']))
+                ->description($this->debtDescription($metrics['debt_is_current'], $metrics['debtors_count']))
                 ->descriptionIcon(Heroicon::OutlinedExclamationTriangle)
                 ->color($metrics['debt'] > 0.0 ? 'danger' : 'success'),
         ];
@@ -81,6 +81,14 @@ class DashboardFinanceStatsWidget extends StatsOverviewWidget
         return $isPreliminary
             ? "предварительно, по {$documents} квитанциям"
             : "по {$documents} начислениям";
+    }
+
+    /**
+     * A period that is not closed shows the debt as of today; a closed one, as of its last day.
+     */
+    private function debtDescription(bool $isCurrent, int $debtors): string
+    {
+        return ($isCurrent ? 'на сегодня' : 'на конец месяца')." · {$debtors} абонентов";
     }
 
     private function formatMoney(float $amount): string

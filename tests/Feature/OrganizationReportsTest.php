@@ -2,6 +2,7 @@
 
 use App\BalanceAdjustmentType;
 use App\ClientType;
+use App\Dashboard\DashboardMetrics;
 use App\Filament\Pages\Reports\ListReports;
 use App\Filament\Pages\Reports\ViewReport;
 use App\Models\Accrual;
@@ -1166,7 +1167,7 @@ test('summary reports include subscriber rows under every matching controller', 
     expect($rowsByController->has('Unrelated Controller'))->toBeFalse();
 });
 
-test('unpaid receipts and debts reports use receipt payment and balance totals', function () {
+test('unpaid receipts report uses receipt payment totals', function () {
     $organization = Organization::factory()->create();
     $utilityService = UtilityService::factory()->for($organization)->create();
     $region = Region::factory()->for($organization)->create(['name' => 'Есильский']);
@@ -1286,14 +1287,116 @@ test('unpaid receipts and debts reports use receipt payment and balance totals',
         '20.06.2026 10:00',
     ]);
     expect(collect($unpaidRows)->flatten()->contains('Абонент с долгом'))->toBeFalse();
+});
+
+test('debts report shows the empty state without an editable billing period', function () {
+    $fixture = turnoverBalanceSheetFixture();
+    $organization = $fixture['organization'];
+
+    actingAsReportsTenant($organization);
 
     Livewire::test(ViewReport::class, ['report' => 'debts'])
         ->assertOk()
-        ->assertCanSeeTableRecords([$unpaidReceipt, $debtOnlyReceipt], inOrder: true)
-        ->assertCanNotSeeTableRecords([$settledReceipt])
-        ->assertTableColumnStateSet('debt_period_for_report', '06.2026', $unpaidReceipt)
-        ->assertTableColumnStateSet('closing_balance', '4000.00', $unpaidReceipt)
-        ->assertTableColumnStateSet('closing_balance', '2500.00', $debtOnlyReceipt);
+        ->assertCanNotSeeTableRecords([$fixture['debtor'], $fixture['overpaid']])
+        ->assertSee('Расчётный месяц не открыт')
+        ->assertSee('Откройте расчётный месяц, чтобы увидеть долги.');
+
+    $download = Livewire::test(ViewReport::class, ['report' => 'debts'])
+        ->assertOk()
+        ->callAction('downloadExcel')
+        ->assertFileDownloaded(
+            'debts-'.$organization->getKey().'-no-open-period-'.today()->format('Y-m-d').'.xlsx',
+            contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        );
+
+    expect(downloadedXlsxRows($download->effects['download']))->toHaveCount(1);
+});
+
+test('debts report takes every active client with a debt through the turnover engine', function () {
+    $fixture = turnoverBalanceSheetFixture();
+    $organization = $fixture['organization'];
+    $openPeriod = billingPeriodFor($organization, '202606');
+
+    $carried = Client::factory()
+        ->for($organization)
+        ->for($fixture['utilityService'])
+        ->create([
+            'account_number' => '800003',
+            'name' => 'Без квитанции',
+            'region_id' => $fixture['esil']->id,
+            'street_id' => $fixture['kabanbay']->id,
+            'status' => 'active',
+        ]);
+    $inactive = Client::factory()
+        ->for($organization)
+        ->for($fixture['utilityService'])
+        ->create(['account_number' => '800004', 'name' => 'Неактивный', 'status' => 'inactive']);
+    $settled = Client::factory()
+        ->for($organization)
+        ->for($fixture['utilityService'])
+        ->create(['account_number' => '800005', 'name' => 'Рассчитался', 'region_id' => $fixture['esil']->id]);
+
+    foreach ([[$carried, 1200], [$inactive, 900]] as [$client, $closingBalance]) {
+        Accrual::factory()
+            ->for($organization)
+            ->for($client)
+            ->create([
+                'period' => '202605',
+                'account_number' => $client->account_number,
+                'client_name' => $client->name,
+                'billing_type' => 'fixed',
+                'opening_balance' => 0,
+                'amount' => $closingBalance,
+                'paid_amount' => 0,
+                'adjustment_amount' => 0,
+                'closing_balance' => $closingBalance,
+            ]);
+    }
+
+    foreach ([[$fixture['debtor'], 3000, 500], [$settled, 2000, 2000]] as [$client, $amount, $paid]) {
+        Receipt::factory()
+            ->for($organization)
+            ->for($client)
+            ->create([
+                'period' => '202606',
+                'receipt_number' => '202606-'.$client->account_number,
+                'account_number' => $client->account_number,
+                'client_name' => $client->name,
+                'billing_type' => 'fixed',
+                'amount' => $amount,
+                'paid_amount' => $paid,
+                'adjustment_amount' => 0,
+                'opening_balance' => 0,
+                'closing_balance' => $amount - $paid,
+            ]);
+        Payment::factory()
+            ->for($organization)
+            ->for($client)
+            ->create(['period' => '202606', 'amount' => $paid, 'paid_at' => '2026-06-09']);
+    }
+
+    $foreignOrganization = Organization::factory()->create();
+    closedBillingPeriodFor($foreignOrganization, '202605');
+    $foreignClient = Client::factory()->for($foreignOrganization)->create(['account_number' => '900001']);
+    Accrual::factory()
+        ->for($foreignOrganization)
+        ->for($foreignClient)
+        ->create(['period' => '202605', 'closing_balance' => 7777]);
+
+    $operator = actingAsReportsTenant($organization);
+
+    Livewire::test(ViewReport::class, ['report' => 'debts'])
+        ->assertOk()
+        ->assertCanSeeTableRecords([$fixture['debtor'], $carried], inOrder: true)
+        ->assertCanNotSeeTableRecords([$fixture['overpaid'], $inactive, $settled, $foreignClient])
+        ->assertTableColumnStateSet('debt_period_for_report', '06.2026', $carried)
+        ->assertTableColumnStateSet('opening_balance', '4500.00', $fixture['debtor'])
+        ->assertTableColumnStateSet('accrual_amount', '3000.00', $fixture['debtor'])
+        ->assertTableColumnStateSet('paid_amount', '500.00', $fixture['debtor'])
+        ->assertTableColumnStateSet('debt_amount', '7000.00', $fixture['debtor'])
+        ->assertTableColumnStateSet('opening_balance', '1200.00', $carried)
+        ->assertTableColumnStateSet('accrual_amount', '0.00', $carried)
+        ->assertTableColumnStateSet('debt_amount', '1200.00', $carried);
 
     $debtsDownload = Livewire::test(ViewReport::class, ['report' => 'debts'])
         ->assertOk()
@@ -1315,30 +1418,23 @@ test('unpaid receipts and debts reports use receipt payment and balance totals',
         'Оплачено',
         'Корректировка',
         'Долг',
-    ]);
-    expect($debtRows[1])->toEqual([
-        '510001',
-        'Неоплаченный абонент',
-        'Есильский, Кабанбай батыр, д. 11, кв. 2',
-        '06.2026',
-        0.0,
-        6000.0,
-        2000.0,
-        0.0,
-        4000.0,
-    ]);
-    expect($debtRows[2])->toEqual([
-        '510002',
-        'Абонент с долгом',
-        '-',
-        '06.2026',
-        2500.0,
-        1000.0,
-        1000.0,
-        0.0,
-        2500.0,
-    ]);
-    expect(collect($debtRows)->flatten()->contains('Оплаченный абонент'))->toBeFalse();
+    ])
+        ->and($debtRows[1])->toEqual(['800001', 'Должник', 'Алмалинский, Абая, д. 10, кв. 1', '06.2026', 4500.0, 3000.0, 500.0, 0.0, 7000.0])
+        ->and($debtRows[2][0])->toBe('800003')
+        ->and(array_slice($debtRows[2], 3))->toEqual(['06.2026', 1200.0, 0.0, 0.0, 0.0, 1200.0])
+        ->and($debtRows)->toHaveCount(3);
+
+    $summary = app(ReportSummaryService::class)->records('debts', ReportSummaryGroup::Region, $organization, $operator, $openPeriod);
+
+    expect($summary['total']['clients_count'])->toBe(2)
+        ->and($summary['total']['debt_amount'])->toBe(8200.0)
+        ->and($summary['total']['opening_balance'])->toBe(5700.0)
+        ->and($summary['total']['paid_amount'])->toBe(500.0);
+
+    $dashboard = app(DashboardMetrics::class)->finance($organization, $openPeriod);
+
+    expect($dashboard['debt'])->toBe(8200.0)
+        ->and($dashboard['debtors_count'])->toBe(2);
 });
 
 test('meter installation replacement report lists installed and removed meters in current billing period', function () {

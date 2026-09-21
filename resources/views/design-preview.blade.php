@@ -379,9 +379,10 @@
                         <p class="mt-2 text-sm text-zinc-500 dark:text-zinc-400">412 оплат · сбор 73.1 %</p>
                     </div>
                     <div class="rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-950">
-                        <p class="text-sm text-zinc-500 dark:text-zinc-400">Долг на конец месяца</p>
+                        <p class="text-sm text-zinc-500 dark:text-zinc-400">Долг абонентов</p>
                         <p class="mt-2 text-2xl font-semibold text-red-700 dark:text-red-300">3 360 000 ₸</p>
-                        <p class="mt-2 text-sm text-zinc-500 dark:text-zinc-400">318 абонентов</p>
+                        <p class="mt-2 text-sm text-zinc-500 dark:text-zinc-400">на сегодня · 318 абонентов</p>
+                        <p class="mt-1 text-xs text-zinc-400 dark:text-zinc-500">Закрытый месяц: «на конец месяца · N абонентов».</p>
                     </div>
                 </div>
 

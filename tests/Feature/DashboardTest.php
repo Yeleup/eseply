@@ -158,7 +158,48 @@ it('показывает оператору операционные и дене
         ->assertOk()
         ->assertSee('Начислено')
         ->assertSee('Оплачено')
-        ->assertSee('Долг на конец месяца');
+        ->assertSee('Долг абонентов')
+        ->assertSee('на сегодня · 0 абонентов')
+        ->assertDontSee('Долг на конец месяца');
+});
+
+it('подписывает долг незакрытого месяца как долг на сегодня', function (BillingPeriodStatus $status): void {
+    $organization = dashboardPageOrganization();
+    $billingPeriod = BillingPeriod::openFor($organization, '202608');
+    $billingPeriod->forceFill(['status' => $status])->save();
+
+    actingAsDashboardMember($organization, OrganizationMemberRole::Operator);
+
+    Livewire::test(DashboardFinanceStatsWidget::class, [
+        'pageFilters' => ['billing_period_id' => $billingPeriod->getKey()],
+    ])
+        ->assertOk()
+        ->assertSee('Долг абонентов')
+        ->assertSee('на сегодня · 0 абонентов')
+        ->assertDontSee('на конец месяца');
+})->with([
+    'open' => [BillingPeriodStatus::Open],
+    'processing' => [BillingPeriodStatus::Processing],
+    'failed' => [BillingPeriodStatus::Failed],
+]);
+
+it('подписывает долг закрытого месяца как долг на конец месяца', function (): void {
+    $organization = dashboardPageOrganization();
+    $billingPeriod = BillingPeriod::openFor($organization, '202608');
+    $billingPeriod->forceFill([
+        'status' => BillingPeriodStatus::Closed,
+        'closed_at' => now(),
+    ])->save();
+
+    actingAsDashboardMember($organization, OrganizationMemberRole::Operator);
+
+    Livewire::test(DashboardFinanceStatsWidget::class, [
+        'pageFilters' => ['billing_period_id' => $billingPeriod->getKey()],
+    ])
+        ->assertOk()
+        ->assertSee('Долг абонентов')
+        ->assertSee('на конец месяца · 0 абонентов')
+        ->assertDontSee('на сегодня');
 });
 
 it('скрывает денежные плитки от контроллера', function (): void {

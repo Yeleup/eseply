@@ -144,6 +144,8 @@ class ReceiptPrintController extends Controller
             $filters[$filterKey] = $request->integer($filterKey);
         }
 
+        $filters['amount_due_positive'] = $request->integer('amount_due_positive');
+
         return $filters;
     }
 
@@ -152,8 +154,8 @@ class ReceiptPrintController extends Controller
      */
     private function hasPrintFilters(array $filters): bool
     {
-        foreach ($filters as $value) {
-            if ($value > 0) {
+        foreach (self::PRINT_FILTER_KEYS as $filterKey) {
+            if ($filters[$filterKey] > 0) {
                 return true;
             }
         }
@@ -213,6 +215,10 @@ class ReceiptPrintController extends Controller
                 'client',
                 fn (Builder $query): Builder => $query->visibleToOrganizationMember($controller, $tenant),
             );
+        }
+
+        if ($filters['amount_due_positive'] > 0) {
+            $receiptsQuery->where('closing_balance', '>', 0);
         }
 
         return $periodLabel;

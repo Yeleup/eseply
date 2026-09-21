@@ -48,6 +48,7 @@ return [
         'region' => 'Регион',
         'street' => 'Улица',
         'controller' => 'Контроллер',
+        'amount_due_positive' => 'К оплате больше 0',
     ],
 
     'actions' => [

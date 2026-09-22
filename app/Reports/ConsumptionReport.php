@@ -2,14 +2,19 @@
 
 namespace App\Reports;
 
+use App\Filament\Support\ClientAddressFilter;
+use App\Filament\Support\ControllerZoneFilter;
 use App\Filament\Support\DateRangeFilter;
 use App\Models\BillingPeriod;
 use App\Models\MeterReading;
 use App\Models\Organization;
 use App\Models\User;
+use App\Reports\Concerns\AppliesReportFilters;
 use App\Reports\Concerns\FormatsReportValues;
+use App\Reports\Contracts\FiltersExcelExport;
 use App\Reports\Contracts\OrganizationReport;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\BaseFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use OpenSpout\Common\Entity\Cell;
@@ -19,8 +24,9 @@ use OpenSpout\Common\Entity\Style\Style;
 use OpenSpout\Writer\XLSX\Options;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
-class ConsumptionReport implements OrganizationReport
+class ConsumptionReport implements FiltersExcelExport, OrganizationReport
 {
+    use AppliesReportFilters;
     use FormatsReportValues;
 
     public function slug(): string
@@ -78,9 +84,7 @@ class ConsumptionReport implements OrganizationReport
                     ->placeholder('-')
                     ->sortable(),
             ])
-            ->filters([
-                DateRangeFilter::make('read_at', 'Дата снятия', 'meter_readings.read_at'),
-            ])
+            ->filters($this->filters($organization))
             ->recordUrl(null)
             ->defaultPaginationPageOption(50)
             ->emptyStateHeading($billingPeriod instanceof BillingPeriod ? 'Потреблений нет' : 'Расчётный месяц не открыт')
@@ -92,15 +96,42 @@ class ConsumptionReport implements OrganizationReport
 
     public function downloadExcel(Organization $organization, User $user): StreamedResponse
     {
+        return $this->downloadFilteredExcel($organization, $user, []);
+    }
+
+    /**
+     * @param  array<string, array<string, mixed>>  $filters
+     */
+    public function downloadFilteredExcel(Organization $organization, User $user, array $filters): StreamedResponse
+    {
         $billingPeriod = BillingPeriod::currentEditableFor($organization);
+        $query = $this->applyReportFilters(
+            $this->query($organization, $user, $billingPeriod),
+            $this->filters($organization),
+            $filters,
+        );
 
         return $this->downloadXlsx(
             $this->excelFileName($organization, $billingPeriod),
             $this->excelOptions(),
             $this->excelHeadings(),
-            fn (): iterable => $this->query($organization, $user, $billingPeriod)->lazy(500),
+            fn (): iterable => $query->lazy(500),
             fn (object $record): array => $this->excelCells($record, $billingPeriod),
         );
+    }
+
+    /**
+     * The screen table and the XLSX export share one filter definition, so both apply identical rules.
+     *
+     * @return list<BaseFilter>
+     */
+    private function filters(Organization $organization): array
+    {
+        return [
+            ClientAddressFilter::make($organization, 'clients.region_id', 'clients.street_id'),
+            ControllerZoneFilter::make($organization),
+            DateRangeFilter::make('read_at', 'Дата снятия', 'meter_readings.read_at'),
+        ];
     }
 
     /**

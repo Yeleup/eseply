@@ -20,9 +20,16 @@ final class ClientAddressFilter
      *
      * @param  string  $regionColumn  Qualified column holding the client region identifier.
      * @param  string  $streetColumn  Qualified column holding the client street identifier.
+     * @param  string|null  $clientRelationship  Relationship from the filtered model to its client when the
+     *                                           address columns live on the related client, or `null` when
+     *                                           they are available on the filtered query itself.
      */
-    public static function make(Organization $organization, string $regionColumn, string $streetColumn): Filter
-    {
+    public static function make(
+        Organization $organization,
+        string $regionColumn,
+        string $streetColumn,
+        ?string $clientRelationship = null,
+    ): Filter {
         return Filter::make('address')
             ->label('Адрес')
             ->schema([
@@ -60,22 +67,14 @@ final class ClientAddressFilter
                     ->preload()
                     ->native(false),
             ])
-            ->query(fn (Builder $query, array $data): Builder => $query
-                ->when(
-                    FilterIdentifiers::one($data['city_id'] ?? null),
-                    fn (Builder $query, int $cityId): Builder => $query->whereIn(
-                        $regionColumn,
-                        self::regionIdsOfCity($organization, $cityId),
-                    ),
-                )
-                ->when(
-                    FilterIdentifiers::one($data['region_id'] ?? null),
-                    fn (Builder $query, int $regionId): Builder => $query->where($regionColumn, $regionId),
-                )
-                ->when(
-                    FilterIdentifiers::many($data['street_ids'] ?? null),
-                    fn (Builder $query, array $streetIds): Builder => $query->whereIn($streetColumn, $streetIds),
-                ))
+            ->query(fn (Builder $query, array $data): Builder => self::apply(
+                $query,
+                $organization,
+                $regionColumn,
+                $streetColumn,
+                $clientRelationship,
+                $data,
+            ))
             ->indicateUsing(function (array $data) use ($organization): array {
                 $indicators = [];
                 $cityName = self::cityName($organization, FilterIdentifiers::one($data['city_id'] ?? null));
@@ -99,6 +98,53 @@ final class ClientAddressFilter
 
                 return $indicators;
             });
+    }
+
+    /**
+     * @template TModel of \Illuminate\Database\Eloquent\Model
+     *
+     * @param  Builder<TModel>  $query
+     * @param  array<string, mixed>  $data
+     * @return Builder<TModel>
+     */
+    private static function apply(
+        Builder $query,
+        Organization $organization,
+        string $regionColumn,
+        string $streetColumn,
+        ?string $clientRelationship,
+        array $data,
+    ): Builder {
+        $cityId = FilterIdentifiers::one($data['city_id'] ?? null);
+        $regionId = FilterIdentifiers::one($data['region_id'] ?? null);
+        $streetIds = FilterIdentifiers::many($data['street_ids'] ?? null);
+
+        if ($cityId === null && $regionId === null && $streetIds === []) {
+            return $query;
+        }
+
+        $address = fn (Builder $query): Builder => $query
+            ->when(
+                $cityId,
+                fn (Builder $query, int $cityId): Builder => $query->whereIn(
+                    $regionColumn,
+                    self::regionIdsOfCity($organization, $cityId),
+                ),
+            )
+            ->when(
+                $regionId,
+                fn (Builder $query, int $regionId): Builder => $query->where($regionColumn, $regionId),
+            )
+            ->when(
+                $streetIds,
+                fn (Builder $query, array $streetIds): Builder => $query->whereIn($streetColumn, $streetIds),
+            );
+
+        if ($clientRelationship === null) {
+            return $address($query);
+        }
+
+        return $query->whereHas($clientRelationship, $address);
     }
 
     /**

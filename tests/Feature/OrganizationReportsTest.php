@@ -5,6 +5,7 @@ use App\ClientType;
 use App\Dashboard\DashboardMetrics;
 use App\Filament\Pages\Reports\ListReports;
 use App\Filament\Pages\Reports\ViewReport;
+use App\Filament\Support\ControllerZoneFilter;
 use App\Models\Accrual;
 use App\Models\BalanceAdjustment;
 use App\Models\BillingPeriod;
@@ -24,6 +25,7 @@ use App\PaymentMethod;
 use App\Reports\ReportSummaryGroup;
 use App\Reports\ReportSummaryService;
 use Filament\Facades\Filament;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Livewire\Features\SupportTesting\Testable;
@@ -3243,3 +3245,413 @@ test('turnover balance sheet totals an open billing period on screen', function 
         ->assertTableColumnSummarySet('closing_debit', 'total', 7000.0)
         ->assertTableColumnSummarySet('closing_credit', 'total', 2000.0);
 });
+
+/**
+ * Detail reports that gained the address and controller filters, with the name of their date filters.
+ *
+ * @return array<string, array{0: string, 1: string|null}>
+ */
+function reportsWithAddressAndControllerFilters(): array
+{
+    return [
+        'missing meter readings' => ['missing-meter-readings', 'installed_on'],
+        'new client accounts' => ['new-client-accounts', 'created_at'],
+        'payments' => ['payments', 'paid_at'],
+        'unpaid receipts' => ['unpaid-receipts', 'issued_at'],
+        'meter installation replacement' => ['meter-installation-replacement', 'installed_on'],
+        'debts' => ['debts', null],
+        'consumption' => ['consumption', 'read_at'],
+    ];
+}
+
+/**
+ * Creates the one detail row the report shows for the client, dated for the report date filter.
+ */
+function reportFilterRowFor(string $report, Client $client, string $date): Model
+{
+    $organization = $client->organization;
+    $utilityService = $client->utilityService;
+
+    $meter = fn (): Meter => Meter::factory()
+        ->for($organization)
+        ->for($client)
+        ->for($utilityService)
+        ->create([
+            'number' => 'MTR-'.$client->account_number,
+            'status' => 'active',
+            'installed_on' => $date,
+        ]);
+
+    $receipt = fn (float $amount, float $paidAmount): Receipt => Receipt::factory()
+        ->for($organization)
+        ->for($client)
+        ->create([
+            'period' => '202606',
+            'receipt_number' => '202606-'.$client->account_number,
+            'account_number' => $client->account_number,
+            'client_name' => $client->name,
+            'billing_type' => 'fixed',
+            'amount' => $amount,
+            'paid_amount' => $paidAmount,
+            'adjustment_amount' => 0,
+            'opening_balance' => 0,
+            'closing_balance' => $amount - $paidAmount,
+            'issued_at' => $date.' 09:00:00',
+        ]);
+
+    return match ($report) {
+        'missing-meter-readings', 'meter-installation-replacement' => $meter(),
+        'new-client-accounts' => tap($client, function (Client $client) use ($date): void {
+            Client::query()->whereKey($client->getKey())->update([
+                'created_at' => $date.' 10:00:00',
+                'updated_at' => $date.' 10:00:00',
+            ]);
+        })->refresh(),
+        'payments' => Payment::factory()
+            ->for($organization)
+            ->for($client)
+            ->create(['period' => '202606', 'amount' => 500, 'paid_at' => $date]),
+        'unpaid-receipts' => $receipt(5000, 1000),
+        'debts' => tap($client, fn (): Receipt => $receipt(1000, 0)),
+        'consumption' => MeterReading::factory()
+            ->for($meter())
+            ->create([
+                'period' => '202606',
+                'previous_reading' => 10,
+                'current_reading' => 25,
+                'read_at' => $date,
+            ]),
+    };
+}
+
+function reportFilterZoneFor(Organization $organization, User $controller, ?Region $region = null, ?Street $street = null): void
+{
+    if ($region instanceof Region) {
+        DB::table('organization_user_regions')->insert([
+            'organization_id' => $organization->id,
+            'user_id' => $controller->id,
+            'region_id' => $region->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
+    if ($street instanceof Street) {
+        DB::table('organization_user_streets')->insert([
+            'organization_id' => $organization->id,
+            'user_id' => $controller->id,
+            'street_id' => $street->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+}
+
+/**
+ * One report row on each of four streets of two cities, three controllers of the organization
+ * and a foreign organization with its own address, controller and row.
+ *
+ * The Almalinsky region controller and the Abay street controller share the Abay row.
+ *
+ * @return array{
+ *     organization: Organization,
+ *     city: City,
+ *     almalinsky: Region,
+ *     abay: Street,
+ *     satpaev: Street,
+ *     almalinskyController: User,
+ *     abayController: User,
+ *     satpaevController: User,
+ *     abayRow: Model,
+ *     gogolRow: Model,
+ *     satpaevRow: Model,
+ *     esilRow: Model,
+ *     foreignCity: City,
+ *     foreignStreet: Street,
+ *     foreignController: User,
+ *     foreignRow: Model,
+ * }
+ */
+function reportFiltersFixture(string $report): array
+{
+    $foreignOrganization = Organization::factory()->create();
+    $foreignUtilityService = UtilityService::factory()->for($foreignOrganization)->create();
+    billingPeriodFor($foreignOrganization, '202606');
+    $foreignCity = City::factory()->for($foreignOrganization)->create(['name' => 'Алматы']);
+    $foreignRegion = Region::factory()->for($foreignOrganization)->for($foreignCity)->create(['name' => 'Алмалинский']);
+    $foreignStreet = Street::factory()->for($foreignRegion)->create(['name' => 'Абая']);
+    $foreignController = User::factory()->create(['name' => 'Чужой контроллер']);
+    $foreignOrganization->users()->attach($foreignController, ['role' => OrganizationMemberRole::Controller->value]);
+    reportFilterZoneFor($foreignOrganization, $foreignController, $foreignRegion);
+
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create();
+    billingPeriodFor($organization, '202606');
+
+    $city = City::factory()->for($organization)->create(['name' => 'Алматы']);
+    $otherCity = City::factory()->for($organization)->create(['name' => 'Астана']);
+    $almalinsky = Region::factory()->for($organization)->for($city)->create(['name' => 'Алмалинский']);
+    $bostandyk = Region::factory()->for($organization)->for($city)->create(['name' => 'Бостандыкский']);
+    $esil = Region::factory()->for($organization)->for($otherCity)->create(['name' => 'Есильский']);
+    $abay = Street::factory()->for($almalinsky)->create(['name' => 'Абая']);
+    $gogol = Street::factory()->for($almalinsky)->create(['name' => 'Гоголя']);
+    $satpaev = Street::factory()->for($bostandyk)->create(['name' => 'Сатпаева']);
+    $kabanbay = Street::factory()->for($esil)->create(['name' => 'Кабанбай батыра']);
+
+    $controllers = [];
+
+    foreach (['almalinskyController' => 'Контроллер района', 'abayController' => 'Контроллер Абая', 'satpaevController' => 'Контроллер Сатпаева'] as $key => $name) {
+        $controllers[$key] = User::factory()->create(['name' => $name]);
+        $organization->users()->attach($controllers[$key], ['role' => OrganizationMemberRole::Controller->value]);
+    }
+
+    reportFilterZoneFor($organization, $controllers['almalinskyController'], $almalinsky);
+    reportFilterZoneFor($organization, $controllers['abayController'], street: $abay);
+    reportFilterZoneFor($organization, $controllers['satpaevController'], street: $satpaev);
+
+    $row = function (Organization $organization, UtilityService $utilityService, string $accountNumber, Region $region, Street $street, string $date) use ($report): Model {
+        $client = Client::factory()
+            ->for($organization)
+            ->for($utilityService)
+            ->create([
+                'account_number' => $accountNumber,
+                'name' => 'Абонент '.$accountNumber,
+                'billing_type' => 'meter',
+                'status' => 'active',
+                'region_id' => $region->id,
+                'street_id' => $street->id,
+            ]);
+
+        return reportFilterRowFor($report, $client, $date);
+    };
+
+    return [
+        'organization' => $organization,
+        'city' => $city,
+        'almalinsky' => $almalinsky,
+        'abay' => $abay,
+        'satpaev' => $satpaev,
+        ...$controllers,
+        'abayRow' => $row($organization, $utilityService, '770001', $almalinsky, $abay, '2026-06-05'),
+        'gogolRow' => $row($organization, $utilityService, '770002', $almalinsky, $gogol, '2026-06-20'),
+        'satpaevRow' => $row($organization, $utilityService, '770003', $bostandyk, $satpaev, '2026-06-20'),
+        'esilRow' => $row($organization, $utilityService, '770004', $esil, $kabanbay, '2026-06-20'),
+        'foreignCity' => $foreignCity,
+        'foreignStreet' => $foreignStreet,
+        'foreignController' => $foreignController,
+        'foreignRow' => $row($foreignOrganization, $foreignUtilityService, '770009', $foreignRegion, $foreignStreet, '2026-06-05'),
+    ];
+}
+
+test('detail reports filter rows by city, region and streets of the client', function (string $report) {
+    $fixture = reportFiltersFixture($report);
+
+    actingAsReportsTenant($fixture['organization']);
+
+    Livewire::test(ViewReport::class, ['report' => $report])
+        ->assertOk()
+        ->assertCountTableRecords(4)
+        ->assertCanSeeTableRecords([$fixture['abayRow'], $fixture['gogolRow'], $fixture['satpaevRow'], $fixture['esilRow']])
+        ->filterTable('address', ['city_id' => $fixture['city']->id])
+        ->assertCountTableRecords(3)
+        ->assertCanSeeTableRecords([$fixture['abayRow'], $fixture['gogolRow'], $fixture['satpaevRow']])
+        ->assertCanNotSeeTableRecords([$fixture['esilRow']])
+        ->filterTable('address', ['city_id' => $fixture['city']->id, 'region_id' => $fixture['almalinsky']->id])
+        ->assertCountTableRecords(2)
+        ->assertCanSeeTableRecords([$fixture['abayRow'], $fixture['gogolRow']])
+        ->assertCanNotSeeTableRecords([$fixture['satpaevRow'], $fixture['esilRow']])
+        ->filterTable('address', ['street_ids' => [$fixture['abay']->id, $fixture['satpaev']->id]])
+        ->assertCountTableRecords(2)
+        ->assertCanSeeTableRecords([$fixture['abayRow'], $fixture['satpaevRow']])
+        ->assertCanNotSeeTableRecords([$fixture['gogolRow'], $fixture['esilRow']]);
+})->with(fn (): array => array_map(fn (array $report): array => [$report[0]], reportsWithAddressAndControllerFilters()));
+
+test('detail reports filter rows by controller zones without duplicating shared clients', function (string $report) {
+    $fixture = reportFiltersFixture($report);
+
+    actingAsReportsTenant($fixture['organization']);
+
+    Livewire::test(ViewReport::class, ['report' => $report])
+        ->assertOk()
+        ->filterTable('controller_ids', [$fixture['almalinskyController']->id])
+        ->assertCountTableRecords(2)
+        ->assertCanSeeTableRecords([$fixture['abayRow'], $fixture['gogolRow']])
+        ->assertCanNotSeeTableRecords([$fixture['satpaevRow'], $fixture['esilRow']])
+        ->filterTable('controller_ids', [$fixture['satpaevController']->id])
+        ->assertCountTableRecords(1)
+        ->assertCanSeeTableRecords([$fixture['satpaevRow']])
+        ->filterTable('controller_ids', [$fixture['almalinskyController']->id, $fixture['abayController']->id])
+        ->assertCountTableRecords(2)
+        ->assertCanSeeTableRecords([$fixture['abayRow'], $fixture['gogolRow']])
+        ->filterTable('controller_ids', [$fixture['almalinskyController']->id, $fixture['satpaevController']->id])
+        ->assertCountTableRecords(3)
+        ->assertCanNotSeeTableRecords([$fixture['esilRow']]);
+})->with(fn (): array => array_map(fn (array $report): array => [$report[0]], reportsWithAddressAndControllerFilters()));
+
+test('detail report filters never reach another organization', function (string $report) {
+    $fixture = reportFiltersFixture($report);
+
+    actingAsReportsTenant($fixture['organization']);
+
+    Livewire::test(ViewReport::class, ['report' => $report])
+        ->assertOk()
+        ->assertCanNotSeeTableRecords([$fixture['foreignRow']])
+        ->filterTable('address', ['city_id' => $fixture['foreignCity']->id])
+        ->assertCountTableRecords(0)
+        ->filterTable('address', ['street_ids' => [$fixture['foreignStreet']->id]])
+        ->assertCountTableRecords(0)
+        ->resetTableFilters()
+        ->filterTable('controller_ids', [$fixture['foreignController']->id])
+        ->assertCountTableRecords(0)
+        ->assertCanNotSeeTableRecords([$fixture['foreignRow']]);
+})->with(fn (): array => array_map(fn (array $report): array => [$report[0]], reportsWithAddressAndControllerFilters()));
+
+test('detail report filters do not widen the zone of a controller', function (string $report) {
+    $fixture = reportFiltersFixture($report);
+    $organization = $fixture['organization'];
+
+    $controller = actingAsReportsController($organization);
+    reportFilterZoneFor($organization, $controller, $fixture['almalinsky']);
+
+    Livewire::test(ViewReport::class, ['report' => $report])
+        ->assertOk()
+        ->assertCountTableRecords(2)
+        ->assertCanSeeTableRecords([$fixture['abayRow'], $fixture['gogolRow']])
+        ->assertCanNotSeeTableRecords([$fixture['satpaevRow'], $fixture['esilRow'], $fixture['foreignRow']])
+        ->filterTable('controller_ids', [$fixture['satpaevController']->id])
+        ->assertCountTableRecords(0)
+        ->filterTable('controller_ids', [$fixture['abayController']->id])
+        ->assertCountTableRecords(1)
+        ->assertCanSeeTableRecords([$fixture['abayRow']])
+        ->resetTableFilters()
+        ->filterTable('address', ['street_ids' => [$fixture['satpaev']->id]])
+        ->assertCountTableRecords(0);
+})->with(fn (): array => array_map(fn (array $report): array => [$report[0]], reportsWithAddressAndControllerFilters()));
+
+test('detail report excel download repeats the applied address, controller and date filters', function (string $report, ?string $dateFilter) {
+    $fixture = reportFiltersFixture($report);
+
+    actingAsReportsTenant($fixture['organization']);
+
+    $unfiltered = Livewire::test(ViewReport::class, ['report' => $report])
+        ->assertOk()
+        ->callAction('downloadExcel');
+
+    expect(array_column(array_slice(downloadedXlsxRows($unfiltered->effects['download']), 1), 0))
+        ->toEqualCanonicalizing(['770001', '770002', '770003', '770004']);
+
+    $addressAndController = Livewire::test(ViewReport::class, ['report' => $report])
+        ->assertOk()
+        ->filterTable('address', ['city_id' => $fixture['city']->id])
+        ->filterTable('controller_ids', [$fixture['almalinskyController']->id, $fixture['satpaevController']->id])
+        ->filterTable('address', ['city_id' => $fixture['city']->id, 'street_ids' => [$fixture['abay']->id, $fixture['satpaev']->id]])
+        ->assertCountTableRecords(2)
+        ->callAction('downloadExcel');
+
+    expect(array_column(array_slice(downloadedXlsxRows($addressAndController->effects['download']), 1), 0))
+        ->toEqualCanonicalizing(['770001', '770003']);
+
+    $pending = Livewire::test(ViewReport::class, ['report' => $report])
+        ->assertOk()
+        ->set('tableDeferredFilters.address.street_ids', [$fixture['abay']->id])
+        ->callAction('downloadExcel');
+
+    expect(downloadedXlsxRows($pending->effects['download']))->toHaveCount(5);
+
+    if ($dateFilter === null) {
+        return;
+    }
+
+    $dated = Livewire::test(ViewReport::class, ['report' => $report])
+        ->assertOk()
+        ->filterTable('address', ['region_id' => $fixture['almalinsky']->id])
+        ->filterTable($dateFilter, ['start_date' => '2026-06-10', 'end_date' => null])
+        ->assertCountTableRecords(1)
+        ->assertCanSeeTableRecords([$fixture['gogolRow']])
+        ->callAction('downloadExcel');
+
+    $rows = downloadedXlsxRows($dated->effects['download']);
+
+    expect($rows)->toHaveCount(2)
+        ->and($rows[1][0])->toBe('770002');
+})->with(fn (): array => array_values(reportsWithAddressAndControllerFilters()));
+
+test('meter installation replacement excel download repeats both date filters', function () {
+    $fixture = reportFiltersFixture('meter-installation-replacement');
+
+    actingAsReportsTenant($fixture['organization']);
+
+    $download = Livewire::test(ViewReport::class, ['report' => 'meter-installation-replacement'])
+        ->assertOk()
+        ->filterTable('installed_on', ['start_date' => '2026-06-10', 'end_date' => null])
+        ->filterTable('removed_on', ['start_date' => '2026-06-01', 'end_date' => null])
+        ->assertCountTableRecords(0)
+        ->callAction('downloadExcel');
+
+    expect(downloadedXlsxRows($download->effects['download']))->toHaveCount(1);
+});
+
+test('report summary modes ignore the detail address and controller filters', function (string $report) {
+    $fixture = reportFiltersFixture($report);
+
+    actingAsReportsTenant($fixture['organization']);
+
+    $download = Livewire::withQueryParams(['mode' => 'summary', 'group' => ReportSummaryGroup::City->value])
+        ->test(ViewReport::class, ['report' => $report])
+        ->assertOk()
+        ->set('tableFilters', ['address' => ['street_ids' => [$fixture['abay']->id]]])
+        ->callAction('downloadExcel');
+
+    expect(downloadedXlsxRows($download->effects['download']))->toHaveCount(4);
+})->with(fn (): array => array_map(fn (array $report): array => [$report[0]], reportsWithAddressAndControllerFilters()));
+
+test('controller filter looks up the zones of any number of selected controllers in a constant number of queries', function () {
+    $organization = Organization::factory()->create();
+    $region = Region::factory()->for($organization)->create();
+    $street = Street::factory()->for($region)->create();
+
+    $controllers = User::factory()->count(12)->create();
+
+    foreach ($controllers as $index => $controller) {
+        $organization->users()->attach($controller, ['role' => OrganizationMemberRole::Controller->value]);
+        reportFilterZoneFor($organization, $controller, $index % 2 === 0 ? $region : null, $index % 2 === 1 ? $street : null);
+    }
+
+    $filter = ControllerZoneFilter::make($organization, null);
+
+    $queriesFor = function (array $controllerIds) use ($filter): int {
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+
+        $filter->apply(Client::query(), ['values' => $controllerIds]);
+
+        $count = count(DB::getQueryLog());
+        DB::disableQueryLog();
+
+        return $count;
+    };
+
+    expect($queriesFor($controllers->take(12)->modelKeys()))
+        ->toBe($queriesFor($controllers->take(1)->modelKeys()))
+        ->toBeLessThanOrEqual(3);
+});
+
+test('controller filter keeps the zone rules for controllers without a zone', function (string $report) {
+    $fixture = reportFiltersFixture($report);
+    $organization = $fixture['organization'];
+
+    $emptyZoneController = User::factory()->create(['name' => 'Контроллер без зоны']);
+    $organization->users()->attach($emptyZoneController, ['role' => OrganizationMemberRole::Controller->value]);
+
+    actingAsReportsTenant($organization);
+
+    Livewire::test(ViewReport::class, ['report' => $report])
+        ->assertOk()
+        ->filterTable('controller_ids', [$emptyZoneController->id])
+        ->assertCountTableRecords(0)
+        ->filterTable('controller_ids', [$emptyZoneController->id, $fixture['satpaevController']->id])
+        ->assertCountTableRecords(1)
+        ->assertCanSeeTableRecords([$fixture['satpaevRow']])
+        ->filterTable('controller_ids', [$emptyZoneController->id, $fixture['foreignController']->id])
+        ->assertCountTableRecords(0);
+})->with(fn (): array => array_map(fn (array $report): array => [$report[0]], reportsWithAddressAndControllerFilters()));

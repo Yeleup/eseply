@@ -971,6 +971,64 @@ test('new client form defaults billing type to meter', function () {
         ->assertFormFieldHidden('fixed_amount');
 });
 
+test('client created without choosing billing type is billed by meter', function () {
+    $organization = Organization::factory()->create();
+    UtilityService::factory()->for($organization)->create();
+    $region = Region::factory()->for($organization)->create();
+    $street = Street::factory()->for($region)->create();
+
+    actingAsTenant($organization);
+
+    Livewire::test(CreateClient::class)
+        ->fillForm([
+            'name' => 'Абонент по счётчику',
+            'iin' => '870101300654',
+            'client_type' => ClientType::Individual->value,
+            'phone' => '+7 777 555 66 88',
+            'contract' => 'Договор №23',
+            'city_id' => $region->city_id,
+            'region_id' => $region->getKey(),
+            'street_id' => $street->getKey(),
+            'status' => 'active',
+        ])
+        ->call('create')
+        ->assertHasNoFormErrors()
+        ->assertRedirect();
+
+    expect(Client::query()
+        ->whereBelongsTo($organization)
+        ->where('name', 'Абонент по счётчику')
+        ->sole()
+        ->billing_type)->toBe('meter');
+});
+
+test('existing per person client keeps billing type on edit', function () {
+    $organization = Organization::factory()->create();
+    UtilityService::factory()->for($organization)->create();
+    $region = Region::factory()->for($organization)->create();
+    $street = Street::factory()->for($region)->create();
+    $client = Client::factory()
+        ->for($organization)
+        ->for($region)
+        ->for($street)
+        ->create([
+            'billing_type' => 'per_person',
+        ]);
+
+    actingAsTenant($organization);
+
+    Livewire::test(EditClient::class, [
+        'record' => $client->getRouteKey(),
+    ])
+        ->assertFormSet([
+            'billing_type' => 'per_person',
+        ])
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    expect($client->refresh()->billing_type)->toBe('per_person');
+});
+
 test('client billing settings fields depend on billing type', function () {
     $organization = Organization::factory()->create();
 

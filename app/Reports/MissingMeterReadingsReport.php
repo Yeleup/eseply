@@ -2,14 +2,19 @@
 
 namespace App\Reports;
 
+use App\Filament\Support\ClientAddressFilter;
+use App\Filament\Support\ControllerZoneFilter;
 use App\Filament\Support\DateRangeFilter;
 use App\Models\BillingPeriod;
 use App\Models\Meter;
 use App\Models\MeterReading;
 use App\Models\Organization;
 use App\Models\User;
+use App\Reports\Concerns\AppliesReportFilters;
+use App\Reports\Contracts\FiltersExcelExport;
 use App\Reports\Contracts\OrganizationReport;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\BaseFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
@@ -24,8 +29,10 @@ use OpenSpout\Writer\XLSX\Options;
 use OpenSpout\Writer\XLSX\Writer;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
-class MissingMeterReadingsReport implements OrganizationReport
+class MissingMeterReadingsReport implements FiltersExcelExport, OrganizationReport
 {
+    use AppliesReportFilters;
+
     public function slug(): string
     {
         return 'missing-meter-readings';
@@ -80,9 +87,7 @@ class MissingMeterReadingsReport implements OrganizationReport
                     ->state(fn (Meter $record): int => $this->previousReading($record))
                     ->numeric(0),
             ])
-            ->filters([
-                DateRangeFilter::make('installed_on', 'Дата установки', 'meters.installed_on'),
-            ])
+            ->filters($this->filters($organization))
             ->recordUrl(null)
             ->defaultPaginationPageOption(50)
             ->emptyStateHeading($billingPeriod instanceof BillingPeriod ? 'Все показания сняты' : 'Расчётный месяц не открыт')
@@ -94,16 +99,29 @@ class MissingMeterReadingsReport implements OrganizationReport
 
     public function downloadExcel(Organization $organization, User $user): StreamedResponse
     {
+        return $this->downloadFilteredExcel($organization, $user, []);
+    }
+
+    /**
+     * @param  array<string, array<string, mixed>>  $filters
+     */
+    public function downloadFilteredExcel(Organization $organization, User $user, array $filters): StreamedResponse
+    {
         $billingPeriod = BillingPeriod::currentEditableFor($organization);
+        $query = $this->applyReportFilters(
+            $this->query($organization, $user, $billingPeriod),
+            $this->filters($organization),
+            $filters,
+        );
 
         return response()->streamDownload(
-            function () use ($organization, $user, $billingPeriod): void {
+            function () use ($query, $billingPeriod): void {
                 $writer = new Writer($this->excelOptions());
                 $writer->openToFile('php://output');
 
                 $writer->addRow(new Row($this->excelHeadingCells()));
 
-                foreach ($this->query($organization, $user, $billingPeriod)->lazy(500) as $meter) {
+                foreach ($query->lazy(500) as $meter) {
                     $writer->addRow(new Row($this->excelCells($meter, $billingPeriod)));
                 }
 
@@ -114,6 +132,20 @@ class MissingMeterReadingsReport implements OrganizationReport
                 'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             ],
         );
+    }
+
+    /**
+     * The screen table and the XLSX export share one filter definition, so both apply identical rules.
+     *
+     * @return list<BaseFilter>
+     */
+    private function filters(Organization $organization): array
+    {
+        return [
+            ClientAddressFilter::make($organization, 'clients.region_id', 'clients.street_id'),
+            ControllerZoneFilter::make($organization),
+            DateRangeFilter::make('installed_on', 'Дата установки', 'meters.installed_on'),
+        ];
     }
 
     private function query(Organization $organization, User $user, ?BillingPeriod $billingPeriod): Builder

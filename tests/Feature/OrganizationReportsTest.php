@@ -5,6 +5,7 @@ use App\ClientType;
 use App\Dashboard\DashboardMetrics;
 use App\Filament\Pages\Reports\ListReports;
 use App\Filament\Pages\Reports\ViewReport;
+use App\Filament\Support\ControllerZoneFilter;
 use App\Models\Accrual;
 use App\Models\BalanceAdjustment;
 use App\Models\BillingPeriod;
@@ -3602,4 +3603,55 @@ test('report summary modes ignore the detail address and controller filters', fu
         ->callAction('downloadExcel');
 
     expect(downloadedXlsxRows($download->effects['download']))->toHaveCount(4);
+})->with(fn (): array => array_map(fn (array $report): array => [$report[0]], reportsWithAddressAndControllerFilters()));
+
+test('controller filter looks up the zones of any number of selected controllers in a constant number of queries', function () {
+    $organization = Organization::factory()->create();
+    $region = Region::factory()->for($organization)->create();
+    $street = Street::factory()->for($region)->create();
+
+    $controllers = User::factory()->count(12)->create();
+
+    foreach ($controllers as $index => $controller) {
+        $organization->users()->attach($controller, ['role' => OrganizationMemberRole::Controller->value]);
+        reportFilterZoneFor($organization, $controller, $index % 2 === 0 ? $region : null, $index % 2 === 1 ? $street : null);
+    }
+
+    $filter = ControllerZoneFilter::make($organization, null);
+
+    $queriesFor = function (array $controllerIds) use ($filter): int {
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+
+        $filter->apply(Client::query(), ['values' => $controllerIds]);
+
+        $count = count(DB::getQueryLog());
+        DB::disableQueryLog();
+
+        return $count;
+    };
+
+    expect($queriesFor($controllers->take(12)->modelKeys()))
+        ->toBe($queriesFor($controllers->take(1)->modelKeys()))
+        ->toBeLessThanOrEqual(3);
+});
+
+test('controller filter keeps the zone rules for controllers without a zone', function (string $report) {
+    $fixture = reportFiltersFixture($report);
+    $organization = $fixture['organization'];
+
+    $emptyZoneController = User::factory()->create(['name' => 'Контроллер без зоны']);
+    $organization->users()->attach($emptyZoneController, ['role' => OrganizationMemberRole::Controller->value]);
+
+    actingAsReportsTenant($organization);
+
+    Livewire::test(ViewReport::class, ['report' => $report])
+        ->assertOk()
+        ->filterTable('controller_ids', [$emptyZoneController->id])
+        ->assertCountTableRecords(0)
+        ->filterTable('controller_ids', [$emptyZoneController->id, $fixture['satpaevController']->id])
+        ->assertCountTableRecords(1)
+        ->assertCanSeeTableRecords([$fixture['satpaevRow']])
+        ->filterTable('controller_ids', [$emptyZoneController->id, $fixture['foreignController']->id])
+        ->assertCountTableRecords(0);
 })->with(fn (): array => array_map(fn (array $report): array => [$report[0]], reportsWithAddressAndControllerFilters()));

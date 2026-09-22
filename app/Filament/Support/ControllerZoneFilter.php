@@ -8,6 +8,7 @@ use App\OrganizationMemberRole;
 use Filament\Tables\Filters\SelectFilter;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\DB;
 
 final class ControllerZoneFilter
 {
@@ -63,14 +64,32 @@ final class ControllerZoneFilter
             return $query->whereRaw('1 = 0');
         }
 
-        $zones = function (Builder $clientQuery) use ($controllers, $organization): void {
-            $clientQuery->where(function (Builder $zoneGroupQuery) use ($controllers, $organization): void {
-                foreach ($controllers as $controller) {
-                    $zoneGroupQuery->orWhere(
-                        fn (Builder $zoneQuery): Builder => $zoneQuery->visibleToOrganizationMember($controller, $organization),
-                    );
-                }
-            });
+        $controllerIds = $controllers->modelKeys();
+        $regionIds = self::assignedIds('organization_user_regions', 'region_id', $organization, $controllerIds);
+        $streetIds = self::assignedIds('organization_user_streets', 'street_id', $organization, $controllerIds);
+
+        if ($regionIds === [] && $streetIds === []) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        /*
+         * The union of the zones of every selected controller, with the same rules as
+         * Client::scopeVisibleToOrganizationMember() applies to one controller.
+         */
+        $zones = function (Builder $clientQuery) use ($organization, $regionIds, $streetIds): void {
+            $client = $clientQuery->getModel();
+
+            $clientQuery
+                ->where($client->qualifyColumn('organization_id'), $organization->getKey())
+                ->where(function (Builder $zoneQuery) use ($client, $regionIds, $streetIds): void {
+                    if ($regionIds !== []) {
+                        $zoneQuery->whereIn($client->qualifyColumn('region_id'), $regionIds);
+                    }
+
+                    if ($streetIds !== []) {
+                        $zoneQuery->orWhereIn($client->qualifyColumn('street_id'), $streetIds);
+                    }
+                });
         };
 
         if ($clientRelationship === null) {
@@ -78,6 +97,23 @@ final class ControllerZoneFilter
         }
 
         return $query->whereHas($clientRelationship, $zones);
+    }
+
+    /**
+     * Zone identifiers assigned to any of the controllers, fetched in one query for all of them.
+     *
+     * @param  list<int>  $controllerIds
+     * @return list<int>
+     */
+    private static function assignedIds(string $table, string $column, Organization $organization, array $controllerIds): array
+    {
+        return DB::table($table)
+            ->where('organization_id', $organization->getKey())
+            ->whereIn('user_id', $controllerIds)
+            ->distinct()
+            ->pluck($column)
+            ->map(fn (mixed $id): int => (int) $id)
+            ->all();
     }
 
     /**

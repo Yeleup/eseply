@@ -7,6 +7,17 @@ test('the design preview page renders every documented surface', function () {
         ->assertSee('Объём, м3');
 });
 
+test('the meter reading sheet preview shows the previous and current reading columns', function () {
+    $this->get(route('design-preview'))
+        ->assertSuccessful()
+        ->assertSeeInOrder([
+            'Ведомость снятия показаний',
+            'Предыдущее и текущее показание за расчётный месяц',
+            'Предыдущее показание',
+            'Текущее показание',
+        ]);
+});
+
 test('the payment desk preview shows every required state', function () {
     $response = $this->get(route('design-preview'))->assertSuccessful();
 

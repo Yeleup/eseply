@@ -1617,6 +1617,55 @@
                     </div>
                 </div>
 
+                <div class="border-b border-zinc-200 p-4 dark:border-zinc-800">
+                    <div>
+                        <p class="text-sm font-medium text-zinc-500 dark:text-zinc-400">Ведомость снятия показаний</p>
+                        <h3 class="mt-1 text-base font-semibold">Предыдущее и текущее показание за расчётный месяц</h3>
+                        <p class="mt-1 max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
+                            «Предыдущее показание» — показание на начало текущего расчётного месяца: последнее снятое показание за более ранний месяц, без таких показаний — начальное показание счётчика. «Текущее показание» — показание текущего месяца; пока оно не снято, ячейка пустая, и контроллер пишет показание от руки на распечатке. Отметка о визите без показания не заполняет ни одну из колонок. XLSX-выгрузка повторяет те же колонки и значения.
+                        </p>
+                    </div>
+
+                    <div class="mt-4 overflow-x-auto rounded-lg border border-zinc-200 dark:border-zinc-800">
+                        <table class="w-full min-w-240 text-left text-sm">
+                            <thead class="bg-zinc-100 text-xs font-semibold uppercase text-zinc-500 dark:bg-zinc-950 dark:text-zinc-400">
+                                <tr>
+                                    <th class="px-4 py-3">Лицевой счёт</th>
+                                    <th class="px-4 py-3">ФИО</th>
+                                    <th class="px-4 py-3">Адрес</th>
+                                    <th class="px-4 py-3">Кол. проживающих</th>
+                                    <th class="px-4 py-3">Счётчик</th>
+                                    <th class="px-4 py-3">Дата установки</th>
+                                    <th class="px-4 py-3 text-right">Предыдущее показание</th>
+                                    <th class="px-4 py-3 text-right">Текущее показание</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-zinc-200 dark:divide-zinc-800">
+                                <tr>
+                                    <td class="px-4 py-3 font-medium">100001</td>
+                                    <td class="px-4 py-3">Иванов Иван</td>
+                                    <td class="px-4 py-3 text-zinc-500 dark:text-zinc-400">Алмалинский, Абая, д. 10, кв. 5</td>
+                                    <td class="px-4 py-3">3</td>
+                                    <td class="px-4 py-3 font-medium">MTR-001</td>
+                                    <td class="px-4 py-3 text-zinc-500 dark:text-zinc-400">15.01.2024</td>
+                                    <td class="px-4 py-3 text-right font-medium">15</td>
+                                    <td class="px-4 py-3 text-right font-medium">21</td>
+                                </tr>
+                                <tr>
+                                    <td class="px-4 py-3 font-medium">100001</td>
+                                    <td class="px-4 py-3">Иванов Иван</td>
+                                    <td class="px-4 py-3 text-zinc-500 dark:text-zinc-400">Алмалинский, Абая, д. 10, кв. 5</td>
+                                    <td class="px-4 py-3">3</td>
+                                    <td class="px-4 py-3 font-medium">MTR-002</td>
+                                    <td class="px-4 py-3 text-zinc-500 dark:text-zinc-400">-</td>
+                                    <td class="px-4 py-3 text-right font-medium">20</td>
+                                    <td class="px-4 py-3 text-right font-medium"></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <div class="overflow-x-auto">
                     <table class="w-full min-w-240 text-left text-sm">
                         <thead class="bg-zinc-100 text-xs font-semibold uppercase text-zinc-500 dark:bg-zinc-950 dark:text-zinc-400">

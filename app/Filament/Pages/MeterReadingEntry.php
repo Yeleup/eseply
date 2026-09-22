@@ -459,13 +459,15 @@ class MeterReadingEntry extends Page implements HasTable
             // collapse to zero right after saving.
             ->when(
                 $billingPeriod instanceof BillingPeriod,
-                fn (Builder $query): Builder => $query->whereHas(
-                    'billingPeriod',
-                    fn (Builder $periodQuery): Builder => $periodQuery->whereDate(
-                        'starts_on',
-                        '<',
-                        $billingPeriod->starts_on->toDateString(),
-                    ),
+                // A prefiltered id list of the tenant's earlier months uses the
+                // (organization_id, starts_on) index once, instead of probing
+                // billing_periods for every candidate reading of every meter.
+                fn (Builder $query): Builder => $query->whereIn(
+                    'meter_readings.billing_period_id',
+                    BillingPeriod::query()
+                        ->select('id')
+                        ->forOrganization((int) $billingPeriod->organization_id)
+                        ->where('starts_on', '<', $billingPeriod->starts_on->toDateString()),
                 ),
             )
             ->orderByDesc(

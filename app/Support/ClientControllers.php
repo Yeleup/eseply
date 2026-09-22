@@ -5,6 +5,7 @@ namespace App\Support;
 use App\Models\Client;
 use App\Models\Organization;
 use App\OrganizationMemberRole;
+use Collator;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Facades\DB;
 
@@ -39,7 +40,7 @@ final class ClientControllers
     }
 
     /**
-     * Names of the client's controllers, each once, in alphabetical order.
+     * Names of the client's controllers, each once, in Russian alphabetical order («Ё» right after «Е»).
      *
      * @return list<string>
      */
@@ -50,7 +51,7 @@ final class ClientControllers
 
         $names = array_values($names);
 
-        usort($names, fn (string $first, string $second): int => strnatcmp(mb_strtolower($first), mb_strtolower($second)));
+        (new Collator('ru_RU'))->sort($names);
 
         return $names;
     }

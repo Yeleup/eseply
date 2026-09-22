@@ -126,6 +126,22 @@ test('client controllers are the organization controllers whose region or street
     expect(ClientControllers::forOrganization($organization)->labelFor($clientWithoutControllers))->toBe('-');
 });
 
+test('client controllers are sorted in russian alphabetical order', function () {
+    [
+        'organization' => $organization,
+        'region' => $region,
+        'street' => $street,
+        'client' => $client,
+    ] = clientControllersFixture();
+
+    clientControllersMember($organization, 'Яна', regions: [$region]);
+    clientControllersMember($organization, 'Ёлка', streets: [$street]);
+    clientControllersMember($organization, 'Андрей', regions: [$region]);
+    clientControllersMember($organization, 'ерлан', streets: [$street]);
+
+    expect(ClientControllers::forOrganization($organization)->labelFor($client))->toBe('Андрей, Ёлка, ерлан, Яна');
+});
+
 test('clients list shows the client controllers in a toggleable column', function () {
     [
         'organization' => $organization,

@@ -168,7 +168,7 @@ class ClientForm
                                 'per_person' => 'На одного человека',
                                 'fixed' => 'Фиксированная сумма',
                             ])
-                            ->default('per_person')
+                            ->default('meter')
                             ->required()
                             ->live()
                             ->native(false),

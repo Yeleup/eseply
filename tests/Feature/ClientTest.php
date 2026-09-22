@@ -959,6 +959,18 @@ test('client residents count defaults to one', function () {
         ->residents_count)->toBe(1);
 });
 
+test('new client form defaults billing type to meter', function () {
+    $organization = Organization::factory()->create();
+
+    actingAsTenant($organization);
+
+    Livewire::test(CreateClient::class)
+        ->assertFormSet([
+            'billing_type' => 'meter',
+        ])
+        ->assertFormFieldHidden('fixed_amount');
+});
+
 test('client billing settings fields depend on billing type', function () {
     $organization = Organization::factory()->create();
 

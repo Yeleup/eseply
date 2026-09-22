@@ -11,6 +11,7 @@ use App\Models\Meter;
 use App\Models\MeterReading;
 use App\Models\Payment;
 use App\Models\Receipt;
+use App\Support\ClientControllers;
 use DateTimeInterface;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
@@ -68,6 +69,7 @@ class BuildClientCardViewData
                 'Улица' => $client->street?->name,
                 'Дом' => $client->house,
                 'Квартира / помещение' => $client->apartment,
+                'Контроллеры' => ClientControllers::forOrganization($client->organization_id)->labelFor($client),
             ]),
             'billingDetails' => $this->details([
                 'Тип начисления' => $this->billingTypeLabel($client->billing_type),

@@ -6,10 +6,12 @@ use App\ClientType;
 use App\Models\City;
 use App\Models\Client;
 use App\Models\Street;
+use App\Support\ClientControllers;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
+use Filament\Infolists\Components\TextEntry;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Utilities\Set;
@@ -148,6 +150,12 @@ class ClientForm
                                     ->where('region_id', $get('region_id')),
                             ])
                             ->native(false),
+                        TextEntry::make('controllers')
+                            ->label('Контроллеры')
+                            ->state(fn (?Client $record): string => $record instanceof Client
+                                ? ClientControllers::forOrganization($record->organization_id)->labelFor($record)
+                                : '-')
+                            ->visible(fn (?Client $record): bool => $record instanceof Client),
                         TextInput::make('house')
                             ->label('Дом')
                             ->maxLength(255),

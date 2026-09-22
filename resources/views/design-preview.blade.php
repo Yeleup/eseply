@@ -294,6 +294,11 @@
                         </select>
                     </label>
 
+                    <div class="flex flex-col gap-2 text-sm font-medium">
+                        Контроллеры
+                        <p class="flex min-h-10 items-center text-sm font-normal text-zinc-700 dark:text-zinc-300">Айгуль Сейтова, Ержан Касымов</p>
+                    </div>
+
                     <label class="flex flex-col gap-2 text-sm font-medium">
                         Дом
                         <input class="h-10 rounded-md border border-zinc-300 bg-white px-3 text-sm font-normal text-zinc-950 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-50" value="10">

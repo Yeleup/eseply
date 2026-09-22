@@ -7,6 +7,7 @@ use App\Filament\Resources\Clients\ClientResource;
 use App\Models\Client;
 use App\Models\Organization;
 use App\Models\User;
+use App\Support\ClientControllers;
 use Filament\Actions\Action;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
@@ -21,6 +22,9 @@ class ClientsTable
 {
     public static function configure(Table $table): Table
     {
+        /** Zones of the organization's controllers, loaded once for every row of the table. */
+        $clientControllers = null;
+
         return $table
             ->modifyQueryUsing(function (Builder $query): Builder {
                 $query->with([
@@ -79,6 +83,14 @@ class ClientsTable
                     ->label('Улица')
                     ->searchable()
                     ->sortable()
+                    ->toggleable(),
+                TextColumn::make('controllers')
+                    ->label('Контроллеры')
+                    ->state(function (Client $record) use (&$clientControllers): string {
+                        $clientControllers ??= ClientControllers::forOrganization($record->organization_id);
+
+                        return $clientControllers->labelFor($record);
+                    })
                     ->toggleable(),
                 TextColumn::make('house')
                     ->label('Дом')

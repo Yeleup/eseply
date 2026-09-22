@@ -64,3 +64,15 @@ test('the readings entry preview shows every required state', function () {
         $response->assertSee($marker);
     }
 });
+
+test('the client form preview shows the read only client controllers next to the address', function () {
+    $this->get(route('design-preview'))
+        ->assertSuccessful()
+        ->assertSeeInOrder([
+            'Данные абонента',
+            'Улица *',
+            'Контроллеры',
+            'Айгуль Сейтова, Ержан Касымов',
+            'Дом',
+        ]);
+});

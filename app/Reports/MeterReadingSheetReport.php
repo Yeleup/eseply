@@ -78,9 +78,10 @@ class MeterReadingSheetReport implements FiltersExcelExport, OrganizationReport
                     ->label('Предыдущее показание')
                     ->state(fn (Meter $record): int => $this->previousReading($record))
                     ->numeric(0),
-                TextColumn::make('reading_entry')
-                    ->label('Показание')
-                    ->state(fn (): string => '')
+                TextColumn::make('current_reading_for_report')
+                    ->label('Текущее показание')
+                    ->state(fn (Meter $record): ?int => $this->currentReading($record))
+                    ->numeric(0)
                     ->placeholder(''),
             ])
             ->filters($this->filters($organization))
@@ -160,20 +161,13 @@ class MeterReadingSheetReport implements FiltersExcelExport, OrganizationReport
 
     private function query(Organization $organization, User $user): Builder
     {
+        $billingPeriod = BillingPeriod::currentEditableFor($organization);
+
         return Meter::query()
             ->select('meters.*')
             ->addSelect([
-                'previous_reading_for_report' => MeterReading::query()
-                    ->select('current_reading')
-                    ->whereColumn('meter_readings.meter_id', 'meters.id')
-                    ->taken()
-                    ->orderByDesc(
-                        BillingPeriod::query()
-                            ->select('starts_on')
-                            ->whereColumn('billing_periods.id', 'meter_readings.billing_period_id'),
-                    )
-                    ->orderByDesc('id')
-                    ->limit(1),
+                'previous_reading_for_report' => $this->previousReadingSubquery($billingPeriod),
+                'current_reading_for_report' => $this->currentReadingSubquery($billingPeriod),
             ])
             ->join('clients', 'clients.id', '=', 'meters.client_id')
             ->with([
@@ -185,6 +179,63 @@ class MeterReadingSheetReport implements FiltersExcelExport, OrganizationReport
             ->where('meters.status', 'active')
             ->orderBy('clients.account_number')
             ->orderBy('meters.number');
+    }
+
+    /**
+     * The reading at the start of the current billing month: the latest taken reading
+     * of a strictly earlier month, the same rule as the «Предыдущее» column of bulk
+     * meter-reading entry. Without an editable month every taken reading counts.
+     *
+     * @return Builder<MeterReading>
+     */
+    private function previousReadingSubquery(?BillingPeriod $billingPeriod): Builder
+    {
+        return MeterReading::query()
+            ->select('current_reading')
+            ->whereColumn('meter_readings.meter_id', 'meters.id')
+            ->taken()
+            ->when(
+                $billingPeriod instanceof BillingPeriod,
+                // A prefiltered id list of the tenant's earlier months uses the
+                // (organization_id, starts_on) index once, instead of probing
+                // billing_periods for every candidate reading of every meter.
+                fn (Builder $query): Builder => $query->whereIn(
+                    'meter_readings.billing_period_id',
+                    BillingPeriod::query()
+                        ->select('id')
+                        ->forOrganization((int) $billingPeriod->organization_id)
+                        ->where('starts_on', '<', $billingPeriod->starts_on->toDateString()),
+                ),
+            )
+            ->orderByDesc(
+                BillingPeriod::query()
+                    ->select('starts_on')
+                    ->whereColumn('billing_periods.id', 'meter_readings.billing_period_id'),
+            )
+            ->orderByDesc('id')
+            ->limit(1);
+    }
+
+    /**
+     * The reading taken in the current billing month; null until it is taken,
+     * and always null without an editable month.
+     *
+     * @return Builder<MeterReading>
+     */
+    private function currentReadingSubquery(?BillingPeriod $billingPeriod): Builder
+    {
+        return MeterReading::query()
+            ->select('current_reading')
+            ->whereColumn('meter_readings.meter_id', 'meters.id')
+            ->when(
+                $billingPeriod instanceof BillingPeriod,
+                fn (Builder $query): Builder => $query->where('meter_readings.billing_period_id', $billingPeriod->getKey()),
+                // `where(column, null)` would match readings without a month instead of none.
+                fn (Builder $query): Builder => $query->whereRaw('1 = 0'),
+            )
+            ->taken()
+            ->orderByDesc('id')
+            ->limit(1);
     }
 
     private function formatAddress(Meter $meter): string
@@ -225,7 +276,7 @@ class MeterReadingSheetReport implements FiltersExcelExport, OrganizationReport
         $options->setColumnWidth(18, 5);
         $options->setColumnWidth(18, 6);
         $options->setColumnWidth(22, 7);
-        $options->setColumnWidth(18, 8);
+        $options->setColumnWidth(22, 8);
 
         return $options;
     }
@@ -249,7 +300,7 @@ class MeterReadingSheetReport implements FiltersExcelExport, OrganizationReport
                 'Счётчик',
                 'Дата установки',
                 'Предыдущее показание',
-                'Показание',
+                'Текущее показание',
             ],
         );
     }
@@ -260,6 +311,7 @@ class MeterReadingSheetReport implements FiltersExcelExport, OrganizationReport
     private function excelCells(Meter $meter): array
     {
         $client = $meter->client;
+        $currentReading = $this->currentReading($meter);
 
         return [
             new StringCell((string) ($client?->account_number ?? ''), null),
@@ -271,7 +323,9 @@ class MeterReadingSheetReport implements FiltersExcelExport, OrganizationReport
             new StringCell((string) $meter->number, null),
             new StringCell($meter->installed_on?->format('d.m.Y') ?? '', null),
             new NumericCell($this->previousReading($meter), (new Style)->setFormat('0')),
-            new StringCell('', null),
+            $currentReading === null
+                ? new EmptyCell(null, null)
+                : new NumericCell($currentReading, (new Style)->setFormat('0')),
         ];
     }
 
@@ -280,5 +334,10 @@ class MeterReadingSheetReport implements FiltersExcelExport, OrganizationReport
         return MeterReading::wholeReading(
             $meter->getAttribute('previous_reading_for_report') ?? $meter->initial_reading,
         ) ?? 0;
+    }
+
+    private function currentReading(Meter $meter): ?int
+    {
+        return MeterReading::wholeReading($meter->getAttribute('current_reading_for_report'));
     }
 }

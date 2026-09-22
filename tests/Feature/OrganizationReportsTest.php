@@ -1,6 +1,7 @@
 <?php
 
 use App\BalanceAdjustmentType;
+use App\BillingPeriodStatus;
 use App\ClientType;
 use App\Dashboard\DashboardMetrics;
 use App\Filament\Pages\Reports\ListReports;
@@ -309,8 +310,10 @@ test('meter reading sheet report keeps client meters together and scopes records
         ->assertTableColumnStateSet('client_address', 'Алмалинский, Абая, д. 10, кв. 5', $firstMeter)
         ->assertTableColumnStateSet('client.residents_count', 3, $firstMeter)
         ->assertTableColumnStateSet('number', 'MTR-001', $firstMeter)
-        ->assertTableColumnStateSet('previous_reading_for_report', 21, $firstMeter)
-        ->assertTableColumnStateSet('previous_reading_for_report', 20, $secondMeter);
+        ->assertTableColumnStateSet('previous_reading_for_report', 15, $firstMeter)
+        ->assertTableColumnStateSet('current_reading_for_report', 21, $firstMeter)
+        ->assertTableColumnStateSet('previous_reading_for_report', 20, $secondMeter)
+        ->assertTableColumnStateSet('current_reading_for_report', null, $secondMeter);
 
     $download = Livewire::test(ViewReport::class, ['report' => 'meter-reading-sheet'])
         ->assertOk()
@@ -332,15 +335,16 @@ test('meter reading sheet report keeps client meters together and scopes records
         'Счётчик',
         'Дата установки',
         'Предыдущее показание',
-        'Показание',
+        'Текущее показание',
     ]);
-    expect(array_slice($rows[1], 0, 7))->toEqual([
+    expect($rows[1])->toEqual([
         '100001',
         'Иванов Иван',
         'Алмалинский, Абая, д. 10, кв. 5',
         3,
         'MTR-001',
         '15.01.2024',
+        15,
         21,
     ]);
     expect(array_slice($rows[2], 0, 7))->toEqual([
@@ -360,6 +364,184 @@ test('meter reading sheet report keeps client meters together and scopes records
         'MTR-003',
     ]);
     expect(collect($rows)->flatten()->contains('MTR-OTHER'))->toBeFalse();
+});
+
+/**
+ * @return array{organization: Organization, utilityService: UtilityService, client: Client}
+ */
+function meterReadingSheetReadingsFixture(): array
+{
+    $organization = Organization::factory()->create();
+    $utilityService = UtilityService::factory()->for($organization)->create();
+    $client = Client::factory()
+        ->for($organization)
+        ->for($utilityService)
+        ->create([
+            'account_number' => '730001',
+            'billing_type' => 'meter',
+            'status' => 'active',
+        ]);
+
+    return compact('organization', 'utilityService', 'client');
+}
+
+function meterReadingSheetReadingsMeter(array $fixture, string $number, int $initialReading): Meter
+{
+    return Meter::factory()
+        ->for($fixture['organization'])
+        ->for($fixture['client'])
+        ->for($fixture['utilityService'])
+        ->create([
+            'number' => $number,
+            'initial_reading' => $initialReading,
+            'status' => 'active',
+        ]);
+}
+
+function closeMeterReadingSheetMonth(BillingPeriod $billingPeriod): void
+{
+    $billingPeriod->forceFill([
+        'status' => BillingPeriodStatus::Closed,
+        'closed_at' => now(),
+    ])->save();
+}
+
+function meterReadingSheetReading(Meter $meter, BillingPeriod $billingPeriod, ?int $currentReading, int $previousReading = 0): MeterReading
+{
+    return $meter->readings()->create([
+        'billing_period_id' => $billingPeriod->getKey(),
+        'previous_reading' => $previousReading,
+        'current_reading' => $currentReading,
+    ]);
+}
+
+test('meter reading sheet shows the reading at the start of the current month and the current month reading', function () {
+    $fixture = meterReadingSheetReadingsFixture();
+    $organization = $fixture['organization'];
+
+    $taken = meterReadingSheetReadingsMeter($fixture, 'MTR-1', 5);
+    $notTaken = meterReadingSheetReadingsMeter($fixture, 'MTR-2', 7);
+    $visited = meterReadingSheetReadingsMeter($fixture, 'MTR-3', 9);
+    $withoutReadings = meterReadingSheetReadingsMeter($fixture, 'MTR-4', 40);
+    $visitedOnly = meterReadingSheetReadingsMeter($fixture, 'MTR-5', 11);
+
+    $march = billingPeriodFor($organization, '202603');
+    meterReadingSheetReading($taken, $march, 50, 5);
+    meterReadingSheetReading($notTaken, $march, 70, 7);
+    meterReadingSheetReading($visited, $march, 90, 9);
+    closeMeterReadingSheetMonth($march);
+
+    $april = billingPeriodFor($organization, '202604');
+    meterReadingSheetReading($taken, $april, 60, 50);
+    meterReadingSheetReading($notTaken, $april, 80, 70);
+    // A visit mark of an earlier month is not a previous reading.
+    meterReadingSheetReading($visited, $april, null, 90);
+    meterReadingSheetReading($visitedOnly, $april, null, 11);
+    closeMeterReadingSheetMonth($april);
+
+    $may = billingPeriodFor($organization, '202605');
+    meterReadingSheetReading($taken, $may, 75, 60);
+    // A visit mark of the current month is not a current reading.
+    meterReadingSheetReading($visited, $may, null, 90);
+    meterReadingSheetReading($visitedOnly, $may, null, 11);
+
+    actingAsReportsTenant($organization);
+
+    Livewire::test(ViewReport::class, ['report' => 'meter-reading-sheet'])
+        ->assertOk()
+        ->assertTableColumnExists('previous_reading_for_report', fn ($column): bool => $column->getLabel() === 'Предыдущее показание')
+        ->assertTableColumnExists('current_reading_for_report', fn ($column): bool => $column->getLabel() === 'Текущее показание')
+        ->assertTableColumnDoesNotExist('reading_entry')
+        ->assertCanSeeTableRecords([$taken, $notTaken, $visited, $withoutReadings, $visitedOnly], inOrder: true)
+        ->assertTableColumnStateSet('previous_reading_for_report', 60, $taken)
+        ->assertTableColumnStateSet('current_reading_for_report', 75, $taken)
+        ->assertTableColumnStateSet('previous_reading_for_report', 80, $notTaken)
+        ->assertTableColumnStateSet('current_reading_for_report', null, $notTaken)
+        ->assertTableColumnStateSet('previous_reading_for_report', 90, $visited)
+        ->assertTableColumnStateSet('current_reading_for_report', null, $visited)
+        ->assertTableColumnStateSet('previous_reading_for_report', 40, $withoutReadings)
+        ->assertTableColumnStateSet('current_reading_for_report', null, $withoutReadings)
+        ->assertTableColumnStateSet('previous_reading_for_report', 11, $visitedOnly)
+        ->assertTableColumnStateSet('current_reading_for_report', null, $visitedOnly);
+
+    $download = Livewire::test(ViewReport::class, ['report' => 'meter-reading-sheet'])
+        ->callAction('downloadExcel')
+        ->assertFileDownloaded(
+            'meter-reading-sheet-'.$organization->getKey().'-'.today()->format('Y-m-d').'.xlsx',
+        );
+
+    $rows = downloadedXlsxRows($download->effects['download']);
+
+    expect(array_slice($rows[0], 4))->toBe([
+        'Счётчик',
+        'Дата установки',
+        'Предыдущее показание',
+        'Текущее показание',
+    ]);
+    expect(collect(array_slice($rows, 1))
+        ->map(fn (array $row): array => [$row[4], $row[6], $row[7] ?? ''])
+        ->all())->toEqual([
+            ['MTR-1', 60, 75],
+            ['MTR-2', 80, ''],
+            ['MTR-3', 90, ''],
+            ['MTR-4', 40, ''],
+            ['MTR-5', 11, ''],
+        ]);
+});
+
+test('meter reading sheet treats a failed billing month as the current one', function () {
+    $fixture = meterReadingSheetReadingsFixture();
+    $organization = $fixture['organization'];
+    $meter = meterReadingSheetReadingsMeter($fixture, 'MTR-1', 5);
+
+    $april = billingPeriodFor($organization, '202604');
+    meterReadingSheetReading($meter, $april, 60, 5);
+    closeMeterReadingSheetMonth($april);
+    $may = billingPeriodFor($organization, '202605');
+    meterReadingSheetReading($meter, $may, 75, 60);
+    $may->forceFill(['status' => BillingPeriodStatus::Failed])->save();
+
+    actingAsReportsTenant($organization);
+
+    Livewire::test(ViewReport::class, ['report' => 'meter-reading-sheet'])
+        ->assertOk()
+        ->assertTableColumnStateSet('previous_reading_for_report', 60, $meter)
+        ->assertTableColumnStateSet('current_reading_for_report', 75, $meter);
+});
+
+test('meter reading sheet without an editable billing month shows the latest reading as previous and no current reading', function () {
+    $fixture = meterReadingSheetReadingsFixture();
+    $organization = $fixture['organization'];
+    $taken = meterReadingSheetReadingsMeter($fixture, 'MTR-1', 5);
+    $withoutReadings = meterReadingSheetReadingsMeter($fixture, 'MTR-2', 40);
+
+    $april = billingPeriodFor($organization, '202604');
+    meterReadingSheetReading($taken, $april, 60, 5);
+    closeMeterReadingSheetMonth($april);
+    $may = billingPeriodFor($organization, '202605');
+    meterReadingSheetReading($taken, $may, 75, 60);
+    closeMeterReadingSheetMonth($may);
+
+    actingAsReportsTenant($organization);
+
+    Livewire::test(ViewReport::class, ['report' => 'meter-reading-sheet'])
+        ->assertOk()
+        ->assertTableColumnStateSet('previous_reading_for_report', 75, $taken)
+        ->assertTableColumnStateSet('current_reading_for_report', null, $taken)
+        ->assertTableColumnStateSet('previous_reading_for_report', 40, $withoutReadings)
+        ->assertTableColumnStateSet('current_reading_for_report', null, $withoutReadings);
+
+    $download = Livewire::test(ViewReport::class, ['report' => 'meter-reading-sheet'])
+        ->callAction('downloadExcel');
+
+    $rows = downloadedXlsxRows($download->effects['download']);
+
+    expect(collect(array_slice($rows, 1))
+        ->map(fn (array $row): array => [$row[4], $row[6], $row[7] ?? ''])
+        ->all())->toEqual([
+            ['MTR-1', 75, ''],
+            ['MTR-2', 40, ''],
+        ]);
 });
 
 test('missing meter readings report lists active meter clients without current period readings', function () {

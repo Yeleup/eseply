@@ -1,7 +1,9 @@
 <?php
 
+use App\BalanceAdjustmentType;
 use App\BillingPeriodStatus;
 use App\Filament\Pages\PaymentDesk;
+use App\Models\BalanceAdjustment;
 use App\Models\BillingPeriod;
 use App\Models\Client;
 use App\Models\Meter;
@@ -19,6 +21,7 @@ use Filament\Actions\EditAction;
 use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 
 uses(RefreshDatabase::class);
@@ -87,10 +90,12 @@ function paymentDeskClient(Organization $organization, UtilityService $utilitySe
 /**
  * Начисление в открытом месяце появляется через квитанцию, а квитанция — при
  * вводе показания. Поэтому долг «по счётчику» заводится именно так.
+ *
+ * @param  array<string, mixed>  $attributes
  */
-function paymentDeskDebtFromReading(Organization $organization, UtilityService $utilityService, BillingPeriod $billingPeriod, int $consumption): Client
+function paymentDeskDebtFromReading(Organization $organization, UtilityService $utilityService, BillingPeriod $billingPeriod, int $consumption, array $attributes = []): Client
 {
-    $client = paymentDeskClient($organization, $utilityService, ['billing_type' => 'meter']);
+    $client = paymentDeskClient($organization, $utilityService, ['billing_type' => 'meter', ...$attributes]);
 
     $meter = Meter::factory()->for($organization)->for($client)->for($utilityService)->create([
         'initial_reading' => 0,
@@ -105,6 +110,25 @@ function paymentDeskDebtFromReading(Organization $organization, UtilityService $
     ]);
 
     return $client;
+}
+
+function paymentDeskPay(Client $client): TestAction
+{
+    return TestAction::make('pay')->arguments(['client' => $client->id]);
+}
+
+/**
+ * Баланс абонента так, как его видит касса: строкой найденного списка.
+ *
+ * @return array{opening: float, accrued: float, paid: float, adjustment: float, debt: float, credit: float}
+ */
+function paymentDeskBalance(Client $client): array
+{
+    $page = Livewire::test(PaymentDesk::class)
+        ->set('search', $client->account_number)
+        ->instance();
+
+    return $page->balanceOf($page->searchResults()->firstWhere('id', $client->id));
 }
 
 // --- Доступ -----------------------------------------------------------------
@@ -137,7 +161,6 @@ test('страница чужого тенанта не открывается',
 
     $this->get(PaymentDesk::getUrl(tenant: $otherOrganization))->assertNotFound();
 });
-
 // --- Поиск ------------------------------------------------------------------
 
 test('поиск находит абонента по лицевому счёту, фамилии и телефону', function (string $field): void {
@@ -164,19 +187,30 @@ test('поиск находит абонента по лицевому счёт�
     expect($results->pluck('id')->all())->toBe([$client->id]);
 })->with(['account_number', 'name', 'phone']);
 
-test('поиск короче двух символов ничего не возвращает', function (): void {
+test('поиск короче двух символов ничего не возвращает и просит ввести больше', function (): void {
     ['organization' => $organization, 'utilityService' => $utilityService] = paymentDeskOrganization();
     billingPeriodFor($organization);
     paymentDeskOperator($organization);
 
     paymentDeskClient($organization, $utilityService, ['name' => 'Иванов Иван']);
 
-    $results = Livewire::test(PaymentDesk::class)
+    $page = Livewire::test(PaymentDesk::class)
         ->set('search', 'И')
-        ->instance()
-        ->searchResults();
+        ->assertSee('Введите минимум 2 символа')
+        ->assertDontSee('Ничего не найдено');
 
-    expect($results)->toBeEmpty();
+    expect($page->instance()->searchResults())->toBeEmpty();
+});
+
+test('пустой результат поиска показывает «Ничего не найдено»', function (): void {
+    ['organization' => $organization] = paymentDeskOrganization();
+    billingPeriodFor($organization);
+    paymentDeskOperator($organization);
+
+    Livewire::test(PaymentDesk::class)
+        ->set('search', 'Несуществующий')
+        ->assertSee('Ничего не найдено')
+        ->assertDontSee('Введите минимум 2 символа');
 });
 
 test('поиск не показывает абонентов другой организации', function (): void {
@@ -186,7 +220,7 @@ test('поиск не показывает абонентов другой ор�
     // До установки тенанта: иначе фабрика подменит organization_id.
     $otherOrganization = Organization::factory()->create();
     $otherService = UtilityService::factory()->for($otherOrganization)->create();
-    $foreignClient = paymentDeskClient($otherOrganization, $otherService, ['name' => 'Чужой Абонент']);
+    paymentDeskClient($otherOrganization, $otherService, ['name' => 'Чужой Абонент']);
 
     paymentDeskOperator($organization);
 
@@ -196,12 +230,23 @@ test('поиск не показывает абонентов другой ор�
         ->searchResults();
 
     expect($results)->toBeEmpty();
+});
 
-    // И выбрать его напрямую тоже нельзя: selectedClientId приходит от клиента.
-    $page = Livewire::test(PaymentDesk::class)->call('selectClient', $foreignClient->id);
+test('строка поиска не выбирает абонента: единственное действие — «Оплатить»', function (): void {
+    ['organization' => $organization, 'utilityService' => $utilityService] = paymentDeskOrganization();
+    $billingPeriod = billingPeriodFor($organization);
+    paymentDeskOperator($organization);
 
-    expect($page->instance()->selectedClient())->toBeNull()
-        ->and($page->get('selectedClientId'))->toBeNull();
+    $client = paymentDeskDebtFromReading($organization, $utilityService, $billingPeriod, 30, ['name' => 'Должников Дмитрий']);
+
+    Livewire::test(PaymentDesk::class)
+        ->set('search', 'Должников')
+        ->assertSee('Должников Дмитрий')
+        ->assertDontSeeHtml('selectClient')
+        ->assertActionVisible(paymentDeskPay($client));
+
+    expect(method_exists(PaymentDesk::class, 'selectClient'))->toBeFalse()
+        ->and(property_exists(PaymentDesk::class, 'selectedClientId'))->toBeFalse();
 });
 
 // --- Долг -------------------------------------------------------------------
@@ -222,10 +267,7 @@ test('долг считается по начислению и оплатам о
         'method' => PaymentMethod::Cash->value,
     ]);
 
-    $balance = Livewire::test(PaymentDesk::class)
-        ->call('selectClient', $client->id)
-        ->instance()
-        ->balance();
+    $balance = paymentDeskBalance($client);
 
     expect($balance['accrued'])->toBe(3000.0)
         ->and($balance['paid'])->toBe(1200.0)
@@ -248,10 +290,7 @@ test('переплата показывается отдельно от долг
         'method' => PaymentMethod::Cash->value,
     ]);
 
-    $balance = Livewire::test(PaymentDesk::class)
-        ->call('selectClient', $client->id)
-        ->instance()
-        ->balance();
+    $balance = paymentDeskBalance($client);
 
     expect($balance['debt'])->toBe(0.0)
         ->and($balance['credit'])->toBe(500.0);
@@ -265,18 +304,214 @@ test('абонент без квитанции в открытом месяце 
     // Расчёт на человека: квитанции в открытом месяце нет вообще.
     $client = paymentDeskClient($organization, $utilityService, ['billing_type' => 'per_person']);
 
-    $balance = Livewire::test(PaymentDesk::class)
-        ->call('selectClient', $client->id)
-        ->instance()
-        ->balance();
+    $balance = paymentDeskBalance($client);
 
     expect($balance['accrued'])->toBe(0.0)
         ->and($balance['debt'])->toBe(0.0);
 });
 
+// --- Кнопка «Оплатить» ------------------------------------------------------
+
+test('кнопка «Оплатить» есть только у абонента с долгом', function (): void {
+    ['organization' => $organization, 'utilityService' => $utilityService] = paymentDeskOrganization();
+    $billingPeriod = billingPeriodFor($organization);
+    paymentDeskOperator($organization);
+
+    $debtor = paymentDeskDebtFromReading($organization, $utilityService, $billingPeriod, 30, ['name' => 'Должников Дмитрий']);
+    $settled = paymentDeskClient($organization, $utilityService, ['name' => 'Расчётов Роман']);
+    $overpaid = paymentDeskDebtFromReading($organization, $utilityService, $billingPeriod, 10, ['name' => 'Переплатов Пётр']);
+
+    Payment::query()->create([
+        'organization_id' => $organization->id,
+        'client_id' => $overpaid->id,
+        'billing_period_id' => $billingPeriod->id,
+        'amount' => 1500,
+        'method' => PaymentMethod::Cash->value,
+    ]);
+
+    Livewire::test(PaymentDesk::class)
+        ->set('search', 'Должников')
+        ->assertSee('Долг 3 000,00 ₸')
+        ->assertSee('Оплатить')
+        ->set('search', 'Расчётов')
+        ->assertSee('Долга нет')
+        ->assertDontSee('Оплатить')
+        ->set('search', 'Переплатов')
+        ->assertSee('Переплата 500,00 ₸')
+        ->assertDontSee('Оплатить');
+
+    // Одна и та же проверка для строки и для открытия модалки.
+    $page = Livewire::test(PaymentDesk::class)->set('search', 'ов');
+    $rows = $page->instance()->searchResults()->keyBy('id');
+
+    expect($rows)->toHaveCount(3)
+        ->and($page->instance()->offersPayment($rows[$debtor->id]))->toBeTrue()
+        ->and($page->instance()->offersPayment($rows[$settled->id]))->toBeFalse()
+        ->and($page->instance()->offersPayment($rows[$overpaid->id]))->toBeFalse();
+});
+
+test('модалка оплаты не открывается у абонента без долга или с переплатой', function (string $state): void {
+    ['organization' => $organization, 'utilityService' => $utilityService] = paymentDeskOrganization();
+    $billingPeriod = billingPeriodFor($organization);
+    paymentDeskOperator($organization);
+
+    $client = match ($state) {
+        'settled' => paymentDeskClient($organization, $utilityService),
+        'overpaid' => paymentDeskDebtFromReading($organization, $utilityService, $billingPeriod, 10),
+    };
+
+    if ($state === 'overpaid') {
+        Payment::query()->create([
+            'organization_id' => $organization->id,
+            'client_id' => $client->id,
+            'billing_period_id' => $billingPeriod->id,
+            'amount' => 1500,
+            'method' => PaymentMethod::Cash->value,
+        ]);
+    }
+
+    Livewire::test(PaymentDesk::class)
+        ->set('search', $client->account_number)
+        ->mountAction(paymentDeskPay($client))
+        ->assertActionNotMounted()
+        ->assertNotified('Долга нет');
+})->with(['settled', 'overpaid']);
+
+test('без открытого расчётного месяца кнопки «Оплатить» нет и модалка не открывается', function (): void {
+    ['organization' => $organization, 'utilityService' => $utilityService] = paymentDeskOrganization();
+    $billingPeriod = billingPeriodFor($organization);
+    paymentDeskOperator($organization);
+
+    $client = paymentDeskDebtFromReading($organization, $utilityService, $billingPeriod, 30, ['name' => 'Должников Дмитрий']);
+
+    $billingPeriod->forceFill(['status' => BillingPeriodStatus::Closed, 'closed_at' => now()])->save();
+
+    Livewire::test(PaymentDesk::class)
+        ->set('search', 'Должников')
+        ->assertSee('Должников Дмитрий')
+        ->assertDontSee('Оплатить')
+        ->assertSee('Расчётный месяц не открыт: приём оплат недоступен.')
+        ->mountAction(paymentDeskPay($client))
+        ->assertActionNotMounted()
+        ->assertNotified('Расчётный месяц не открыт');
+});
+
+test('строки поиска не делают запрос на каждого абонента', function (): void {
+    ['organization' => $organization, 'utilityService' => $utilityService] = paymentDeskOrganization();
+    $billingPeriod = billingPeriodFor($organization);
+    paymentDeskOperator($organization);
+
+    foreach (range(1, 5) as $index) {
+        paymentDeskDebtFromReading($organization, $utilityService, $billingPeriod, 10 * $index, ['name' => 'Должников '.$index]);
+    }
+
+    $page = Livewire::test(PaymentDesk::class);
+
+    DB::enableQueryLog();
+    $page->set('search', 'Должников 1');
+    $singleRowQueries = count(DB::getQueryLog());
+
+    DB::flushQueryLog();
+    $page->set('search', 'Должников')->assertSee('Должников 5');
+    $fiveRowQueries = count(DB::getQueryLog());
+    DB::disableQueryLog();
+
+    expect(substr_count($page->html(), 'Оплатить'))->toBe(5)
+        ->and($fiveRowQueries)->toBe($singleRowQueries);
+});
+
+// --- Модалка оплаты ---------------------------------------------------------
+
+test('модалка оплаты показывает карточку абонента, сальдо и пустую форму', function (): void {
+    ['organization' => $organization, 'utilityService' => $utilityService] = paymentDeskOrganization();
+    $billingPeriod = billingPeriodFor($organization);
+    paymentDeskOperator($organization);
+
+    $client = paymentDeskDebtFromReading($organization, $utilityService, $billingPeriod, 30, [
+        'name' => 'Должников Дмитрий',
+        'phone' => '+7 701 555 44 33',
+        'residents_count' => 4,
+    ]);
+
+    Payment::query()->create([
+        'organization_id' => $organization->id,
+        'client_id' => $client->id,
+        'billing_period_id' => $billingPeriod->id,
+        'amount' => 700,
+        'method' => PaymentMethod::Cash->value,
+        'paid_at' => '2026-05-12',
+    ]);
+
+    BalanceAdjustment::factory()->for($organization)->for($client)->create([
+        'period' => $billingPeriod->period,
+        'type' => BalanceAdjustmentType::ManualAdjustment->value,
+        'amount' => 200,
+    ]);
+
+    Livewire::test(PaymentDesk::class)
+        ->set('search', 'Должников')
+        ->mountAction(paymentDeskPay($client))
+        ->assertActionMounted(paymentDeskPay($client))
+        ->assertMountedActionModalSee([
+            $client->account_number.' — Должников Дмитрий',
+            'Расчётный месяц: '.$billingPeriod->label,
+            'Карточка абонента',
+            '+7 701 555 44 33',
+            'Проживающих',
+            $utilityService->name,
+            '12.05.2026 — 700,00 ₸',
+            'Сальдо на начало',
+            'Начислено',
+            '3 000,00 ₸',
+            'Оплачено',
+            'Корректировки',
+            '200,00 ₸',
+            'К оплате',
+            // 3000 − 700 + 200.
+            '2 500,00 ₸',
+            'Принять оплату',
+            'Отмена',
+        ])
+        ->assertSchemaStateSet([
+            'amount' => null,
+            'method' => PaymentMethod::Cash,
+            'paid_at' => today()->toDateString(),
+            'note' => null,
+        ]);
+});
+
+test('без корректировок плитки «Корректировки» в модалке нет', function (): void {
+    ['organization' => $organization, 'utilityService' => $utilityService] = paymentDeskOrganization();
+    $billingPeriod = billingPeriodFor($organization);
+    paymentDeskOperator($organization);
+
+    $client = paymentDeskDebtFromReading($organization, $utilityService, $billingPeriod, 30);
+
+    Livewire::test(PaymentDesk::class)
+        ->set('search', $client->account_number)
+        ->mountAction(paymentDeskPay($client))
+        ->assertMountedActionModalSee(['К оплате', '3 000,00 ₸', 'Оплат ещё не было'])
+        ->assertMountedActionModalDontSee('Корректировки');
+});
+
+test('кнопка «Вся сумма» подставляет долг', function (): void {
+    ['organization' => $organization, 'utilityService' => $utilityService] = paymentDeskOrganization();
+    $billingPeriod = billingPeriodFor($organization);
+    paymentDeskOperator($organization);
+
+    $client = paymentDeskDebtFromReading($organization, $utilityService, $billingPeriod, 25);
+
+    Livewire::test(PaymentDesk::class)
+        ->set('search', $client->account_number)
+        ->mountAction(paymentDeskPay($client))
+        ->callAction(TestAction::make('fillFullDebt')->schemaComponent('amount'))
+        ->assertActionMounted(paymentDeskPay($client))
+        ->assertSchemaStateSet(['amount' => '2500.00']);
+});
+
 // --- Приём оплаты -----------------------------------------------------------
 
-test('приём оплаты создаёт запись и пересчитывает квитанцию', function (): void {
+test('приём оплаты через модалку создаёт запись и пересчитывает квитанцию', function (): void {
     ['organization' => $organization, 'utilityService' => $utilityService] = paymentDeskOrganization();
     $billingPeriod = billingPeriodFor($organization);
     $operator = paymentDeskOperator($organization);
@@ -284,19 +519,24 @@ test('приём оплаты создаёт запись и пересчиты�
     $client = paymentDeskDebtFromReading($organization, $utilityService, $billingPeriod, 30);
 
     Livewire::test(PaymentDesk::class)
-        ->call('selectClient', $client->id)
-        ->fillForm(['amount' => 1800, 'method' => PaymentMethod::Cash->value, 'paid_at' => today()->toDateString()])
-        ->call('acceptPayment')
+        ->set('search', $client->account_number)
+        ->callAction(paymentDeskPay($client), [
+            'amount' => 1800,
+            'method' => PaymentMethod::Cash->value,
+            'paid_at' => today()->toDateString(),
+            'note' => 'Оплата у окна',
+        ])
         ->assertHasNoFormErrors()
+        ->assertActionNotMounted()
         ->assertNotified('Оплата принята')
-        // После приёма страница снова готова к следующему человеку.
-        ->assertSet('selectedClientId', null)
-        ->assertSet('search', '');
+        ->assertDispatched('payment-desk-reset');
 
     $payment = Payment::query()->where('client_id', $client->id)->firstOrFail();
 
     expect((float) $payment->amount)->toBe(1800.0)
         ->and($payment->method)->toBe(PaymentMethod::Cash)
+        ->and($payment->note)->toBe('Оплата у окна')
+        ->and((int) $payment->organization_id)->toBe($organization->id)
         ->and((int) $payment->received_by_user_id)->toBe($operator->id)
         ->and((int) $payment->billing_period_id)->toBe($billingPeriod->id);
 
@@ -304,6 +544,94 @@ test('приём оплаты создаёт запись и пересчиты�
 
     expect((float) $receipt->paid_amount)->toBe(1800.0)
         ->and((float) $receipt->closing_balance)->toBe(1200.0);
+});
+
+test('после приёма оплаты поиск и список остаются, а строка показывает новый долг', function (): void {
+    ['organization' => $organization, 'utilityService' => $utilityService] = paymentDeskOrganization();
+    $billingPeriod = billingPeriodFor($organization);
+    paymentDeskOperator($organization);
+
+    $client = paymentDeskDebtFromReading($organization, $utilityService, $billingPeriod, 30, ['name' => 'Должников Дмитрий']);
+    $neighbour = paymentDeskDebtFromReading($organization, $utilityService, $billingPeriod, 20, ['name' => 'Должникова Дарья']);
+
+    $page = Livewire::test(PaymentDesk::class)
+        ->set('search', 'Должников')
+        ->callAction(paymentDeskPay($client), [
+            'amount' => 1000,
+            'method' => PaymentMethod::Cash->value,
+            'paid_at' => today()->toDateString(),
+        ])
+        ->assertHasNoFormErrors()
+        ->assertSet('search', 'Должников')
+        ->assertSee('Долг 2 000,00 ₸')
+        ->assertSee('Должникова Дарья')
+        ->assertActionVisible(paymentDeskPay($client));
+
+    expect($page->instance()->searchResults()->pluck('id')->sort()->values()->all())
+        ->toBe(collect([$client->id, $neighbour->id])->sort()->values()->all());
+
+    $payment = Payment::query()->where('client_id', $client->id)->firstOrFail();
+
+    $page
+        ->assertCanSeeTableRecords([$payment])
+        ->assertSee('Оплат за сегодня')
+        ->assertSee('1 000,00 ₸');
+
+    expect($page->instance()->todayTotals())->toBe(['count' => 1, 'amount' => 1000.0]);
+});
+
+test('после полной оплаты строка показывает «Долга нет», а кнопка «Оплатить» исчезает', function (): void {
+    ['organization' => $organization, 'utilityService' => $utilityService] = paymentDeskOrganization();
+    $billingPeriod = billingPeriodFor($organization);
+    paymentDeskOperator($organization);
+
+    $client = paymentDeskDebtFromReading($organization, $utilityService, $billingPeriod, 30, ['name' => 'Должников Дмитрий']);
+
+    Livewire::test(PaymentDesk::class)
+        ->set('search', 'Должников')
+        ->assertSee('Оплатить')
+        ->callAction(paymentDeskPay($client), [
+            'amount' => 3000,
+            'method' => PaymentMethod::Cash->value,
+            'paid_at' => today()->toDateString(),
+        ])
+        ->assertHasNoFormErrors()
+        ->assertNotified('Оплата принята')
+        ->assertSet('search', 'Должников')
+        ->assertSee('Должников Дмитрий')
+        ->assertSee('Долга нет')
+        ->assertDontSee('Оплатить');
+});
+
+test('новая оплата первой появляется в ленте за сегодня', function (): void {
+    ['organization' => $organization, 'utilityService' => $utilityService] = paymentDeskOrganization();
+    $billingPeriod = billingPeriodFor($organization);
+    paymentDeskOperator($organization);
+
+    $client = paymentDeskDebtFromReading($organization, $utilityService, $billingPeriod, 30);
+
+    $earlier = Payment::query()->create([
+        'organization_id' => $organization->id,
+        'client_id' => $client->id,
+        'billing_period_id' => $billingPeriod->id,
+        'amount' => 100,
+        'method' => PaymentMethod::Cash->value,
+    ]);
+
+    $page = Livewire::test(PaymentDesk::class)
+        ->set('search', $client->account_number)
+        ->callAction(paymentDeskPay($client), [
+            'amount' => 500,
+            'method' => PaymentMethod::Kaspi->value,
+            'paid_at' => today()->toDateString(),
+        ])
+        ->assertHasNoFormErrors();
+
+    $latest = Payment::query()->where('client_id', $client->id)->latest('id')->firstOrFail();
+
+    $page->assertCanSeeTableRecords([$latest, $earlier], inOrder: true);
+
+    expect($page->instance()->todayTotals())->toBe(['count' => 2, 'amount' => 600.0]);
 });
 
 test('кассир принимает оплату способом Kaspi вручную и может её исправить', function (): void {
@@ -314,9 +642,12 @@ test('кассир принимает оплату способом Kaspi вру
     $client = paymentDeskDebtFromReading($organization, $utilityService, $billingPeriod, 30);
 
     Livewire::test(PaymentDesk::class)
-        ->call('selectClient', $client->id)
-        ->fillForm(['amount' => 1500, 'method' => PaymentMethod::Kaspi->value, 'paid_at' => today()->toDateString()])
-        ->call('acceptPayment')
+        ->set('search', $client->account_number)
+        ->callAction(paymentDeskPay($client), [
+            'amount' => 1500,
+            'method' => PaymentMethod::Kaspi->value,
+            'paid_at' => today()->toDateString(),
+        ])
         ->assertHasNoFormErrors()
         ->assertNotified('Оплата принята');
 
@@ -332,44 +663,60 @@ test('кассир принимает оплату способом Kaspi вру
         ->assertActionVisible(TestAction::make(DeleteAction::getDefaultName())->table($payment));
 });
 
-test('кнопка «Вся сумма» подставляет долг', function (): void {
+test('сумма обязательна и не может быть нулевой: модалка остаётся открытой', function (mixed $amount): void {
     ['organization' => $organization, 'utilityService' => $utilityService] = paymentDeskOrganization();
     $billingPeriod = billingPeriodFor($organization);
     paymentDeskOperator($organization);
 
-    $client = paymentDeskDebtFromReading($organization, $utilityService, $billingPeriod, 25);
+    $client = paymentDeskDebtFromReading($organization, $utilityService, $billingPeriod, 30);
 
     Livewire::test(PaymentDesk::class)
-        ->call('selectClient', $client->id)
-        ->call('fillFullDebt')
-        ->assertSet('data.amount', '2500.00');
-});
-
-test('сумма обязательна и не может быть нулевой', function (mixed $amount): void {
-    ['organization' => $organization, 'utilityService' => $utilityService] = paymentDeskOrganization();
-    billingPeriodFor($organization);
-    paymentDeskOperator($organization);
-
-    $client = paymentDeskClient($organization, $utilityService);
-
-    Livewire::test(PaymentDesk::class)
-        ->call('selectClient', $client->id)
-        ->fillForm(['amount' => $amount, 'method' => PaymentMethod::Cash->value, 'paid_at' => today()->toDateString()])
-        ->call('acceptPayment')
-        ->assertHasFormErrors(['amount']);
+        ->set('search', $client->account_number)
+        ->callAction(paymentDeskPay($client), [
+            'amount' => $amount,
+            'method' => PaymentMethod::Cash->value,
+            'paid_at' => today()->toDateString(),
+        ])
+        ->assertHasFormErrors(['amount'])
+        ->assertActionMounted(paymentDeskPay($client))
+        ->assertNotNotified('Оплата принята')
+        ->assertSet('search', $client->account_number);
 
     expect(Payment::query()->count())->toBe(0);
 })->with([[null], [0]]);
 
-test('без выбранного абонента оплата не принимается', function (): void {
-    ['organization' => $organization] = paymentDeskOrganization();
-    billingPeriodFor($organization);
+test('абонента другой организации нельзя оплатить через действие', function (): void {
+    ['organization' => $organization, 'utilityService' => $utilityService] = paymentDeskOrganization();
+    $billingPeriod = billingPeriodFor($organization);
+
+    // До установки тенанта: иначе фабрика подменит organization_id.
+    $otherOrganization = Organization::factory()->create();
+    $otherService = UtilityService::factory()->for($otherOrganization)->create();
+    $otherPeriod = billingPeriodFor($otherOrganization);
+    $foreignClient = paymentDeskDebtFromReading($otherOrganization, $otherService, $otherPeriod, 30);
+
     paymentDeskOperator($organization);
 
+    $client = paymentDeskDebtFromReading($organization, $utilityService, $billingPeriod, 30);
+
     Livewire::test(PaymentDesk::class)
-        ->fillForm(['amount' => 500, 'method' => PaymentMethod::Cash->value, 'paid_at' => today()->toDateString()])
-        ->call('acceptPayment')
-        ->assertNotified('Абонент не выбран');
+        ->assertActionHidden(paymentDeskPay($foreignClient))
+        ->mountAction(paymentDeskPay($foreignClient))
+        ->assertActionNotMounted();
+
+    // Идентификатор абонента приходит из браузера и может быть подменён
+    // уже в открытой модалке.
+    Livewire::test(PaymentDesk::class)
+        ->set('search', $client->account_number)
+        ->mountAction(paymentDeskPay($client))
+        ->set('mountedActions.0.arguments.client', $foreignClient->id)
+        ->fillForm([
+            'amount' => 500,
+            'method' => PaymentMethod::Cash->value,
+            'paid_at' => today()->toDateString(),
+        ])
+        ->callMountedAction()
+        ->assertNotNotified('Оплата принята');
 
     expect(Payment::query()->count())->toBe(0);
 });
@@ -383,29 +730,55 @@ test('без открытого расчётного месяца оплата �
     $client = paymentDeskClient($organization, $utilityService);
 
     Livewire::test(PaymentDesk::class)
-        ->call('selectClient', $client->id)
-        ->fillForm(['amount' => 500, 'method' => PaymentMethod::Cash->value, 'paid_at' => today()->toDateString()])
-        ->call('acceptPayment')
+        ->set('search', $client->account_number)
+        ->assertDontSee('Оплатить')
+        ->mountAction(paymentDeskPay($client))
+        ->assertActionNotMounted()
+        ->assertNotified('Расчётный месяц не открыт');
+
+    // Даже подставленная в состояние модалка не сохраняет оплату без месяца.
+    Livewire::test(PaymentDesk::class)
+        ->set('mountedActions', [[
+            'name' => 'pay',
+            'arguments' => ['client' => $client->id],
+            'context' => [],
+            'data' => [
+                'amount' => 500,
+                'method' => PaymentMethod::Cash->value,
+                'paid_at' => today()->toDateString(),
+                'note' => null,
+            ],
+        ]])
+        ->callMountedAction()
         ->assertNotified('Оплата не принята');
 
     expect(Payment::query()->count())->toBe(0);
 });
 
-test('месяц закрытый после отрисовки страницы не теряет оплату молча', function (): void {
+test('месяц закрытый после открытия модалки не теряет оплату молча', function (): void {
     ['organization' => $organization, 'utilityService' => $utilityService] = paymentDeskOrganization();
     $billingPeriod = billingPeriodFor($organization);
     paymentDeskOperator($organization);
 
-    $client = paymentDeskClient($organization, $utilityService);
+    $client = paymentDeskDebtFromReading($organization, $utilityService, $billingPeriod, 30);
 
-    $page = Livewire::test(PaymentDesk::class)->call('selectClient', $client->id);
+    $page = Livewire::test(PaymentDesk::class)
+        ->set('search', $client->account_number)
+        ->mountAction(paymentDeskPay($client));
 
     $billingPeriod->forceFill(['status' => BillingPeriodStatus::Closed, 'closed_at' => now()])->save();
 
     $page
-        ->fillForm(['amount' => 500, 'method' => PaymentMethod::Cash->value, 'paid_at' => today()->toDateString()])
-        ->call('acceptPayment')
-        ->assertNotified('Оплата не принята');
+        ->fillForm([
+            'amount' => 500,
+            'method' => PaymentMethod::Cash->value,
+            'paid_at' => today()->toDateString(),
+        ])
+        ->callMountedAction()
+        ->assertNotified('Оплата не принята')
+        // Деньги уже в руках, поэтому модалка с введённой суммой остаётся открытой.
+        ->assertActionMounted(paymentDeskPay($client))
+        ->assertSchemaStateSet(['amount' => 500]);
 
     expect(Payment::query()->count())->toBe(0);
 });

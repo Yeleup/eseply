@@ -643,6 +643,13 @@ class PaymentDesk extends Page implements HasTable
             // Affix actions are icon buttons by default; the label tells the
             // cashier what the button does without a hover.
             ->link()
+            // Tab goes from the amount straight to the method: a partial amount,
+            // Tab and Enter must accept it, not replace it with the debt. F4 is
+            // this button from the keyboard.
+            ->extraAttributes([
+                'tabindex' => '-1',
+                'aria-keyshortcuts' => 'F4',
+            ])
             ->visible($fullDebt !== null)
             ->action(fn (Set $set) => $set('amount', $fullDebt));
     }

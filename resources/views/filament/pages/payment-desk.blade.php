@@ -54,9 +54,7 @@
         },
 
         onSearchKeydown(event) {
-            if (event.key !== 'F1') {
-                this.afterPaymentHint = ''
-            }
+            this.afterPaymentHint = ''
 
             if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
                 event.preventDefault()

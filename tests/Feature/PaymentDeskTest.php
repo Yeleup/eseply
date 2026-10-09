@@ -1090,6 +1090,10 @@ test('страница показывает строку клавиш, пане�
 
     $html = $page->html();
 
+    // Подсказка после оплаты сбрасывается любой клавишей в поиске, F1 тоже.
+    expect($html)->toMatch("/onSearchKeydown\\(event\\) \\{\\s*this\\.afterPaymentHint = ''\\s*\\n/")
+        ->and($html)->not->toContain("event.key !== 'F1'");
+
     // Панель — обычная секция с заголовком, а клавиши — чипы <kbd>.
     expect($html)->toMatch('/<section[^>]*id="payment-desk-hotkeys"/')
         ->and($html)->toMatch('/<kbd[^>]*>F1<\/kbd>/u')
@@ -1121,4 +1125,9 @@ test('модалка приёма показывает клавиши и при�
         ->and($html)->toMatch('/<input[^>]*type="date"[^>]*wire:model="mountedActions\.0\.data\.paid_at"/')
         ->and($html)->toMatch('/Принять оплату\s*<kbd[^>]*>Enter<\/kbd>/u')
         ->and($html)->toMatch('/Вся сумма\s*<kbd[^>]*>F4<\/kbd>/u');
+
+    // Tab идёт сумма → способ → дата → примечание: «Вся сумма» вне обхода, с клавиатуры это F4.
+    expect($html)->toMatch('/<button(?=[^>]*\btabindex="-1")(?=[^>]*\baria-keyshortcuts="F4")[^>]*>(?:(?!<\/button>).)*Вся сумма/su');
+
+    expect($html)->toMatch('/id="mountedActionSchema0\.amount".*id="mountedActionSchema0\.method".*id="mountedActionSchema0\.paid_at".*id="mountedActionSchema0\.note"/s');
 });

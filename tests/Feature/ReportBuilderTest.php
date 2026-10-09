@@ -9,6 +9,7 @@ use App\Models\City;
 use App\Models\Client;
 use App\Models\Organization;
 use App\Models\Payment;
+use App\Models\Receipt;
 use App\Models\Region;
 use App\Models\Street;
 use App\Models\User;
@@ -582,6 +583,61 @@ test('переключение источника сбрасывает коло�
         ->assertTableColumnStateSet('accrued_amount', 1000, $fixture['ivanov'])
         ->assertTableColumnStateSet('paid_amount', 800, $fixture['ivanov'])
         ->assertTableColumnStateSet('closing_balance', 300, $fixture['ivanov']);
+});
+
+test('общий фильтр по адресу переживает переключение источника, а фильтр по дате у источника свой', function (): void {
+    $fixture = reportBuilderFixture();
+    reportBuilderOperator($fixture['organization']);
+
+    $page = Livewire::test(BuildReport::class)
+        ->filterTable('address', ['city_id' => $fixture['astana']->id])
+        ->filterTable('paid_at', ['start_date' => '2026-06-30', 'end_date' => null])
+        ->assertCanNotSeeTableRecords([$fixture['sidorovCash']])
+        ->call('selectSource', 'accruals')
+        ->assertCanSeeTableRecords([$fixture['sidorov']])
+        ->assertCanNotSeeTableRecords([$fixture['ivanov'], $fixture['petrov'], $fixture['romashka']]);
+
+    $page->call('selectMode', 'summary')->call('selectDimension', 'region');
+
+    expect(array_column(reportBuilderSummary($page), 'sum', 'group_label'))
+        ->toBe(['Есильский' => 1000.0, 'Итого' => 1000.0]);
+});
+
+test('дата начисления в незакрытом месяце — дата квитанции месяца', function (): void {
+    $fixture = reportBuilderFixture();
+    reportBuilderOperator($fixture['organization']);
+
+    $receipt = fn (Client $client, float $amount, string $issuedAt) => Receipt::factory()
+        ->for($fixture['organization'])
+        ->for($client)
+        ->create([
+            'period' => '202606',
+            'account_number' => $client->account_number,
+            'client_name' => $client->name,
+            'amount' => $amount,
+            'issued_at' => $issuedAt,
+        ]);
+
+    $receipt($fixture['ivanov'], 1200, '2026-06-15 10:00:00');
+    $receipt($fixture['romashka'], 3000, '2026-06-25 10:00:00');
+
+    $page = Livewire::withQueryParams([
+        'source' => 'accruals',
+        'fields' => 'account_number,accrued_amount,paid_amount,collection_percent',
+        'period' => (string) $fixture['june']->id,
+    ])->test(BuildReport::class)
+        ->assertCanSeeTableRecords([$fixture['ivanov'], $fixture['petrov'], $fixture['romashka'], $fixture['sidorov']])
+        ->assertTableColumnStateSet('accrued_amount', 1200.0, $fixture['ivanov'])
+        ->assertTableColumnStateSet('collection_percent', 125.0, $fixture['ivanov'])
+        ->assertTableColumnStateSet('collection_percent', null, $fixture['petrov'])
+        ->filterTable('accrued_at', ['start_date' => '2026-06-10', 'end_date' => '2026-06-20'])
+        ->assertCanSeeTableRecords([$fixture['ivanov']])
+        ->assertCanNotSeeTableRecords([$fixture['petrov'], $fixture['romashka'], $fixture['sidorov']]);
+
+    $page->call('selectMode', 'summary')->call('selectDimension', 'city');
+
+    expect(array_column(reportBuilderSummary($page), 'collection_percent', 'group_label'))
+        ->toBe(['Алматы' => 125.0, 'Итого' => 125.0]);
 });
 
 // --- Фильтры ----------------------------------------------------------------

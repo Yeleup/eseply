@@ -2025,6 +2025,233 @@
                 </div>
             </section>
 
+            <section id="preview-report-builder" class="overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+                <div class="flex flex-col gap-4 border-b border-zinc-200 p-4 dark:border-zinc-800 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                        <p class="text-sm text-zinc-500 dark:text-zinc-400">Reports / Builder</p>
+                        <h2 class="text-base font-semibold">Конструктор отчётов</h2>
+                        <p class="mt-2 max-w-2xl text-sm text-zinc-500 dark:text-zinc-400">
+                            Разовый отчёт для оператора организации: соберите из разрешённых полей, посмотрите и выгрузите. Сборка живёт в адресе страницы — ссылку можно переслать, ничего не сохраняется.
+                        </p>
+                    </div>
+
+                    <div class="flex flex-wrap items-center gap-2">
+                        <button type="button" class="inline-flex min-h-11 items-center gap-2 rounded-md border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-950">
+                            Сбросить
+                        </button>
+                        <button type="button" class="inline-flex min-h-11 items-center gap-2 rounded-md bg-amber-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-amber-700 dark:bg-amber-500 dark:text-zinc-950 dark:hover:bg-amber-400">
+                            Скачать XLSX
+                        </button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 items-start gap-6 p-4 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
+                    <div class="flex flex-col gap-4">
+                        <div class="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
+                            <h3 class="text-sm font-semibold">1. Источник данных</h3>
+                            <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Источник задаёт колонки, измерения и показатели.</p>
+
+                            <div class="mt-3 flex flex-col gap-2">
+                                <label class="flex items-start gap-3 rounded-lg border border-zinc-200 bg-white px-3 py-2.5 dark:border-zinc-700 dark:bg-zinc-950">
+                                    <input type="radio" name="preview-report-builder-source" class="mt-0.5 accent-amber-600">
+                                    <span>
+                                        <span class="block text-sm font-semibold">Оплаты</span>
+                                        <span class="block text-xs text-zinc-500 dark:text-zinc-400">Строка — одна оплата абонента.</span>
+                                    </span>
+                                </label>
+                                <label class="flex items-start gap-3 rounded-lg border border-amber-600 bg-amber-50 px-3 py-2.5 dark:border-amber-400 dark:bg-amber-400/10">
+                                    <input type="radio" name="preview-report-builder-source" checked class="mt-0.5 accent-amber-600">
+                                    <span>
+                                        <span class="block text-sm font-semibold">Начисления</span>
+                                        <span class="block text-xs text-zinc-500 dark:text-zinc-400">Строка — начисление абонента за месяц.</span>
+                                    </span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
+                            <div class="flex items-baseline justify-between gap-3">
+                                <h3 class="text-sm font-semibold">2. Колонки</h3>
+                                <span class="text-xs text-zinc-500 dark:text-zinc-400">выбрано 6 из 10</span>
+                            </div>
+
+                            <div class="mt-3 flex flex-col gap-1 text-sm">
+                                @foreach ([
+                                    ['Лицевой счёт', 'текст', true, false],
+                                    ['Абонент', 'текст', true, false],
+                                    ['Адрес', 'текст', false, false],
+                                    ['Расчётный месяц', 'текст', false, false],
+                                    ['Сальдо на начало', 'сумма', true, false],
+                                    ['Начислено', 'сумма', true, false],
+                                    ['Оплачено', 'сумма', true, false],
+                                    ['Долг на конец', 'сумма', false, false],
+                                    ['Собираемость, %', 'вычисляемое', true, true],
+                                    ['Прирост долга', 'вычисляемое', false, true],
+                                ] as [$label, $kind, $checked, $computed])
+                                    <label class="flex items-center gap-3 rounded-md px-2 py-1.5">
+                                        <input type="checkbox" @checked($checked) class="accent-amber-600">
+                                        <span class="min-w-0 flex-1">{{ $label }}</span>
+                                        @if ($computed)
+                                            <span class="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-200">{{ $kind }}</span>
+                                        @else
+                                            <span class="shrink-0 text-xs text-zinc-500 dark:text-zinc-400">{{ $kind }}</span>
+                                        @endif
+                                    </label>
+                                @endforeach
+                            </div>
+                        </div>
+
+                        <div class="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
+                            <h3 class="text-sm font-semibold">3. Группировка</h3>
+                            <label class="mt-3 block text-xs font-medium text-zinc-600 dark:text-zinc-300">Группировать по</label>
+                            <div class="mt-1 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950">По районам</div>
+                            <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Без группировки · По городам · По районам · По улицам · По контроллерам · По типам абонентов</p>
+
+                            <div class="mt-4 text-xs font-medium text-zinc-600 dark:text-zinc-300">Показатели в сводке</div>
+                            <div class="mt-1 flex flex-col gap-1 text-sm">
+                                @foreach ([['Абонентов', true], ['Начислений', true], ['Начислено', true], ['Среднее начисление', false], ['Собираемость, %', true]] as [$label, $checked])
+                                    <label class="flex items-center gap-3 rounded-md px-2 py-1.5">
+                                        <input type="checkbox" @checked($checked) class="accent-amber-600">
+                                        <span>{{ $label }}</span>
+                                    </label>
+                                @endforeach
+                            </div>
+                            <p class="mt-2 text-xs text-zinc-500 dark:text-zinc-400">Суммы в сводке складываются, проценты и средние пересчитываются от итогов группы — как «Процент снятия» в готовых отчётах.</p>
+                        </div>
+                    </div>
+
+                    <div class="flex min-w-0 flex-col gap-4">
+                        <div class="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
+                            <div class="flex items-baseline justify-between gap-3">
+                                <h3 class="text-sm font-semibold">Фильтры</h3>
+                                <span class="text-xs text-zinc-500 dark:text-zinc-400">те же, что в остальных отчётах, и действуют в обоих режимах</span>
+                            </div>
+
+                            <div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                                @foreach ([
+                                    ['Расчётный месяц', '05.2026 — Закрыт'],
+                                    ['Город', 'Алматы'],
+                                    ['Район', 'Все районы'],
+                                    ['Улицы', 'Все улицы'],
+                                    ['Контроллеры', 'Все контроллеры'],
+                                    ['Тип абонента', 'Все типы'],
+                                    ['Дата начисления с', 'дд.мм.гггг'],
+                                    ['Дата начисления по', 'дд.мм.гггг'],
+                                ] as [$label, $value])
+                                    <div>
+                                        <div class="text-xs font-medium text-zinc-600 dark:text-zinc-300">{{ $label }}</div>
+                                        <div class="mt-1 min-h-11 rounded-md border border-zinc-300 bg-white px-3 py-2.5 text-sm text-zinc-700 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200">{{ $value }}</div>
+                                    </div>
+                                @endforeach
+                            </div>
+
+                            <div class="mt-3 flex flex-wrap items-center gap-2">
+                                <span class="text-xs text-zinc-500 dark:text-zinc-400">Применено:</span>
+                                <span class="inline-flex items-center gap-1 rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-800 dark:bg-amber-950/60 dark:text-amber-200">
+                                    Город: Алматы
+                                    <button type="button" class="text-amber-600 transition hover:text-amber-800 dark:hover:text-amber-100" aria-label="Снять фильтр по городу">&times;</button>
+                                </span>
+                            </div>
+                        </div>
+
+                        <div class="flex flex-wrap items-center justify-between gap-3">
+                            <div class="flex gap-1 rounded-lg bg-zinc-100 p-1 dark:bg-zinc-950">
+                                <button type="button" class="min-h-10 rounded-md px-4 text-sm font-semibold text-zinc-600 dark:text-zinc-300">Детально</button>
+                                <button type="button" class="min-h-10 rounded-md bg-white px-4 text-sm font-semibold text-amber-800 shadow-sm dark:bg-zinc-800 dark:text-amber-200">Сводно</button>
+                            </div>
+                            <span class="text-sm text-zinc-500 dark:text-zinc-400">Сводка: начисления, по районам, 05.2026. Фильтры применены.</span>
+                        </div>
+
+                        <div class="overflow-x-auto rounded-lg border border-zinc-200 dark:border-zinc-800">
+                            <p class="border-b border-zinc-200 bg-zinc-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400">Сводка с «Итого»</p>
+                            <table class="min-w-full text-left text-sm">
+                                <thead class="bg-zinc-50 text-zinc-600 dark:bg-zinc-950 dark:text-zinc-300">
+                                    <tr>
+                                        <th class="px-4 py-3 font-medium">Район</th>
+                                        <th class="px-4 py-3 text-right font-medium">Абонентов</th>
+                                        <th class="px-4 py-3 text-right font-medium">Начислений</th>
+                                        <th class="px-4 py-3 text-right font-medium">Начислено</th>
+                                        <th class="px-4 py-3 text-right font-medium">Собираемость, %</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-zinc-200 dark:divide-zinc-800">
+                                    <tr>
+                                        <td class="px-4 py-3 font-medium">Алмалинский</td>
+                                        <td class="px-4 py-3 text-right tabular-nums">2</td>
+                                        <td class="px-4 py-3 text-right tabular-nums">2</td>
+                                        <td class="px-4 py-3 text-right tabular-nums">₸1,000.00</td>
+                                        <td class="px-4 py-3 text-right tabular-nums">80.00%</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-4 py-3 font-medium">Бостандыкский</td>
+                                        <td class="px-4 py-3 text-right tabular-nums">1</td>
+                                        <td class="px-4 py-3 text-right tabular-nums">1</td>
+                                        <td class="px-4 py-3 text-right tabular-nums">₸2,000.00</td>
+                                        <td class="px-4 py-3 text-right tabular-nums">125.00%</td>
+                                    </tr>
+                                    <tr class="bg-zinc-50 font-bold dark:bg-zinc-950">
+                                        <td class="px-4 py-3">Итого</td>
+                                        <td class="px-4 py-3 text-right tabular-nums">3</td>
+                                        <td class="px-4 py-3 text-right tabular-nums">3</td>
+                                        <td class="px-4 py-3 text-right tabular-nums">₸3,000.00</td>
+                                        <td class="px-4 py-3 text-right tabular-nums">110.00%</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="overflow-x-auto rounded-lg border border-zinc-200 dark:border-zinc-800">
+                            <p class="border-b border-zinc-200 bg-zinc-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400">Детальная таблица</p>
+                            <table class="min-w-full text-left text-sm">
+                                <thead class="bg-zinc-50 text-zinc-600 dark:bg-zinc-950 dark:text-zinc-300">
+                                    <tr>
+                                        <th class="px-4 py-3 font-medium">Лицевой счёт ↑</th>
+                                        <th class="px-4 py-3 font-medium">Абонент</th>
+                                        <th class="px-4 py-3 text-right font-medium">Начислено</th>
+                                        <th class="px-4 py-3 text-right font-medium">Оплачено</th>
+                                        <th class="px-4 py-3 text-right font-medium">Собираемость, %</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-zinc-200 dark:divide-zinc-800">
+                                    <tr>
+                                        <td class="px-4 py-3 font-semibold">100001</td>
+                                        <td class="px-4 py-3">Иванов Иван</td>
+                                        <td class="px-4 py-3 text-right tabular-nums">₸1,000.00</td>
+                                        <td class="px-4 py-3 text-right tabular-nums">₸800.00</td>
+                                        <td class="px-4 py-3 text-right tabular-nums">80.00%</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-4 py-3 font-semibold">100002</td>
+                                        <td class="px-4 py-3">Петров Пётр</td>
+                                        <td class="px-4 py-3 text-right tabular-nums">₸0.00</td>
+                                        <td class="px-4 py-3 text-right tabular-nums">₸0.00</td>
+                                        <td class="px-4 py-3 text-right text-zinc-400" title="Начислено 0: собираемость не определена">—</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
+                            <div class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-200">
+                                Выберите измерение в «Группировка», чтобы собрать сводку.
+                            </div>
+                            <div class="rounded-lg border border-dashed border-zinc-300 px-4 py-3 text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
+                                <span class="block font-semibold text-zinc-700 dark:text-zinc-200">Строк нет</span>
+                                Ни одной строки по текущим фильтрам.
+                            </div>
+                            <div class="rounded-lg border border-dashed border-zinc-300 px-4 py-3 text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
+                                <span class="block font-semibold text-zinc-700 dark:text-zinc-200">Расчётный месяц не найден</span>
+                                Откройте расчётный месяц, чтобы собрать отчёт.
+                            </div>
+                        </div>
+
+                        <p class="text-xs text-zinc-500 dark:text-zinc-400">
+                            Фильтры действуют и в детальном, и в сводном режиме. XLSX выгружает все строки с теми же фильтрами и теми же колонками, что на экране; поиск по таблице в выгрузку не попадает.
+                        </p>
+                    </div>
+                </div>
+            </section>
+
             <section class="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_24rem]">
                 <div class="overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
                     <div class="flex flex-col gap-3 border-b border-zinc-200 p-4 dark:border-zinc-800 sm:flex-row sm:items-center sm:justify-between">

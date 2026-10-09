@@ -1013,49 +1013,103 @@
                 </div>
             </section>
 
+            @php
+                $paymentDeskKbd = 'inline-flex items-center rounded-md border border-b-2 border-zinc-300 bg-white px-1.5 font-mono text-[11px] leading-4 font-semibold whitespace-nowrap text-zinc-700 dark:border-white/25 dark:bg-white/10 dark:text-zinc-100';
+                $paymentDeskKbdOnPrimary = 'inline-flex items-center rounded-md border border-b-2 border-current/40 bg-current/10 px-1.5 font-mono text-[11px] leading-4 font-semibold whitespace-nowrap';
+            @endphp
+
             <section class="overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
                 <div class="flex flex-col gap-4 border-b border-zinc-200 p-4 dark:border-zinc-800 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                         <p class="text-sm text-zinc-500 dark:text-zinc-400">Payment desk / рабочее место кассира</p>
                         <h2 class="text-base font-semibold">Приём оплат</h2>
                         <p class="mt-2 max-w-2xl text-sm text-zinc-500 dark:text-zinc-400">
-                            Один абонент за раз, как очередь у окна. Оператор находит абонента одним поиском и принимает оплату кнопкой «Оплатить» прямо из строки результата — в модалке с карточкой абонента и долгом. Поиск и список остаются на месте, после сохранения курсор снова в поле поиска.
+                            Один абонент за раз, как очередь у окна. Оператор находит абонента одним поиском и принимает оплату кнопкой «Оплатить» прямо из строки результата — в модалке с карточкой абонента и долгом. Поиск и список остаются на месте, после сохранения курсор снова в поле поиска, а текст в нём выделен. Всё делается с клавиатуры: счёт, Enter, сумма, Enter.
                         </p>
                     </div>
 
-                    <span class="inline-flex shrink-0 items-center rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-200">
-                        Расчётный месяц: 08.2026 — открыт
-                    </span>
+                    <div class="flex shrink-0 flex-wrap items-center gap-2">
+                        <span class="inline-flex items-center rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-200">
+                            Расчётный месяц: 08.2026 — открыт
+                        </span>
+                        <button type="button" aria-expanded="true" aria-controls="preview-payment-desk-hotkeys" class="inline-flex items-center gap-2 rounded-md border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-900">
+                            Горячие клавиши
+                            <kbd class="{{ $paymentDeskKbd }}">F1</kbd>
+                        </button>
+                    </div>
                 </div>
+
+                <section id="preview-payment-desk-hotkeys" aria-labelledby="preview-payment-desk-hotkeys-heading" class="border-b border-zinc-200 p-4 dark:border-zinc-800">
+                    <div class="flex items-baseline justify-between gap-3">
+                        <h3 id="preview-payment-desk-hotkeys-heading" class="text-base font-semibold">Горячие клавиши</h3>
+                        <button type="button" class="text-sm font-medium text-zinc-600 hover:text-zinc-950 dark:text-zinc-300 dark:hover:text-white">Скрыть</button>
+                    </div>
+                    <p class="mt-1 max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">Открывается клавишей F1 из любого места страницы или кнопкой в шапке. Обычная секция с заголовком; клавиши — чипы &lt;kbd&gt;.</p>
+
+                    <div class="mt-4 grid gap-6 md:grid-cols-2">
+                        <div>
+                            <h4 class="text-sm font-semibold">В поиске</h4>
+                            <dl class="mt-3 flex flex-col gap-2 text-sm">
+                                <div class="flex items-baseline gap-3"><dt class="w-32 shrink-0"><kbd class="{{ $paymentDeskKbd }}">↓</kbd> <kbd class="{{ $paymentDeskKbd }}">↑</kbd></dt><dd class="text-zinc-700 dark:text-zinc-300">следующий, предыдущий абонент</dd></div>
+                                <div class="flex items-baseline gap-3"><dt class="w-32 shrink-0"><kbd class="{{ $paymentDeskKbd }}">Enter</kbd></dt><dd class="text-zinc-700 dark:text-zinc-300">оплатить выделенного абонента; у абонента без долга приём не открывается</dd></div>
+                                <div class="flex items-baseline gap-3"><dt class="w-32 shrink-0"><kbd class="{{ $paymentDeskKbd }}">Esc</kbd></dt><dd class="text-zinc-700 dark:text-zinc-300">очистить поиск</dd></div>
+                                <div class="flex items-baseline gap-3"><dt class="w-32 shrink-0"><kbd class="{{ $paymentDeskKbd }}">⌫</kbd></dt><dd class="text-zinc-700 dark:text-zinc-300">после оплаты счёт выделен целиком — одно нажатие стирает весь поиск</dd></div>
+                                <div class="flex items-baseline gap-3"><dt class="w-32 shrink-0"><kbd class="{{ $paymentDeskKbd }}">F1</kbd></dt><dd class="text-zinc-700 dark:text-zinc-300">показать, скрыть эту справку</dd></div>
+                            </dl>
+                        </div>
+                        <div>
+                            <h4 class="text-sm font-semibold">В окне приёма</h4>
+                            <dl class="mt-3 flex flex-col gap-2 text-sm">
+                                <div class="flex items-baseline gap-3"><dt class="w-32 shrink-0"><kbd class="{{ $paymentDeskKbd }}">Enter</kbd></dt><dd class="text-zinc-700 dark:text-zinc-300">пустая сумма — подставить весь долг, иначе принять оплату</dd></div>
+                                <div class="flex items-baseline gap-3"><dt class="w-32 shrink-0"><kbd class="{{ $paymentDeskKbd }}">F4</kbd></dt><dd class="text-zinc-700 dark:text-zinc-300">вся сумма долга</dd></div>
+                                <div class="flex items-baseline gap-3"><dt class="w-32 shrink-0"><kbd class="{{ $paymentDeskKbd }}">Tab</kbd> <kbd class="{{ $paymentDeskKbd }}">Shift</kbd> <kbd class="{{ $paymentDeskKbd }}">Tab</kbd></dt><dd class="text-zinc-700 dark:text-zinc-300">сумма, способ оплаты, дата, примечание</dd></div>
+                                <div class="flex items-baseline gap-3"><dt class="w-32 shrink-0"><kbd class="{{ $paymentDeskKbd }}">Ctrl</kbd> <kbd class="{{ $paymentDeskKbd }}">Enter</kbd></dt><dd class="text-zinc-700 dark:text-zinc-300">принять из примечания, на Mac — <kbd class="{{ $paymentDeskKbd }}">⌘</kbd> <kbd class="{{ $paymentDeskKbd }}">Enter</kbd>; просто Enter переносит строку</dd></div>
+                                <div class="flex items-baseline gap-3"><dt class="w-32 shrink-0"><kbd class="{{ $paymentDeskKbd }}">Esc</kbd></dt><dd class="text-zinc-700 dark:text-zinc-300">отмена, курсор снова в поиске</dd></div>
+                            </dl>
+                        </div>
+                    </div>
+                </section>
 
                 <div class="border-b border-zinc-200 p-4 dark:border-zinc-800">
                     <div>
                         <p class="text-sm font-medium text-teal-700 dark:text-teal-300">Шаг 1</p>
                         <h3 class="mt-1 text-base font-semibold">Поиск абонента</h3>
                         <p class="mt-1 max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
-                            Одно поле: лицевой счёт, фамилия или телефон. Поиск начинается с двух символов, показывает не больше десяти абонентов, точное совпадение лицевого счёта поднимается наверх. Строки не кликабельны: у абонента с долгом справа от состояния — кнопка «Оплатить», у абонента без долга или с переплатой — только состояние. Без открытого расчётного месяца кнопки нет ни у кого.
+                            Одно поле: лицевой счёт, фамилия или телефон. Поиск начинается с двух символов, показывает не больше десяти абонентов, точное совпадение лицевого счёта поднимается наверх. Строки не кликабельны: у абонента с долгом справа от состояния — кнопка «Оплатить», у абонента без долга или с переплатой — только состояние. Без открытого расчётного месяца кнопки нет ни у кого. Стрелки ↓ ↑ двигают выделение по строкам без запросов к серверу: по умолчанию и после каждого нового текста поиска выделена первая строка. Выделенная строка — светлый фон, рамка цветом primary, шеврон слева и чип Enter на её «Оплатить»; Enter нажимает эту кнопку.
                         </p>
                     </div>
 
                     <div class="mt-4 max-w-3xl">
-                        <input type="search" placeholder="Лицевой счёт, фамилия или телефон" value="Иванов" class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-base text-zinc-950 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50">
+                        <input type="search" aria-label="Поиск абонента" placeholder="Лицевой счёт, фамилия или телефон" value="Иванов" class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-base text-zinc-950 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50">
+
+                        <p class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-zinc-600 dark:text-zinc-400">
+                            <span><kbd class="{{ $paymentDeskKbd }}">↓</kbd> <kbd class="{{ $paymentDeskKbd }}">↑</kbd> выбрать</span>
+                            <span><kbd class="{{ $paymentDeskKbd }}">Enter</kbd> оплатить</span>
+                            <span><kbd class="{{ $paymentDeskKbd }}">⌫</kbd> стереть выделенный счёт</span>
+                            <span><kbd class="{{ $paymentDeskKbd }}">Esc</kbd> очистить</span>
+                            <span><kbd class="{{ $paymentDeskKbd }}">F1</kbd> все клавиши</span>
+                        </p>
 
                         <ul class="mt-3 divide-y divide-zinc-200 overflow-hidden rounded-xl border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
-                            <li class="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-                                <div class="min-w-0">
-                                    <p class="text-sm font-semibold">100001 — Иванов Иван</p>
-                                    <p class="text-xs text-zinc-500 dark:text-zinc-400">Абая, д. 2, кв. 15 · +7 701 000 11 22</p>
+                            <li aria-current="true" class="flex flex-col gap-3 bg-amber-50 px-4 py-3 ring-2 ring-teal-700 ring-inset sm:flex-row sm:items-center sm:justify-between dark:bg-teal-400/10 dark:ring-teal-400">
+                                <div class="flex min-w-0 items-center gap-2">
+                                    <svg class="size-4 shrink-0 text-teal-700 dark:text-teal-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg>
+                                    <div class="min-w-0">
+                                        <p class="text-sm font-semibold">100001 — Иванов Иван</p>
+                                        <p class="text-xs text-zinc-500 dark:text-zinc-400">Абая, д. 2, кв. 15 · +7 701 000 11 22</p>
+                                    </div>
                                 </div>
                                 <div class="flex shrink-0 flex-wrap items-center gap-3">
                                     <span class="inline-flex items-center rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-800 dark:bg-rose-950/60 dark:text-rose-200">Долг 1 800,00 ₸</span>
                                     <button type="button" class="inline-flex items-center gap-1.5 rounded-md bg-teal-700 px-3 py-2 text-sm font-medium text-white transition hover:bg-teal-800 dark:bg-teal-500 dark:text-zinc-950 dark:hover:bg-teal-400">
                                         <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"></rect><circle cx="12" cy="12" r="2"></circle></svg>
                                         Оплатить
+                                        <kbd class="{{ $paymentDeskKbdOnPrimary }}">Enter</kbd>
                                     </button>
                                 </div>
                             </li>
                             <li class="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-                                <div class="min-w-0">
+                                <div class="min-w-0 pl-6">
                                     <p class="text-sm font-semibold">100017 — Иванова Мария</p>
                                     <p class="text-xs text-zinc-500 dark:text-zinc-400">Гоголя, д. 8, кв. 3</p>
                                 </div>
@@ -1064,7 +1118,7 @@
                                 </div>
                             </li>
                             <li class="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-                                <div class="min-w-0">
+                                <div class="min-w-0 pl-6">
                                     <p class="text-sm font-semibold">100042 — Иванов Пётр</p>
                                     <p class="text-xs text-zinc-500 dark:text-zinc-400">Абая, д. 10, кв. 4</p>
                                 </div>
@@ -1077,7 +1131,23 @@
                         <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
                             <p class="rounded-lg border border-dashed border-zinc-300 p-3 text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">Введите минимум 2 символа: лицевой счёт, фамилию или телефон.</p>
                             <p class="rounded-lg border border-dashed border-zinc-300 p-3 text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">Ничего не найдено. Проверьте лицевой счёт или попробуйте фамилию.</p>
-                            <p class="rounded-lg border border-dashed border-zinc-300 p-3 text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">Расчётный месяц не открыт: приём оплат недоступен.</p>
+                            <p class="rounded-lg border border-dashed border-zinc-300 p-3 text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">Расчётный месяц не открыт: приём оплат недоступен. В строке клавиш: <kbd class="{{ $paymentDeskKbd }}">Enter</kbd> не принимает оплату: расчётный месяц не открыт.</p>
+                        </div>
+
+                        <div class="mt-4">
+                            <p class="text-xs font-medium text-zinc-500 dark:text-zinc-400">Enter на абоненте без долга или с переплатой — приём не открывается, под поиском подсказка:</p>
+                            <p class="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-200">100042 — долга нет, приём оплаты не требуется.</p>
+                        </div>
+
+                        <div class="mt-4">
+                            <p class="text-xs font-medium text-zinc-500 dark:text-zinc-400">После приёма оплаты: курсор в поиске, текст выделен целиком, подсказка исчезает при первом нажатии в поиске.</p>
+                            <div class="mt-2 flex w-full items-center rounded-lg border border-teal-600 bg-white px-3 py-2 text-base text-zinc-950 ring-1 ring-teal-600 dark:bg-zinc-900 dark:text-zinc-50">
+                                <span class="bg-amber-300 text-zinc-950">100001</span><span aria-hidden="true" class="ml-px h-5 w-px bg-zinc-950 dark:bg-zinc-50"></span>
+                            </div>
+                            <p aria-live="polite" class="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-400/30 dark:bg-emerald-400/10 dark:text-emerald-200">
+                                <span class="font-semibold">Счёт 100001</span>
+                                выделен целиком: <kbd class="{{ $paymentDeskKbd }}">⌫</kbd> стирает всё одним нажатием, или просто набирайте следующий счёт поверх.
+                            </p>
                         </div>
                     </div>
                 </div>
@@ -1087,7 +1157,7 @@
                         <p class="text-sm font-medium text-teal-700 dark:text-teal-300">Шаг 2</p>
                         <h3 class="mt-1 text-base font-semibold">Модалка приёма оплаты</h3>
                         <p class="mt-1 max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
-                            Открывается кнопкой «Оплатить» поверх поиска; поиск и список под ней не сбрасываются. Долг считается тем же движком, что и оборотно-сальдовая ведомость. Плитка «Корректировки» появляется, только когда корректировки не нулевые. Поле суммы всегда пустое: оператор вводит фактически принятую сумму, а весь долг подставляет кнопкой «Вся сумма». После «Принять оплату» или «Отмена» модалка закрывается, курсор возвращается в поиск; при ошибке модалка остаётся открытой с введённой суммой.
+                            Открывается кнопкой «Оплатить» поверх поиска; поиск и список под ней не сбрасываются. Долг считается тем же движком, что и оборотно-сальдовая ведомость. Плитка «Корректировки» появляется, только когда корректировки не нулевые. Поле суммы всегда пустое: оператор вводит фактически принятую сумму, а весь долг подставляет кнопкой «Вся сумма», клавишей F4 или Enter на пустой сумме — оплата всего долга это Enter Enter. Enter в сумме, способе и дате принимает оплату, в примечании Enter переносит строку, а Ctrl+Enter принимает. Способ оплаты и дата — обычные поля браузера, чтобы Enter не раскрывал в них список. После «Принять оплату» или «Отмена» модалка закрывается, курсор возвращается в поиск; при ошибке модалка остаётся открытой с введённой суммой.
                         </p>
                     </div>
 
@@ -1156,8 +1226,9 @@
                                         <label class="text-sm font-medium">Сумма<span class="text-rose-600 dark:text-rose-400">*</span></label>
                                         <div class="mt-1 flex items-stretch overflow-hidden rounded-md border border-zinc-300 bg-white dark:border-zinc-700 dark:bg-zinc-900">
                                             <input inputmode="decimal" placeholder="0,00" class="w-full bg-transparent px-3 py-2 text-base text-zinc-950 outline-none dark:text-zinc-50" value="">
-                                            <button type="button" class="border-l border-zinc-300 px-3 text-xs font-medium text-zinc-600 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800">Вся сумма</button>
+                                            <button type="button" class="inline-flex shrink-0 items-center gap-1.5 border-l border-zinc-300 px-3 text-xs font-medium whitespace-nowrap text-zinc-600 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800">Вся сумма <kbd class="{{ $paymentDeskKbd }}">F4</kbd></button>
                                         </div>
+                                        <p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Пустая сумма и <kbd class="{{ $paymentDeskKbd }}">Enter</kbd> — подставить весь долг. <kbd class="{{ $paymentDeskKbd }}">Enter</kbd> с суммой — принять оплату.</p>
                                         <p class="mt-1 text-sm text-rose-600 dark:text-rose-400">Поле «Сумма» обязательно.</p>
                                     </div>
                                     <div>
@@ -1173,13 +1244,21 @@
                                     </div>
                                     <div class="sm:col-span-2">
                                         <label class="text-sm font-medium">Примечание</label>
-                                        <div class="mt-1 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-500">—</div>
+                                        <div class="mt-1 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400">Необязательно. Ctrl+Enter — принять оплату</div>
                                     </div>
                                 </div>
+
+                                <p class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-zinc-600 dark:text-zinc-300">
+                                    <span><kbd class="{{ $paymentDeskKbd }}">Enter</kbd> принять</span>
+                                    <span><kbd class="{{ $paymentDeskKbd }}">F4</kbd> вся сумма</span>
+                                    <span><kbd class="{{ $paymentDeskKbd }}">Esc</kbd> отмена</span>
+                                    <span><kbd class="{{ $paymentDeskKbd }}">Tab</kbd> поля</span>
+                                    <span><kbd class="{{ $paymentDeskKbd }}">Ctrl</kbd> <kbd class="{{ $paymentDeskKbd }}">Enter</kbd> принять из примечания</span>
+                                </p>
                             </div>
 
                             <div class="flex flex-wrap items-center gap-2 border-t border-zinc-200 px-5 py-4 dark:border-zinc-800">
-                                <button class="rounded-md bg-teal-700 px-3 py-2 text-sm font-medium text-white transition hover:bg-teal-800 dark:bg-teal-500 dark:text-zinc-950 dark:hover:bg-teal-400">Принять оплату</button>
+                                <button class="inline-flex items-center gap-2 rounded-md bg-teal-700 px-3 py-2 text-sm font-medium text-white transition hover:bg-teal-800 dark:bg-teal-500 dark:text-zinc-950 dark:hover:bg-teal-400">Принять оплату <kbd class="{{ $paymentDeskKbdOnPrimary }}">Enter</kbd></button>
                                 <button class="rounded-md border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-900">Отмена</button>
                             </div>
                         </div>

@@ -22,6 +22,7 @@ use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Js;
 use Livewire\Livewire;
 
 uses(RefreshDatabase::class);
@@ -115,6 +116,34 @@ function paymentDeskDebtFromReading(Organization $organization, UtilityService $
 function paymentDeskPay(Client $client): TestAction
 {
     return TestAction::make('pay')->arguments(['client' => $client->id]);
+}
+
+/**
+ * Rows of the search list in the order the arrows move over them.
+ *
+ * @return array<int, string>
+ */
+function paymentDeskRows(string $html): array
+{
+    preg_match_all('/<li\b[^>]*\bdata-payment-desk-row="\d+".*?<\/li>/s', $html, $matches);
+
+    return $matches[0];
+}
+
+/**
+ * The key of the search list: a new key is a new list, and the highlight starts over.
+ */
+function paymentDeskResultsKey(string $html): ?string
+{
+    return preg_match('/wire:key="(payment-desk-results-[^"]+)"/', $html, $matches) === 1 ? $matches[1] : null;
+}
+
+/**
+ * What the «Оплатить» button of a row calls; Enter in the search presses that button.
+ */
+function paymentDeskPayClick(Client $client): string
+{
+    return "mountAction('pay', ".Js::from(['client' => $client->id]).')';
 }
 
 /**
@@ -494,16 +523,18 @@ test('без корректировок плитки «Корректировк�
         ->assertMountedActionModalDontSee('Корректировки');
 });
 
-test('кнопка «Вся сумма» подставляет долг', function (): void {
+test('кнопка «Вся сумма», F4 и Enter на пустой сумме подставляют один и тот же долг', function (): void {
     ['organization' => $organization, 'utilityService' => $utilityService] = paymentDeskOrganization();
     $billingPeriod = billingPeriodFor($organization);
     paymentDeskOperator($organization);
 
     $client = paymentDeskDebtFromReading($organization, $utilityService, $billingPeriod, 25);
 
+    // F4 и Enter на пустой сумме подставляют долг в браузере, из атрибута поля суммы.
     Livewire::test(PaymentDesk::class)
         ->set('search', $client->account_number)
         ->mountAction(paymentDeskPay($client))
+        ->assertMountedActionModalSeeHtml('data-payment-desk-full-debt="2500.00"')
         ->callAction(TestAction::make('fillFullDebt')->schemaComponent('amount'))
         ->assertActionMounted(paymentDeskPay($client))
         ->assertSchemaStateSet(['amount' => '2500.00']);
@@ -872,4 +903,222 @@ test('оплату, записанную внешним провайдером, 
         ->assertCanSeeTableRecords([$payment])
         ->assertActionHidden(TestAction::make(EditAction::getDefaultName())->table($payment))
         ->assertActionHidden(TestAction::make(DeleteAction::getDefaultName())->table($payment));
+});
+
+// --- Клавиатура -------------------------------------------------------------
+
+test('Enter в поиске нажимает «Оплатить» выделенной строки: тот же payAction с тем же абонентом', function (): void {
+    ['organization' => $organization, 'utilityService' => $utilityService] = paymentDeskOrganization();
+    $billingPeriod = billingPeriodFor($organization);
+    paymentDeskOperator($organization);
+
+    $first = paymentDeskDebtFromReading($organization, $utilityService, $billingPeriod, 30, [
+        'name' => 'Должников Дмитрий',
+        'account_number' => '7018340',
+    ]);
+    $second = paymentDeskDebtFromReading($organization, $utilityService, $billingPeriod, 20, [
+        'name' => 'Должникова Дарья',
+        'account_number' => '7018341',
+    ]);
+
+    $page = Livewire::test(PaymentDesk::class)->set('search', 'Должников');
+    $rows = paymentDeskRows($page->html());
+
+    // Стрелки ходят по строкам в этом порядке; номер строки — то, что выделяет Alpine.
+    expect($rows)->toHaveCount(2)
+        ->and($rows[0])->toContain('data-payment-desk-row="0"')
+        ->and($rows[0])->toContain('data-payment-desk-account="7018340"')
+        ->and($rows[0])->toContain('data-payment-desk-pay-button')
+        ->and($rows[0])->toContain(paymentDeskPayClick($first))
+        ->and($rows[0])->not->toContain(paymentDeskPayClick($second))
+        ->and($rows[1])->toContain('data-payment-desk-row="1"')
+        ->and($rows[1])->toContain('data-payment-desk-account="7018341"')
+        ->and($rows[1])->toContain(paymentDeskPayClick($second));
+
+    // Нажатая клавишей кнопка открывает ту же модалку, что и мышью.
+    $page
+        ->mountAction(paymentDeskPay($second))
+        ->assertActionMounted(paymentDeskPay($second))
+        ->assertMountedActionModalSee('7018341 — Должникова Дарья');
+});
+
+test('у абонента без долга Enter не открывает приём, а подсказка объясняет почему', function (string $state): void {
+    ['organization' => $organization, 'utilityService' => $utilityService] = paymentDeskOrganization();
+    $billingPeriod = billingPeriodFor($organization);
+    paymentDeskOperator($organization);
+
+    $client = match ($state) {
+        'settled' => paymentDeskClient($organization, $utilityService, ['name' => 'Расчётов Роман']),
+        'overpaid' => paymentDeskDebtFromReading($organization, $utilityService, $billingPeriod, 10, ['name' => 'Расчётов Роман']),
+    };
+
+    if ($state === 'overpaid') {
+        Payment::query()->create([
+            'organization_id' => $organization->id,
+            'client_id' => $client->id,
+            'billing_period_id' => $billingPeriod->id,
+            'amount' => 1500,
+            'method' => PaymentMethod::Cash->value,
+        ]);
+    }
+
+    $page = Livewire::test(PaymentDesk::class)->set('search', 'Расчётов');
+    $rows = paymentDeskRows($page->html());
+
+    // Enter нажимает кнопку строки, а у такой строки кнопки нет.
+    expect($rows)->toHaveCount(1)
+        ->and($rows[0])->toContain('data-payment-desk-account="'.$client->account_number.'"')
+        ->and($rows[0])->not->toContain('data-payment-desk-pay-button');
+
+    $page
+        ->assertSeeHtml('data-payment-desk-billing-open="1"')
+        ->assertSee('долга нет, приём оплаты не требуется.')
+        ->mountAction(paymentDeskPay($client))
+        ->assertActionNotMounted()
+        ->assertNotified('Долга нет');
+})->with(['settled', 'overpaid']);
+
+test('без открытого расчётного месяца Enter не принимает оплату, и подсказки говорят почему', function (): void {
+    ['organization' => $organization, 'utilityService' => $utilityService] = paymentDeskOrganization();
+    $billingPeriod = billingPeriodFor($organization);
+    paymentDeskOperator($organization);
+
+    $client = paymentDeskDebtFromReading($organization, $utilityService, $billingPeriod, 30, ['name' => 'Должников Дмитрий']);
+
+    $billingPeriod->forceFill(['status' => BillingPeriodStatus::Closed, 'closed_at' => now()])->save();
+
+    $page = Livewire::test(PaymentDesk::class)->set('search', 'Должников');
+    $rows = paymentDeskRows($page->html());
+
+    expect($rows)->toHaveCount(1)
+        ->and($rows[0])->not->toContain('data-payment-desk-pay-button');
+
+    $page
+        ->assertSeeHtml('data-payment-desk-billing-open="0"')
+        ->assertSee('не принимает оплату: расчётный месяц не открыт')
+        ->assertSee('Расчётный месяц не открыт: приём оплат недоступен.')
+        ->mountAction(paymentDeskPay($client))
+        ->assertActionNotMounted();
+});
+
+test('после приёма оплаты список тот же: выделение остаётся, а странице передаётся счёт для подсказки', function (): void {
+    ['organization' => $organization, 'utilityService' => $utilityService] = paymentDeskOrganization();
+    $billingPeriod = billingPeriodFor($organization);
+    paymentDeskOperator($organization);
+
+    paymentDeskDebtFromReading($organization, $utilityService, $billingPeriod, 30, [
+        'name' => 'Должников Дмитрий',
+        'account_number' => '7018340',
+    ]);
+    $second = paymentDeskDebtFromReading($organization, $utilityService, $billingPeriod, 20, [
+        'name' => 'Должникова Дарья',
+        'account_number' => '7018341',
+    ]);
+
+    $page = Livewire::test(PaymentDesk::class)->set('search', 'Должников');
+    $listBefore = paymentDeskResultsKey($page->html());
+
+    $page
+        ->callAction(paymentDeskPay($second), [
+            'amount' => 500,
+            'method' => PaymentMethod::Cash->value,
+            'paid_at' => today()->toDateString(),
+        ])
+        ->assertHasNoFormErrors()
+        ->assertDispatched('payment-desk-reset', account: '7018341')
+        ->assertSet('search', 'Должников')
+        ->assertSee('Долг 1 500,00 ₸');
+
+    $rows = paymentDeskRows($page->html());
+
+    expect($listBefore)->not->toBeNull()
+        ->and(paymentDeskResultsKey($page->html()))->toBe($listBefore)
+        ->and($rows[1])->toContain('data-payment-desk-account="7018341"')
+        ->and($rows[1])->toContain(paymentDeskPayClick($second));
+});
+
+test('новый текст поиска — новый список, и выделение снова на первой строке', function (): void {
+    ['organization' => $organization, 'utilityService' => $utilityService] = paymentDeskOrganization();
+    $billingPeriod = billingPeriodFor($organization);
+    paymentDeskOperator($organization);
+
+    paymentDeskDebtFromReading($organization, $utilityService, $billingPeriod, 30, ['name' => 'Должников Дмитрий']);
+    paymentDeskDebtFromReading($organization, $utilityService, $billingPeriod, 20, ['name' => 'Должникова Дарья']);
+
+    $page = Livewire::test(PaymentDesk::class)->set('search', 'Должников');
+    $wideList = paymentDeskResultsKey($page->html());
+
+    $page->set('search', 'Должникова');
+    $narrowList = paymentDeskResultsKey($page->html());
+
+    $page->set('search', 'Должников');
+
+    expect($wideList)->not->toBeNull()
+        ->and($narrowList)->not->toBeNull()
+        ->and($narrowList)->not->toBe($wideList)
+        ->and(paymentDeskResultsKey($page->html()))->toBe($wideList)
+        ->and($page->html())->toContain('x-init="activeRow = 0"');
+});
+
+test('страница показывает строку клавиш, панель «Горячие клавиши» и место для подсказок', function (): void {
+    ['organization' => $organization] = paymentDeskOrganization();
+    billingPeriodFor($organization);
+    paymentDeskOperator($organization);
+
+    $page = Livewire::test(PaymentDesk::class)
+        ->assertActionVisible('hotkeys')
+        ->assertSeeHtml('aria-controls="payment-desk-hotkeys"')
+        ->assertSeeHtml('aria-describedby="payment-desk-search-keys"')
+        ->assertSeeInOrder(['выбрать', 'оплатить', 'стереть выделенный счёт', 'очистить', 'все клавиши'])
+        ->assertSeeInOrder([
+            'Горячие клавиши',
+            'В поиске',
+            'следующий, предыдущий абонент',
+            'оплатить выделенного абонента',
+            'очистить поиск',
+            'показать, скрыть эту справку',
+            'В окне приёма',
+            'пустая сумма — подставить весь долг, иначе принять оплату',
+            'вся сумма долга',
+            'сумма, способ оплаты, дата, примечание',
+            'принять из примечания',
+            'отмена, курсор снова в поиске',
+        ])
+        ->assertSeeHtml('aria-live="polite"')
+        ->assertSee('выделен целиком:')
+        ->assertSee('стирает всё одним нажатием, или просто набирайте следующий счёт поверх.');
+
+    $html = $page->html();
+
+    // Панель — обычная секция с заголовком, а клавиши — чипы <kbd>.
+    expect($html)->toMatch('/<section[^>]*id="payment-desk-hotkeys"/')
+        ->and($html)->toMatch('/<kbd[^>]*>F1<\/kbd>/u')
+        ->and($html)->toMatch('/<kbd[^>]*>Esc<\/kbd>/u')
+        ->and($html)->toMatch('/<kbd[^>]*>↓<\/kbd>/u');
+});
+
+test('модалка приёма показывает клавиши и принимает Enter, F4 и Ctrl+Enter в своих полях', function (): void {
+    ['organization' => $organization, 'utilityService' => $utilityService] = paymentDeskOrganization();
+    $billingPeriod = billingPeriodFor($organization);
+    paymentDeskOperator($organization);
+
+    $client = paymentDeskDebtFromReading($organization, $utilityService, $billingPeriod, 30);
+
+    $page = Livewire::test(PaymentDesk::class)
+        ->set('search', $client->account_number)
+        ->mountAction(paymentDeskPay($client))
+        ->assertMountedActionModalSee(['подставить весь долг', 'с суммой — принять оплату', 'принять из примечания', 'отмена', 'поля'])
+        ->assertMountedActionModalSeeHtml([
+            'data-payment-desk-pay="data-payment-desk-pay" x-on:keydown="onPayModalKeydown($event)"',
+            'data-payment-desk-amount="data-payment-desk-amount"',
+            'placeholder="Необязательно. Ctrl+Enter — принять оплату"',
+        ]);
+
+    $html = $page->getMountedActionModalHtml();
+
+    // Способ и дата — поля браузера: Enter в них принимает оплату, а не раскрывает список.
+    expect($html)->toMatch('/<select[^>]*wire:model="mountedActions\.0\.data\.method"/')
+        ->and($html)->toMatch('/<input[^>]*type="date"[^>]*wire:model="mountedActions\.0\.data\.paid_at"/')
+        ->and($html)->toMatch('/Принять оплату\s*<kbd[^>]*>Enter<\/kbd>/u')
+        ->and($html)->toMatch('/Вся сумма\s*<kbd[^>]*>F4<\/kbd>/u');
 });

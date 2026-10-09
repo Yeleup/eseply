@@ -135,6 +135,21 @@ test('tenant profile updates organization utility service', function () {
         ->and($organization->utilityService()->count())->toBe(1);
 });
 
+test('factory organization phones always pass the tenant profile phone validation', function () {
+    $organization = Organization::factory()->create();
+    UtilityService::factory()->for($organization)->create();
+
+    actingAsOrganizationTenant($organization);
+
+    $phoneField = Livewire::test(EditOrganizationProfile::class)
+        ->instance()->form->getFlatFields()['phone'];
+
+    $phones = Organization::factory()->count(500)->make()->pluck('phone');
+
+    expect($phoneField->isTel())->toBeTrue()
+        ->and($phones)->each->toMatch($phoneField->getTelRegex());
+});
+
 test('regions and streets belong to an organization', function () {
     $organization = Organization::factory()->create();
     $region = Region::factory()

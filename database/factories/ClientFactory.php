@@ -25,7 +25,7 @@ class ClientFactory extends Factory
             'name' => fake()->name(),
             'iin' => fake()->unique()->numerify('############'),
             'client_type' => ClientType::Individual->value,
-            'phone' => fake()->unique()->phoneNumber(),
+            'phone' => '+7 7'.fake()->unique()->numerify('## ### ## ##'),
             'contract' => 'Contract '.fake()->numerify('####'),
             'technical_conditions' => null,
             'region_id' => null,

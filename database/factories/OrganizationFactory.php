@@ -20,7 +20,7 @@ class OrganizationFactory extends Factory
         return [
             'name' => fake()->company(),
             'bin_iin' => fake()->numerify('############'),
-            'phone' => fake()->phoneNumber(),
+            'phone' => '+7 7'.fake()->numerify('## ### ## ##'),
             'address' => fake()->address(),
             'bank' => fake()->company().' Bank',
             'iban' => fake()->iban('KZ'),

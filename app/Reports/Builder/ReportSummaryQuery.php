@@ -231,12 +231,16 @@ final class ReportSummaryQuery
         return $name;
     }
 
+    /**
+     * The value rounded as the report shows it, so the screen and the XLSX file of the
+     * summary read the same number (`ReportFieldType::numberOf()`).
+     */
     private function metricValue(ReportMetric $metric, mixed $value): int|float|null
     {
         if ($value === null) {
             return null;
         }
 
-        return $metric->type === ReportFieldType::Int ? (int) $value : (float) $value;
+        return $metric->type->numberOf($value);
     }
 }

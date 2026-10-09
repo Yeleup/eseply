@@ -25,6 +25,7 @@ use App\Reports\ReportSummaryService;
 use Filament\Facades\Filament;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Number;
 use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
 use OpenSpout\Common\Entity\Cell;
@@ -1957,3 +1958,154 @@ test('детальный режим показаний и абонентов з�
     'показания' => ['readings', 'account_number,address,meter_number,controller,daily_consumption'],
     'абоненты' => ['clients', 'account_number,address,controller,debt,debt_per_resident'],
 ]);
+
+// --- Округление: экран и XLSX ------------------------------------------------
+
+test('долг на проживающего и средний долг на половине копейки одинаковы на экране и в XLSX', function (): void {
+    $fixture = reportBuilderFixture();
+    $street = Street::factory()->for($fixture['esil'])->create(['name' => 'Тестовая']);
+
+    $client = function (string $accountNumber, int $residents, float $receipt, Street $street) use ($fixture): Client {
+        $client = reportBuilderClient($fixture['organization'], $fixture['utilityService'], [
+            'account_number' => $accountNumber,
+            'name' => 'Абонент '.$accountNumber,
+            'region_id' => $fixture['esil']->id,
+            'street_id' => $street->id,
+            'residents_count' => $residents,
+        ]);
+
+        Receipt::factory()->for($fixture['organization'])->for($client)->create([
+            'period' => '202606',
+            'account_number' => $accountNumber,
+            'client_name' => $client->name,
+            'amount' => $receipt,
+            'issued_at' => '2026-06-15 10:00:00',
+        ]);
+
+        return $client;
+    };
+
+    // 1.00 / 8 = 0.125, (1.00 + 0.25) / 2 = 0.625 and 1.08 / 8 = 0.135: ICU rounds the first
+    // two ties half to even, PHP rounds them half up.
+    $eighth = $client('300001', 8, 1.00, $street);
+    $quarter = $client('300002', 1, 0.25, $street);
+    $odd = $client('300003', 8, 1.08, $fixture['kabanbay']);
+    reportBuilderOperator($fixture['organization']);
+
+    $money = fn (float $amount): string => Number::currency($amount, 'KZT', config('app.locale'));
+
+    $page = Livewire::withQueryParams(['source' => 'clients', 'fields' => 'account_number,debt,debt_per_resident'])
+        ->test(BuildReport::class)
+        ->filterTable('address', ['street_ids' => [$street->id, $fixture['kabanbay']->id]])
+        ->assertTableColumnStateSet('debt_per_resident', 0.13, $eighth)
+        ->assertTableColumnFormattedStateSet('debt_per_resident', $money(0.13), $eighth)
+        ->assertTableColumnFormattedStateSet('debt_per_resident', $money(0.25), $quarter)
+        ->assertTableColumnFormattedStateSet('debt_per_resident', $money(0.14), $odd);
+
+    expect(reportBuilderXlsxRows($page->callAction('downloadXlsx')))->toBe([
+        ['Лицевой счёт', 'Долг', 'Долг на проживающего'],
+        ['100004', 0, 0],
+        ['300001', 1, 0.13],
+        ['300002', 0.25, 0.25],
+        ['300003', 1.08, 0.14],
+    ]);
+
+    $summary = Livewire::withQueryParams(['source' => 'clients', 'mode' => 'summary', 'group' => 'street'])
+        ->test(BuildReport::class)
+        ->filterTable('address', ['street_ids' => [$street->id]]);
+
+    expect(reportBuilderSummary($summary))->toBe([
+        ['group_label' => 'Есильский / Тестовая', 'is_total' => false, 'clients' => 2, 'sum' => 1.25, 'average' => 0.63],
+        ['group_label' => 'Итого', 'is_total' => true, 'clients' => 2, 'sum' => 1.25, 'average' => 0.63],
+    ]);
+
+    $summary
+        ->assertTableColumnFormattedStateSet('average', $money(0.63), 'group:'.$street->id)
+        ->assertTableColumnFormattedStateSet('average', $money(0.63), 'total');
+
+    expect(reportBuilderXlsxRows($summary->callAction('downloadXlsx')))->toBe([
+        ['Улица', 'Абонентов', 'Долг', 'Средний долг'],
+        ['Есильский / Тестовая', 2, 1.25, 0.63],
+        ['Итого', 2, 1.25, 0.63],
+    ]);
+});
+
+test('среднее потребление на половине сотой одинаково на экране и в XLSX', function (): void {
+    $fixture = reportBuilderFixture();
+    $street = Street::factory()->for($fixture['esil'])->create(['name' => 'Тестовая']);
+    $client = reportBuilderClient($fixture['organization'], $fixture['utilityService'], [
+        'account_number' => '300001',
+        'region_id' => $fixture['esil']->id,
+        'street_id' => $street->id,
+    ]);
+
+    // Five readings of 1 m³ and three of 0: 5 / 8 = 0.625, which ICU rounds half to even.
+    foreach ([1, 1, 1, 1, 1, 0, 0, 0] as $index => $consumption) {
+        $meter = Meter::factory()->for($fixture['organization'])->for($client)->create([
+            'utility_service_id' => $fixture['utilityService']->id,
+            'number' => 'T-'.$index,
+            'initial_reading' => 0,
+        ]);
+
+        MeterReading::factory()->for($fixture['organization'])->for($meter)->create([
+            'period' => '202606',
+            'previous_reading' => 10,
+            'current_reading' => 10 + $consumption,
+            'read_at' => '2026-06-10',
+        ]);
+    }
+
+    reportBuilderOperator($fixture['organization']);
+
+    $fraction = fn (float $value): string => Number::format($value, 2, locale: config('app.locale'));
+
+    $summary = Livewire::withQueryParams(['source' => 'readings', 'mode' => 'summary', 'group' => 'street'])
+        ->test(BuildReport::class)
+        ->filterTable('address', ['street_ids' => [$street->id]]);
+
+    expect(reportBuilderSummary($summary))->toBe([
+        ['group_label' => 'Есильский / Тестовая', 'is_total' => false, 'clients' => 1, 'count' => 8, 'sum' => 5, 'average' => 0.63],
+        ['group_label' => 'Итого', 'is_total' => true, 'clients' => 1, 'count' => 8, 'sum' => 5, 'average' => 0.63],
+    ]);
+
+    $summary
+        ->assertTableColumnFormattedStateSet('average', $fraction(0.63), 'group:'.$street->id)
+        ->assertTableColumnFormattedStateSet('average', $fraction(0.63), 'total');
+
+    expect(reportBuilderXlsxRows($summary->callAction('downloadXlsx')))->toBe([
+        ['Улица', 'Абонентов', 'Показаний', 'Потребление', 'Среднее потребление'],
+        ['Есильский / Тестовая', 1, 8, 5, 0.63],
+        ['Итого', 1, 8, 5, 0.63],
+    ]);
+
+    $detail = Livewire::withQueryParams(['source' => 'readings', 'fields' => 'meter_number,consumption,daily_consumption'])
+        ->test(BuildReport::class)
+        ->filterTable('address', ['street_ids' => [$street->id]]);
+
+    // 1 / 30 = 0.0333…: the screen and the file both show 0.03.
+    $reading = MeterReading::query()->whereHas('meter', fn ($query) => $query->where('number', 'T-0'))->firstOrFail();
+
+    $detail->assertTableColumnFormattedStateSet('daily_consumption', $fraction(0.03), $reading);
+
+    expect(reportBuilderXlsxRows($detail->callAction('downloadXlsx'))[1])->toBe(['T-0', 1, 0.03]);
+});
+
+test('денежные и процентные ячейки оплат и начислений по-прежнему совпадают на экране и в XLSX', function (): void {
+    $fixture = reportBuilderFixture();
+    reportBuilderOperator($fixture['organization']);
+
+    $money = fn (float $amount): string => Number::currency($amount, 'KZT', config('app.locale'));
+
+    $payments = Livewire::withQueryParams(['mode' => 'summary', 'group' => 'region'])->test(BuildReport::class)
+        ->assertTableColumnFormattedStateSet('average', $money(1166.67), 'group:'.$fixture['almalinsky']->id)
+        ->assertTableColumnFormattedStateSet('sum', $money(3500), 'group:'.$fixture['almalinsky']->id);
+
+    expect(reportBuilderXlsxRows($payments->callAction('downloadXlsx'))[1])->toBe(['Алмалинский', 2, 3, 3500, 1166.67]);
+
+    $accruals = Livewire::withQueryParams(['source' => 'accruals', 'mode' => 'summary', 'group' => 'region'])->test(BuildReport::class)
+        ->assertTableColumnFormattedStateSet('collection_percent', '80.00%', 'group:'.$fixture['almalinsky']->id)
+        ->assertTableColumnFormattedStateSet('collection_percent', '95.00%', 'total')
+        ->assertTableColumnFormattedStateSet('average', $money(1000), 'total');
+
+    expect(collect(reportBuilderXlsxRows($accruals->callAction('downloadXlsx')))->last())->toBe(['Итого', 4, 4, 4000, 1000, 95]);
+});

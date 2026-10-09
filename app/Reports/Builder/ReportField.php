@@ -105,8 +105,9 @@ final readonly class ReportField
     }
 
     /**
-     * Value of the field in the row: a number for the numeric types, `null` when the
-     * row has no value or the formula divides by zero.
+     * Value of the field in the row: a number for the numeric types, rounded as the report
+     * shows it (`ReportFieldType::numberOf()`), `null` when the row has no value or the
+     * formula divides by zero.
      */
     public function valueOf(Model $record, ?BillingPeriod $billingPeriod): mixed
     {
@@ -120,10 +121,10 @@ final readonly class ReportField
             return null;
         }
 
-        return match ($this->type) {
-            ReportFieldType::Int => (int) $value,
-            ReportFieldType::Money, ReportFieldType::Percent, ReportFieldType::Float => (float) $value,
-            default => $this->formatUsing instanceof Closure ? ($this->formatUsing)($value) : $value,
-        };
+        if ($this->type->isNumeric()) {
+            return $this->type->numberOf($value);
+        }
+
+        return $this->formatUsing instanceof Closure ? ($this->formatUsing)($value) : $value;
     }
 }

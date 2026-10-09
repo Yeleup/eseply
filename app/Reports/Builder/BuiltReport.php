@@ -299,10 +299,10 @@ final class BuiltReport implements FiltersExcelExport
     }
 
     /**
-     * A number is written with the decimals the screen shows: a sum or an average
-     * of money keeps its two decimals, a fraction and a percentage are rounded to
-     * two decimals as well, so a computed value such as a debt per resident does
-     * not carry the long tail of the SQL division into the file.
+     * A number is written as the screen shows it: whole numbers stay whole, money and
+     * fractions are the value rounded once by `ReportFieldType::numberOf()` — the same
+     * value the screen formats, so a tie such as 0.125 is 0.13 in both places — and a
+     * percentage is rounded half up to two decimals, like `percent()` on the screen.
      */
     private function excelCell(ReportFieldType $type, mixed $value, ?Style $style): Cell
     {
@@ -313,14 +313,18 @@ final class BuiltReport implements FiltersExcelExport
         return match ($type) {
             ReportFieldType::Text => new StringCell((string) $value, $style),
             ReportFieldType::Date => new StringCell(self::date($value), $style),
-            ReportFieldType::Int => new NumericCell((int) $value, $style),
-            ReportFieldType::Money => new NumericCell(round((float) $value, 2), $style),
-            ReportFieldType::Percent, ReportFieldType::Float => new NumericCell(
-                round((float) $value, 2),
-                // The bold style of «Итого» is shared by the whole row: the format goes on a copy.
-                ($style instanceof Style ? clone $style : new Style)->setFormat('0.00'),
-            ),
+            ReportFieldType::Int, ReportFieldType::Money => new NumericCell($type->numberOf($value), $style),
+            ReportFieldType::Float => new NumericCell($type->numberOf($value), self::twoDecimals($style)),
+            ReportFieldType::Percent => new NumericCell(round((float) $value, 2), self::twoDecimals($style)),
         };
+    }
+
+    /**
+     * The bold style of «Итого» is shared by the whole row, so the format goes on a copy.
+     */
+    private static function twoDecimals(?Style $style): Style
+    {
+        return ($style instanceof Style ? clone $style : new Style)->setFormat('0.00');
     }
 
     private static function date(mixed $value): string

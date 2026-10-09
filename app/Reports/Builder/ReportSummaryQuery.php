@@ -19,6 +19,10 @@ use Illuminate\Support\Facades\DB;
  * expression computes both, so sums add up across the groups while averages and
  * percentages are recomputed from the totals of their own row.
  *
+ * Both parts always select the number of rows, even when the operator turned every
+ * metric off: without an aggregate the «Итого» part would return one row per source
+ * row instead of a single row.
+ *
  * In the summary by controllers a row belongs to every controller whose zone matches
  * the client, so the sums of «Итого» repeat the sum of the visible groups, while
  * «Абонентов» of «Итого» counts each client once.
@@ -46,12 +50,12 @@ final class ReportSummaryQuery
         $groups = DB::query()->fromSub($rows, 'report_rows');
         $this->joinDimension($groups, $dimension, $organization);
         $this->selectGroup($groups, $dimension);
-        $groups->selectRaw('0 as is_total');
+        $groups->selectRaw('0 as is_total, count(*) as report_rows_count');
         $this->selectMetrics($groups, $build->metrics);
 
         $total = DB::query()->fromSub($rows, 'report_rows');
         $this->joinDimension($total, $dimension, $organization);
-        $total->selectRaw('null as group_key, null as group_name, null as group_parent, null as group_sort, 1 as is_total');
+        $total->selectRaw('null as group_key, null as group_name, null as group_parent, null as group_sort, 1 as is_total, count(*) as report_rows_count');
         $this->selectMetrics($total, $build->metrics);
 
         $result = $groups

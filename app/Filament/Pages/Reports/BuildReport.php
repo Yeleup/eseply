@@ -95,6 +95,7 @@ class BuildReport extends Page implements HasTable
     {
         abort_unless(OrganizationMemberAccess::canManageTenant(), 403);
 
+        $this->rejectCoercedBillingPeriod();
         $this->normalizeBuild();
     }
 
@@ -388,6 +389,17 @@ class BuildReport extends Page implements HasTable
             $this->reportBuild(),
             [$this->getTableSortColumn(), $this->getTableSortDirection()],
         );
+    }
+
+    /**
+     * Livewire decodes the address value as JSON before it reaches the property, so
+     * `1e1` or `12.0` would arrive as a plain `10` or `12`. The raw value decides.
+     */
+    private function rejectCoercedBillingPeriod(): void
+    {
+        if (request()->query->has('period') && ReportBuild::billingPeriodIdOf(request()->query('period')) === null) {
+            $this->period = '';
+        }
     }
 
     /**

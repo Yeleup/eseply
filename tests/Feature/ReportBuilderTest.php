@@ -1069,3 +1069,156 @@ test('XLSX сводного режима повторяет сводку с «И
 
     expect(reportBuilderXlsxRows($zero->callAction('downloadXlsx'))[2])->toBe(['Итого', 1, 1, 0, 0, '—']);
 });
+
+// --- Ревью: граничные случаи --------------------------------------------------
+
+test('без единого показателя сводка остаётся группами и одной строкой «Итого», в том числе в SQL', function (): void {
+    $fixture = reportBuilderFixture();
+    reportBuilderOperator($fixture['organization']);
+
+    $page = Livewire::withQueryParams(['mode' => 'summary', 'group' => 'city', 'off' => 'clients,count,sum,average'])
+        ->test(BuildReport::class);
+
+    expect($page->instance()->reportBuild()->metrics)->toBe([])
+        ->and(reportBuilderColumnNames($page))->toBe(['group_label'])
+        ->and(reportBuilderSummary($page))->toBe([
+            ['group_label' => 'Алматы', 'is_total' => false],
+            ['group_label' => 'Астана', 'is_total' => false],
+            ['group_label' => 'Итого', 'is_total' => true],
+        ]);
+
+    $page->instance()->flushCachedTableRecords();
+
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+    $page->instance()->getTableRecords();
+    $summaryQuery = collect(DB::getQueryLog())->first(fn (array $query): bool => str_contains($query['query'], 'union all'));
+    DB::disableQueryLog();
+
+    $rows = collect(DB::select($summaryQuery['query'], $summaryQuery['bindings']));
+
+    expect($rows->where('is_total', 1))->toHaveCount(1)
+        ->and($rows->where('is_total', 0))->toHaveCount(2);
+
+    expect(reportBuilderXlsxRows($page->callAction('downloadXlsx')))->toBe([['Город'], ['Алматы'], ['Астана'], ['Итого']]);
+
+    $empty = Livewire::withQueryParams([
+        'mode' => 'summary',
+        'group' => 'city',
+        'off' => 'clients,count,sum,average',
+        'period' => (string) $fixture['may']->id,
+    ])->test(BuildReport::class);
+    $empty->instance()->flushCachedTableRecords();
+
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+    $records = $empty->instance()->getTableRecords();
+    $summaryQuery = collect(DB::getQueryLog())->first(fn (array $query): bool => str_contains($query['query'], 'union all'));
+    DB::disableQueryLog();
+
+    expect($records)->toHaveCount(0)
+        ->and(DB::select($summaryQuery['query'], $summaryQuery['bindings']))->toHaveCount(1);
+});
+
+test('расчётный месяц из адреса и состояния — только положительное целое из цифр', function (string $period): void {
+    $fixture = reportBuilderFixture();
+    reportBuilderOperator($fixture['organization']);
+
+    $value = str_replace('{id}', (string) $fixture['may']->id, $period);
+
+    $fromAddress = Livewire::withQueryParams(['period' => $value])->test(BuildReport::class);
+
+    expect($fromAddress->instance()->reportBuild()->billingPeriod?->is($fixture['june']))->toBeTrue()
+        ->and($fromAddress->get('period'))->toBe('');
+
+    $fromState = Livewire::test(BuildReport::class)->set('period', $value);
+
+    expect($fromState->instance()->reportBuild()->billingPeriod?->is($fixture['june']))->toBeTrue()
+        ->and($fromState->get('period'))->toBe('');
+
+    $fromAction = Livewire::test(BuildReport::class)->call('selectBillingPeriod', $value);
+
+    expect($fromAction->instance()->reportBuild()->billingPeriod?->is($fixture['june']))->toBeTrue()
+        ->and($fromAction->get('period'))->toBe('');
+
+    $chosen = Livewire::withQueryParams(['period' => (string) $fixture['may']->id])->test(BuildReport::class);
+
+    expect($chosen->instance()->reportBuild()->billingPeriod?->is($fixture['may']))->toBeTrue()
+        ->and($chosen->get('period'))->toBe((string) $fixture['may']->id);
+})->with([
+    'дробное' => ['{id}.9'],
+    'дробное с нулём' => ['{id}.0'],
+    'экспонента' => ['{id}e0'],
+    'со знаком' => ['+{id}'],
+    'с пробелом' => [' {id}'],
+    'отрицательное' => ['-{id}'],
+    'ноль' => ['0'],
+]);
+
+test('в сводке по контроллерам с пересекающимися зонами «Итого» складывает суммы, а абонентов считает один раз', function (): void {
+    $fixture = reportBuilderFixture();
+    reportBuilderZoneController($fixture['organization'], 'Контроллер Абая', street: $fixture['abay']);
+    reportBuilderOperator($fixture['organization']);
+
+    $page = Livewire::withQueryParams(['mode' => 'summary', 'group' => 'controller'])->test(BuildReport::class);
+
+    expect(array_map(
+        fn (array $record): array => [$record['group_label'], $record['clients'], $record['count'], $record['sum'], round($record['average'], 2)],
+        reportBuilderSummary($page),
+    ))->toBe([
+        ['Контроллер Абая', 1, 2, 1500.0, 750.0],
+        ['Контроллер района', 2, 3, 3500.0, 1166.67],
+        ['Контроллер улицы', 1, 1, 3000.0, 3000.0],
+        ['Итого', 3, 6, 8000.0, 1333.33],
+    ]);
+
+    $page->filterTable('controller_ids', [$fixture['regionController']->id]);
+
+    expect(array_column(reportBuilderSummary($page), 'clients', 'group_label'))
+        ->toBe(['Контроллер Абая' => 1, 'Контроллер района' => 2, 'Итого' => 2]);
+});
+
+test('подделанные идентификаторы адреса и контроллеров в состоянии фильтров только сужают или игнорируются', function (): void {
+    $foreignOrganization = Organization::factory()->create();
+    $foreignCity = City::factory()->for($foreignOrganization)->create(['name' => 'Чужой город']);
+    $foreignRegion = Region::factory()->for($foreignOrganization)->for($foreignCity)->create(['name' => 'Чужой район']);
+    $foreignStreet = Street::factory()->for($foreignRegion)->create(['name' => 'Чужая улица']);
+    $foreignController = reportBuilderZoneController($foreignOrganization, 'Чужой контроллер', region: $foreignRegion);
+    $foreign = reportBuilderForeignFixture();
+
+    $fixture = reportBuilderFixture();
+    reportBuilderOperator($fixture['organization']);
+
+    $own = [$fixture['ivanovCash'], $fixture['ivanovKaspi'], $fixture['petrovCash'], $fixture['romashkaKaspi'], $fixture['sidorovCash']];
+
+    $detail = Livewire::test(BuildReport::class)
+        ->filterTable('address', ['city_id' => 'abc', 'region_id' => '1.5', 'street_ids' => ['x', -1, '2.5']])
+        ->assertCanSeeTableRecords($own)
+        ->assertCanNotSeeTableRecords([$foreign['payment']])
+        ->removeTableFilters()
+        ->filterTable('address', ['city_id' => $foreignCity->id])
+        ->assertCanNotSeeTableRecords([...$own, $foreign['payment']])
+        ->removeTableFilters()
+        ->filterTable('address', ['street_ids' => [$foreignStreet->id]])
+        ->assertCanNotSeeTableRecords([...$own, $foreign['payment']])
+        ->removeTableFilters()
+        ->filterTable('controller_ids', [$foreignController->id])
+        ->assertCanNotSeeTableRecords([...$own, $foreign['payment']])
+        ->removeTableFilters()
+        ->filterTable('controller_ids', ['abc', '0'])
+        ->assertCanSeeTableRecords($own);
+
+    $summary = Livewire::withQueryParams(['mode' => 'summary', 'group' => 'city'])->test(BuildReport::class);
+
+    $summary->filterTable('address', ['region_id' => $foreignRegion->id]);
+    expect(reportBuilderSummary($summary))->toBe([]);
+
+    $summary->removeTableFilters()->filterTable('controller_ids', [$foreignController->id]);
+    expect(reportBuilderSummary($summary))->toBe([]);
+
+    $summary->removeTableFilters()->filterTable('address', ['city_id' => 'abc']);
+    expect(collect(reportBuilderSummary($summary))->last()['sum'])->toBe(10500.0);
+
+    $detail->filterTable('address', ['city_id' => $foreignCity->id]);
+    expect(collect(reportBuilderXlsxRows($detail->callAction('downloadXlsx')))->flatten()->contains('FOREIGN-1'))->toBeFalse();
+});

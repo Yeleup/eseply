@@ -140,4 +140,19 @@ test('the report builder preview shows the source, columns, grouping, filters an
         ->assertSee('Выберите измерение в «Группировка», чтобы собрать сводку.')
         ->assertSee('Ни одной строки по текущим фильтрам.')
         ->assertSee('Начислено 0: собираемость не определена');
+
+    $html = $response->getContent();
+    $preview = substr($html, strpos($html, 'id="preview-report-builder"'));
+    $preview = substr($preview, 0, strpos($preview, '</section>'));
+
+    preg_match_all('/<input type="checkbox" checked[^>]*>\s*<span class="min-w-0 flex-1">([^<]+)<\/span>/u', $preview, $selectedColumns);
+
+    $detailTable = substr($preview, strpos($preview, 'Детальная таблица'));
+    $detailTable = substr($detailTable, 0, strpos($detailTable, '</thead>'));
+
+    preg_match_all('/<th[^>]*>([^<]+)<\/th>/u', $detailTable, $detailHeadings);
+
+    expect($selectedColumns[1])->toBe(['Лицевой счёт', 'Абонент', 'Сальдо на начало', 'Начислено', 'Оплачено', 'Собираемость, %'])
+        ->and(array_map(fn (string $heading): string => trim(str_replace(' ↑', '', $heading)), $detailHeadings[1]))
+        ->toBe($selectedColumns[1]);
 });

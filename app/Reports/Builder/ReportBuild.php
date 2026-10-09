@@ -2,6 +2,7 @@
 
 namespace App\Reports\Builder;
 
+use App\Filament\Support\FilterIdentifiers;
 use App\Models\BillingPeriod;
 use App\Models\Organization;
 
@@ -159,18 +160,13 @@ final readonly class ReportBuild
     }
 
     /**
-     * Only a positive integer is kept. Whether the billing period belongs to the
-     * organization is checked while it is resolved.
+     * Only a positive integer written with digits is kept: a fraction, an exponent,
+     * a sign or spaces make the value unknown, and the default billing period is used.
+     * Whether the billing period belongs to the organization is checked while it is resolved.
      */
     public static function billingPeriodIdOf(mixed $input): ?int
     {
-        if (! is_numeric($input)) {
-            return null;
-        }
-
-        $identifier = (int) $input;
-
-        return $identifier > 0 ? $identifier : null;
+        return FilterIdentifiers::one($input);
     }
 
     /**

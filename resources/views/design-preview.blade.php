@@ -2207,6 +2207,7 @@
                                     <tr>
                                         <th class="px-4 py-3 font-medium">Лицевой счёт ↑</th>
                                         <th class="px-4 py-3 font-medium">Абонент</th>
+                                        <th class="px-4 py-3 text-right font-medium">Сальдо на начало</th>
                                         <th class="px-4 py-3 text-right font-medium">Начислено</th>
                                         <th class="px-4 py-3 text-right font-medium">Оплачено</th>
                                         <th class="px-4 py-3 text-right font-medium">Собираемость, %</th>
@@ -2216,6 +2217,7 @@
                                     <tr>
                                         <td class="px-4 py-3 font-semibold">100001</td>
                                         <td class="px-4 py-3">Иванов Иван</td>
+                                        <td class="px-4 py-3 text-right tabular-nums">₸100.00</td>
                                         <td class="px-4 py-3 text-right tabular-nums">₸1,000.00</td>
                                         <td class="px-4 py-3 text-right tabular-nums">₸800.00</td>
                                         <td class="px-4 py-3 text-right tabular-nums">80.00%</td>
@@ -2223,6 +2225,7 @@
                                     <tr>
                                         <td class="px-4 py-3 font-semibold">100002</td>
                                         <td class="px-4 py-3">Петров Пётр</td>
+                                        <td class="px-4 py-3 text-right tabular-nums">₸0.00</td>
                                         <td class="px-4 py-3 text-right tabular-nums">₸0.00</td>
                                         <td class="px-4 py-3 text-right tabular-nums">₸0.00</td>
                                         <td class="px-4 py-3 text-right text-zinc-400" title="Начислено 0: собираемость не определена">—</td>

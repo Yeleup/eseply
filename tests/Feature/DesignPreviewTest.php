@@ -41,6 +41,28 @@ test('the payment desk preview shows every required state', function () {
     }
 });
 
+test('the payment desk preview shows the keyboard states', function () {
+    $response = $this->get(route('design-preview'))->assertSuccessful();
+
+    $response
+        ->assertSeeInOrder([
+            'Горячие клавиши',
+            'В поиске',
+            'следующий, предыдущий абонент',
+            'В окне приёма',
+            'пустая сумма — подставить весь долг, иначе принять оплату',
+        ])
+        ->assertSeeInOrder(['выбрать', 'оплатить', 'стереть выделенный счёт', 'очистить', 'все клавиши'])
+        ->assertSeeInOrder(['100001 — Иванов Иван', 'Оплатить', 'Enter'])
+        ->assertSee('Enter</kbd> не принимает оплату: расчётный месяц не открыт', false)
+        ->assertSee('100042 — долга нет, приём оплаты не требуется.')
+        ->assertSee('выделен целиком:')
+        ->assertSee('стирает всё одним нажатием, или просто набирайте следующий счёт поверх.')
+        ->assertSee('Вся сумма <kbd', false)
+        ->assertSee('принять из примечания')
+        ->assertSee('Принять оплату <kbd', false);
+});
+
 test('the readings entry preview shows every required state', function () {
     $response = $this->get(route('design-preview'))->assertSuccessful();
 

@@ -49,8 +49,12 @@ use UnitEnum;
  * the page is driven by a single search field. Every found abonent with a debt
  * gets an «Оплатить» button that opens the payment in a modal with the debt in
  * front of the operator while the amount is typed. The search and its results
- * stay in place after the payment, and the focus goes back to the search,
- * ready for the next person.
+ * stay in place after the payment, and the focus goes back to the search with
+ * its text selected, ready for the next person.
+ *
+ * The whole desk works from the keyboard: the arrows move a highlight over the
+ * results on the client, and Enter presses the highlighted row's «Оплатить»,
+ * so the keyboard reaches the payment through the same action as the mouse.
  */
 class PaymentDesk extends Page implements HasTable
 {
@@ -104,7 +108,26 @@ class PaymentDesk extends Page implements HasTable
 
     public function getSubheading(): string|Htmlable|null
     {
-        return 'Найдите абонента по лицевому счёту, фамилии или телефону, сверьте долг и примите оплату. Поиск остаётся на месте, а после сохранения курсор снова в поле поиска.';
+        return 'Найдите абонента по лицевому счёту, фамилии или телефону, сверьте долг и примите оплату. Поиск остаётся на месте, а после сохранения курсор снова в поле поиска. Всё делается с клавиатуры: счёт, Enter, сумма, Enter.';
+    }
+
+    /**
+     * @return array<int, Action>
+     */
+    protected function getHeaderActions(): array
+    {
+        return [
+            Action::make('hotkeys')
+                ->label(new HtmlString('Горячие клавиши '.$this->keyChip('F1')))
+                ->color('gray')
+                // The panel lives in the page's Alpine state, as F1 does: opening
+                // it is not worth a request.
+                ->alpineClickHandler('hotkeysOpen = ! hotkeysOpen')
+                ->extraAttributes([
+                    'aria-controls' => 'payment-desk-hotkeys',
+                    'x-bind:aria-expanded' => "hotkeysOpen ? 'true' : 'false'",
+                ]),
+        ];
     }
 
     /**
@@ -201,11 +224,18 @@ class PaymentDesk extends Page implements HasTable
     public function payAction(): Action
     {
         return Action::make('pay')
-            ->label('Оплатить')
+            // The Enter chip shows only on the row highlighted from the keyboard.
+            ->label(new HtmlString('Оплатить '.$this->keyChip('Enter', onPrimary: true, show: 'isActiveRow($el)')))
             ->icon(Heroicon::OutlinedBanknotes)
-            // Marks the modal for the page script that returns the cursor to the
-            // search once the modal is closed by «Отмена», Esc or the cross.
-            ->extraModalWindowAttributes(['data-payment-desk-pay' => true])
+            // Enter in the search presses this button of the highlighted row.
+            ->extraAttributes(['data-payment-desk-pay-button' => true])
+            ->extraModalWindowAttributes([
+                // Marks the modal for the page script that returns the cursor to the
+                // search once the modal is closed by «Отмена», Esc or the cross.
+                'data-payment-desk-pay' => true,
+                // Enter, F4 and Ctrl+Enter of the modal fields.
+                'x-on:keydown' => 'onPayModalKeydown($event)',
+            ])
             // The abonent comes from the browser, so the action exists only for an
             // abonent the tenant-scoped query finds. The debt is not checked here:
             // a payment already typed in must reach the accept path and be either
@@ -221,8 +251,10 @@ class PaymentDesk extends Page implements HasTable
                 $schema->fill();
             })
             ->schema(fn (array $arguments): array => $this->paymentSchema($this->paymentClient($arguments)))
-            ->modalSubmitActionLabel('Принять оплату')
+            ->modalSubmitAction(fn (Action $action): Action => $action
+                ->label(new HtmlString('Принять оплату '.$this->keyChip('Enter', onPrimary: true))))
             ->modalCancelActionLabel('Отмена')
+            ->modalContentFooter(view('filament.pages.payment-desk.pay-modal-hints'))
             ->action(function (array $arguments, array $data, Action $action): void {
                 $this->acceptPayment($arguments, $data, $action);
             });
@@ -408,7 +440,9 @@ class PaymentDesk extends Page implements HasTable
             ))
             ->send();
 
-        $this->dispatch('payment-desk-reset');
+        // The page selects the search text and says so under the search, naming
+        // the account when the search is exactly this account.
+        $this->dispatch('payment-desk-reset', account: (string) $accountNumber);
     }
 
     /**
@@ -508,6 +542,8 @@ class PaymentDesk extends Page implements HasTable
                 ->viewData(fn (): array => $this->clientSummary($client));
         }
 
+        $fullDebt = $this->fullDebtAmount($client);
+
         $components[] = Grid::make(['default' => 1, 'sm' => 2])
             ->schema([
                 TextInput::make('amount')
@@ -518,21 +554,37 @@ class PaymentDesk extends Page implements HasTable
                     ->minValue(0.01)
                     ->required()
                     ->autofocus()
-                    ->suffixAction($this->fillFullDebtAction($client))
+                    // Enter on an empty amount and F4 put the debt in on the client,
+                    // so «Enter Enter» never waits for a request between the two.
+                    ->extraInputAttributes([
+                        'data-payment-desk-amount' => true,
+                        'data-payment-desk-full-debt' => $fullDebt,
+                    ])
+                    ->helperText($fullDebt !== null
+                        ? new HtmlString(sprintf(
+                            'Пустая сумма и %1$s — подставить весь долг. %1$s с суммой — принять оплату.',
+                            $this->keyChip('Enter'),
+                        ))
+                        : null)
+                    ->suffixAction($this->fillFullDebtAction($fullDebt))
                     ->columnSpanFull(),
+                // Browser controls rather than Filament's dropdowns: the dropdowns
+                // take Enter to open themselves, and here Enter accepts the payment.
                 Select::make('method')
                     ->label('Способ оплаты')
                     ->options(PaymentMethod::class)
                     ->default(PaymentMethod::Cash->value)
                     ->required()
-                    ->native(false),
+                    ->selectablePlaceholder(false)
+                    ->native(),
                 DatePicker::make('paid_at')
                     ->label('Дата оплаты')
                     ->default(fn (): string => today()->toDateString())
                     ->required()
-                    ->native(false),
+                    ->native(),
                 Textarea::make('note')
                     ->label('Примечание')
+                    ->placeholder('Необязательно. Ctrl+Enter — принять оплату')
                     ->columnSpanFull(),
             ]);
 
@@ -572,19 +624,48 @@ class PaymentDesk extends Page implements HasTable
         ];
     }
 
-    private function fillFullDebtAction(?Client $client): Action
+    /**
+     * The debt as the amount field takes it, or null when there is nothing to pay.
+     */
+    private function fullDebtAmount(?Client $client): ?string
     {
         $debt = $client instanceof Client ? $this->balanceOf($client)['debt'] : 0.0;
 
+        return $debt > 0 ? number_format($debt, 2, '.', '') : null;
+    }
+
+    private function fillFullDebtAction(?string $fullDebt): Action
+    {
         return Action::make('fillFullDebt')
-            ->label('Вся сумма')
+            ->label(new HtmlString('Вся сумма '.$this->keyChip('F4')))
             ->icon(Heroicon::OutlinedCalculator)
             ->color('gray')
             // Affix actions are icon buttons by default; the label tells the
             // cashier what the button does without a hover.
             ->link()
-            ->visible($debt > 0)
-            ->action(fn (Set $set) => $set('amount', number_format($debt, 2, '.', '')));
+            // Tab goes from the amount straight to the method: a partial amount,
+            // Tab and Enter must accept it, not replace it with the debt. F4 is
+            // this button from the keyboard.
+            ->extraAttributes([
+                'tabindex' => '-1',
+                'aria-keyshortcuts' => 'F4',
+            ])
+            ->visible($fullDebt !== null)
+            ->action(fn (Set $set) => $set('amount', $fullDebt));
+    }
+
+    /**
+     * A key chip for an action label or a field hint.
+     *
+     * @param  string|null  $show  Alpine expression that decides when the chip is visible.
+     */
+    private function keyChip(string $key, bool $onPrimary = false, ?string $show = null): string
+    {
+        return view('filament.pages.payment-desk.kbd', [
+            'key' => $key,
+            'onPrimary' => $onPrimary,
+            'show' => $show,
+        ])->render();
     }
 
     /**

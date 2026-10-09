@@ -298,6 +298,12 @@ final class BuiltReport implements FiltersExcelExport
         return $cells;
     }
 
+    /**
+     * A number is written as the screen shows it: whole numbers stay whole, money and
+     * fractions are the value rounded once by `ReportFieldType::numberOf()` — the same
+     * value the screen formats, so a tie such as 0.125 is 0.13 in both places — and a
+     * percentage is rounded half up to two decimals, like `percent()` on the screen.
+     */
     private function excelCell(ReportFieldType $type, mixed $value, ?Style $style): Cell
     {
         if ($value === null || $value === '') {
@@ -307,13 +313,18 @@ final class BuiltReport implements FiltersExcelExport
         return match ($type) {
             ReportFieldType::Text => new StringCell((string) $value, $style),
             ReportFieldType::Date => new StringCell(self::date($value), $style),
-            ReportFieldType::Int => new NumericCell((int) $value, $style),
-            ReportFieldType::Money, ReportFieldType::Float => new NumericCell((float) $value, $style),
-            ReportFieldType::Percent => new NumericCell(
-                round((float) $value, 2),
-                ($style ?? new Style)->setFormat('0.00'),
-            ),
+            ReportFieldType::Int, ReportFieldType::Money => new NumericCell($type->numberOf($value), $style),
+            ReportFieldType::Float => new NumericCell($type->numberOf($value), self::twoDecimals($style)),
+            ReportFieldType::Percent => new NumericCell(round((float) $value, 2), self::twoDecimals($style)),
         };
+    }
+
+    /**
+     * The bold style of «Итого» is shared by the whole row, so the format goes on a copy.
+     */
+    private static function twoDecimals(?Style $style): Style
+    {
+        return ($style instanceof Style ? clone $style : new Style)->setFormat('0.00');
     }
 
     private static function date(mixed $value): string

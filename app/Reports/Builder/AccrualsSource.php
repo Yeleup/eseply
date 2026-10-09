@@ -141,7 +141,10 @@ final class AccrualsSource implements ReportSource
     public function metrics(): array
     {
         return [
-            ...$this->standardMetrics(),
+            ReportMetric::clients(),
+            ReportMetric::count('Начислений'),
+            ReportMetric::sum('Начислено', 'accrued_amount'),
+            ReportMetric::average('Среднее начисление', 'accrued_amount'),
             ReportMetric::percentage('collection_percent', 'Собираемость, %', 'paid_amount', 'accrued_amount'),
         ];
     }
@@ -176,26 +179,6 @@ final class AccrualsSource implements ReportSource
                         : $query;
                 }),
         ];
-    }
-
-    public function sumColumn(): string
-    {
-        return 'accrued_amount';
-    }
-
-    public function countLabel(): string
-    {
-        return 'Начислений';
-    }
-
-    public function sumLabel(): string
-    {
-        return 'Начислено';
-    }
-
-    public function averageLabel(): string
-    {
-        return 'Среднее начисление';
     }
 
     /**

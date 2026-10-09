@@ -2066,6 +2066,20 @@
                                         <span class="block text-xs text-zinc-500 dark:text-zinc-400">Строка — начисление абонента за месяц.</span>
                                     </span>
                                 </label>
+                                <label class="flex items-start gap-3 rounded-lg border border-zinc-200 bg-white px-3 py-2.5 dark:border-zinc-700 dark:bg-zinc-950">
+                                    <input type="radio" name="preview-report-builder-source" class="mt-0.5 accent-amber-600">
+                                    <span>
+                                        <span class="block text-sm font-semibold">Показания счётчиков</span>
+                                        <span class="block text-xs text-zinc-500 dark:text-zinc-400">Строка — показание по счётчику.</span>
+                                    </span>
+                                </label>
+                                <label class="flex items-start gap-3 rounded-lg border border-zinc-200 bg-white px-3 py-2.5 dark:border-zinc-700 dark:bg-zinc-950">
+                                    <input type="radio" name="preview-report-builder-source" class="mt-0.5 accent-amber-600">
+                                    <span>
+                                        <span class="block text-sm font-semibold">Абоненты</span>
+                                        <span class="block text-xs text-zinc-500 dark:text-zinc-400">Строка — абонент организации.</span>
+                                    </span>
+                                </label>
                             </div>
                         </div>
 

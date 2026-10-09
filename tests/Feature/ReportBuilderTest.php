@@ -345,7 +345,12 @@ test('оператор открывает конструктор отчётов 
 
     Livewire::test(BuildReport::class)
         ->assertOk()
-        ->assertCanSeeTableRecords([$fixture['ivanovCash'], $fixture['petrovCash'], $fixture['sidorovCash']]);
+        ->assertCanSeeTableRecords([$fixture['ivanovCash'], $fixture['petrovCash'], $fixture['sidorovCash']])
+        ->assertDontSee('@js', false)
+        ->assertSeeHtml("wire:click=\"selectSource('accruals')\"")
+        ->assertSeeHtml("wire:click=\"toggleField('received_by')\"")
+        ->assertSeeHtml("wire:click=\"toggleMetric('average')\"")
+        ->assertSeeHtml('wire:change="selectDimension($event.target.value)"');
 });
 
 test('контроллер получает 403 и не видит конструктор в навигации', function (): void {
@@ -408,7 +413,7 @@ test('чужой расчётный месяц из адреса не откры
     $page = Livewire::withQueryParams(['period' => (string) $foreign['june']->id])->test(BuildReport::class);
 
     expect($page->instance()->reportBuild()->billingPeriod?->is($fixture['june']))->toBeTrue()
-        ->and($page->get('period'))->toBeNull();
+        ->and($page->get('period'))->toBe('');
 
     $page->assertCanSeeTableRecords([$fixture['ivanovCash']])
         ->assertCanNotSeeTableRecords([$foreign['payment']]);
@@ -421,7 +426,7 @@ test('чужой расчётный месяц из адреса не откры
     $chosen->call('selectBillingPeriod', (string) $foreign['may']->id);
 
     expect($chosen->instance()->reportBuild()->billingPeriod?->is($fixture['may']))->toBeTrue()
-        ->and($chosen->get('period'))->toBeNull();
+        ->and($chosen->get('period'))->toBe('');
 });
 
 test('неизвестные источник, поля, измерение, показатели и режим из адреса игнорируются', function (array $query): void {

@@ -27,7 +27,7 @@
                                 name="report-builder-source"
                                 value="{{ $option['key'] }}"
                                 :checked="$option['active']"
-                                wire:click="selectSource(@js($option['key']))"
+                                wire:click="selectSource('{{ $option['key'] }}')"
                                 class="mt-0.5"
                             />
 
@@ -59,7 +59,7 @@
                             <x-filament::input.checkbox
                                 :checked="$field['checked']"
                                 :disabled="$field['locked']"
-                                wire:click="toggleField(@js($field['key']))"
+                                wire:click="toggleField('{{ $field['key'] }}')"
                             />
 
                             <span class="min-w-0 flex-1">{{ $field['label'] }}</span>
@@ -105,7 +105,7 @@
                             >
                                 <x-filament::input.checkbox
                                     :checked="$metric['checked']"
-                                    wire:click="toggleMetric(@js($metric['key']))"
+                                    wire:click="toggleMetric('{{ $metric['key'] }}')"
                                 />
 
                                 <span>{{ $metric['label'] }}</span>

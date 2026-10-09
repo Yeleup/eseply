@@ -54,31 +54,34 @@ class BuildReport extends Page implements HasTable
 
     protected string $view = 'filament.pages.reports.build-report';
 
-    #[Url(as: 'source')]
+    #[Url(as: 'source', except: '')]
     public string $source = '';
 
     /**
      * Comma separated field keys, empty while the source defaults are shown.
      */
-    #[Url(as: 'fields')]
+    #[Url(as: 'fields', except: '')]
     public string $fields = '';
 
     /**
      * Dimension key, empty for the source default, `none` for «Без группировки».
      */
-    #[Url(as: 'group')]
+    #[Url(as: 'group', except: '')]
     public string $group = '';
 
     /**
      * Comma separated keys of the metrics turned off.
      */
-    #[Url(as: 'off')]
+    #[Url(as: 'off', except: '')]
     public string $disabledMetrics = '';
 
-    #[Url(as: 'period')]
-    public ?string $period = null;
+    /**
+     * Billing period identifier, empty for the default billing period of the source.
+     */
+    #[Url(as: 'period', except: '')]
+    public string $period = '';
 
-    #[Url(as: 'mode')]
+    #[Url(as: 'mode', except: ReportBuild::MODE_DETAIL)]
     public string $mode = ReportBuild::MODE_DETAIL;
 
     private ?ReportBuild $cachedBuild = null;
@@ -209,7 +212,7 @@ class BuildReport extends Page implements HasTable
 
     public function selectBillingPeriod(mixed $billingPeriodId): void
     {
-        $this->period = $billingPeriodId === null ? null : (string) $billingPeriodId;
+        $this->period = is_scalar($billingPeriodId) ? (string) $billingPeriodId : '';
 
         $this->applyBuild();
     }
@@ -407,7 +410,7 @@ class BuildReport extends Page implements HasTable
         $chosenBillingPeriodId = ReportBuild::billingPeriodIdOf($this->period);
         $this->period = $chosenBillingPeriodId !== null && $build->billingPeriod?->getKey() === $chosenBillingPeriodId
             ? (string) $chosenBillingPeriodId
-            : null;
+            : '';
     }
 
     /**
@@ -420,8 +423,31 @@ class BuildReport extends Page implements HasTable
 
         $this->cachedDefaultTableColumnState = null;
         $this->bootedInteractsWithTable();
+        $this->syncTableFilterState();
         $this->flushCachedTableRecords();
         $this->resetPage();
+    }
+
+    /**
+     * The filters of the new build get their empty state, as on page load, so their
+     * inputs have state to bind to. The shared filters — address and controllers —
+     * keep their values; a filter the new source does not have is dropped.
+     */
+    private function syncTableFilterState(): void
+    {
+        $table = $this->getTable();
+        $filterNames = array_flip(array_keys($table->getFilters()));
+        $applied = array_intersect_key($this->tableFilters ?? [], $filterNames);
+
+        if (! $table->hasDeferredFilters()) {
+            $this->getTableFiltersForm()->fill($applied);
+
+            return;
+        }
+
+        $this->getTableFiltersForm()->fill(array_intersect_key($this->tableDeferredFilters ?? [], $filterNames));
+
+        $this->tableFilters = array_replace($this->tableDeferredFilters ?? [], $applied);
     }
 
     private function catalogField(mixed $key): ?ReportField

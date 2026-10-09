@@ -1029,6 +1029,23 @@ test('existing per person client keeps billing type on edit', function () {
     expect($client->refresh()->billing_type)->toBe('per_person');
 });
 
+test('factory client phones are unique and always pass the client form phone validation', function () {
+    $organization = Organization::factory()->create();
+    $client = Client::factory()->for($organization)->create();
+
+    actingAsTenant($organization);
+
+    $phoneField = Livewire::test(EditClient::class, [
+        'record' => $client->getRouteKey(),
+    ])->instance()->form->getFlatFields()['phone'];
+
+    $phones = Client::factory()->for($organization)->count(500)->make()->pluck('phone');
+
+    expect($phoneField->isTel())->toBeTrue()
+        ->and($phones->unique())->toHaveCount(500)
+        ->and($phones)->each->toMatch($phoneField->getTelRegex());
+});
+
 test('client billing settings fields depend on billing type', function () {
     $organization = Organization::factory()->create();
 

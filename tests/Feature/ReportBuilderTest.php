@@ -1,12 +1,16 @@
 <?php
 
+use App\BalanceAdjustmentType;
 use App\ClientType;
 use App\Filament\Pages\Reports\BuildReport;
 use App\Filament\Pages\Reports\ListReports;
 use App\Models\Accrual;
+use App\Models\BalanceAdjustment;
 use App\Models\BillingPeriod;
 use App\Models\City;
 use App\Models\Client;
+use App\Models\Meter;
+use App\Models\MeterReading;
 use App\Models\Organization;
 use App\Models\Payment;
 use App\Models\Receipt;
@@ -485,7 +489,7 @@ test('подмена состояния Livewire и аргументов дей�
     reportBuilderOperator($fixture['organization']);
 
     $page = Livewire::test(BuildReport::class)
-        ->call('selectSource', 'clients')
+        ->call('selectSource', 'users')
         ->call('toggleField', 'payments.note')
         ->call('toggleMetric', 'count(*)')
         ->call('selectDimension', 'users.email')
@@ -1222,3 +1226,734 @@ test('подделанные идентификаторы адреса и кон
     $detail->filterTable('address', ['city_id' => $foreignCity->id]);
     expect(collect(reportBuilderXlsxRows($detail->callAction('downloadXlsx')))->flatten()->contains('FOREIGN-1'))->toBeFalse();
 });
+
+// --- Показания счётчиков ----------------------------------------------------
+
+/**
+ * Meters and June readings of the clients of reportBuilderFixture(); June has 30 days.
+ *
+ * - Иванов: М-1 (active) 100 → 130 on 10.06, М-2 (removed) 50 → 65 on 20.06;
+ * - Петров: М-3 (active) 200 → 290 on 15.06;
+ * - «Ромашка»: М-4 (active) 500 → 500, an accepted reading without a date;
+ * - Сидоров: М-5 (active) 10 → 70 on 25.06 and М-6 (active), visited without a reading.
+ *
+ * М-1 also has a May reading, which never shows up in June.
+ *
+ * @param  array<string, mixed>  $fixture
+ * @return array<string, MeterReading>
+ */
+function reportBuilderReadingsFixture(array $fixture): array
+{
+    $meter = fn (Client $client, string $number, string $status = 'active'): Meter => Meter::factory()
+        ->for($fixture['organization'])
+        ->for($client)
+        ->create([
+            'utility_service_id' => $fixture['utilityService']->id,
+            'number' => $number,
+            'initial_reading' => 0,
+            'status' => $status,
+            'removed_on' => $status === 'removed' ? '2026-06-21' : null,
+        ]);
+
+    $reading = fn (Meter $meter, int $previous, ?int $current, ?string $readAt): MeterReading => MeterReading::factory()
+        ->for($fixture['organization'])
+        ->for($meter)
+        ->create([
+            'period' => '202606',
+            'previous_reading' => $previous,
+            'current_reading' => $current,
+            'read_at' => $readAt,
+        ]);
+
+    $ivanovFirst = $meter($fixture['ivanov'], 'М-1');
+    $ivanovRemoved = $meter($fixture['ivanov'], 'М-2', 'removed');
+    $petrovMeter = $meter($fixture['petrov'], 'М-3');
+    $romashkaMeter = $meter($fixture['romashka'], 'М-4');
+    $sidorovMeter = $meter($fixture['sidorov'], 'М-5');
+    $sidorovVisited = $meter($fixture['sidorov'], 'М-6');
+
+    $may = MeterReading::factory()
+        ->for($fixture['organization'])
+        ->for($ivanovFirst)
+        ->createQuietly([
+            'period' => '202605',
+            'billing_period_id' => $fixture['may']->id,
+            'previous_reading' => 70,
+            'current_reading' => 100,
+            'consumption' => 30,
+            'read_at' => '2026-05-20',
+        ]);
+
+    return [
+        'ivanovFirst' => $reading($ivanovFirst, 100, 130, '2026-06-10'),
+        'ivanovRemoved' => $reading($ivanovRemoved, 50, 65, '2026-06-20'),
+        'petrov' => $reading($petrovMeter, 200, 290, '2026-06-15'),
+        'romashka' => $reading($romashkaMeter, 500, 500, null),
+        'sidorov' => $reading($sidorovMeter, 10, 70, '2026-06-25'),
+        'visit' => $reading($sidorovVisited, 40, null, '2026-06-26'),
+        'may' => $may,
+    ];
+}
+
+/**
+ * A June reading of the client of another organization, created before the tenant is set.
+ *
+ * @param  array{organization: Organization, client: Client}  $foreign
+ */
+function reportBuilderForeignReading(array $foreign): MeterReading
+{
+    $meter = Meter::factory()->for($foreign['organization'])->for($foreign['client'])->create([
+        'utility_service_id' => $foreign['client']->utility_service_id,
+        'number' => 'FOREIGN-M',
+        'initial_reading' => 0,
+    ]);
+
+    return MeterReading::factory()->for($foreign['organization'])->for($meter)->create([
+        'period' => '202606',
+        'previous_reading' => 0,
+        'current_reading' => 99999,
+        'read_at' => '2026-06-15',
+    ]);
+}
+
+test('источник «Показания счётчиков»: показания месяца, колонки каталога и их типы', function (): void {
+    $fixture = reportBuilderFixture();
+    $readings = reportBuilderReadingsFixture($fixture);
+    reportBuilderOperator($fixture['organization']);
+
+    $page = Livewire::withQueryParams(['source' => 'readings'])->test(BuildReport::class)
+        ->assertSee('Строка — показание по счётчику.')
+        ->assertSee('выбрано 7 из 10')
+        ->assertSeeHtml("wire:click=\"selectSource('clients')\"");
+
+    $build = $page->instance()->reportBuild();
+
+    expect(array_column($page->instance()->sourceOptions(), 'label', 'key'))->toBe([
+        'payments' => 'Оплаты',
+        'accruals' => 'Начисления',
+        'readings' => 'Показания счётчиков',
+        'clients' => 'Абоненты',
+    ])
+        ->and(array_column($page->instance()->fieldOptions(), 'kind', 'key'))->toBe([
+            'account_number' => 'текст',
+            'client_name' => 'текст',
+            'address' => 'текст',
+            'meter_number' => 'текст',
+            'read_at' => 'дата',
+            'previous_reading' => 'число',
+            'current_reading' => 'число',
+            'consumption' => 'число',
+            'controller' => 'текст',
+            'daily_consumption' => 'вычисляемое',
+        ])
+        ->and(reportBuilderColumnNames($page))
+        ->toBe(['account_number', 'client_name', 'address', 'meter_number', 'read_at', 'current_reading', 'consumption'])
+        ->and(array_map(fn ($dimension): string => $dimension->key, $build->source->dimensions()))
+        ->toBe(['city', 'region', 'street', 'controller'])
+        ->and(array_column($page->instance()->metricOptions(), 'label', 'key'))->toBe([
+            'clients' => 'Абонентов',
+            'count' => 'Показаний',
+            'sum' => 'Потребление',
+            'average' => 'Среднее потребление',
+        ])
+        ->and($build->billingPeriod?->is($fixture['june']))->toBeTrue();
+
+    $page
+        ->assertCanSeeTableRecords([$readings['ivanovFirst'], $readings['ivanovRemoved'], $readings['petrov'], $readings['romashka'], $readings['sidorov']], inOrder: true)
+        ->assertCanNotSeeTableRecords([$readings['visit'], $readings['may']])
+        ->assertTableColumnStateSet('meter_number', 'М-1', $readings['ivanovFirst'])
+        ->assertTableColumnStateSet('address', 'Алмалинский, Абая, д. 10, кв. 5', $readings['ivanovFirst'])
+        ->assertTableColumnStateSet('current_reading', 130, $readings['ivanovFirst'])
+        ->assertTableColumnStateSet('consumption', 30, $readings['ivanovFirst'])
+        ->assertTableColumnFormattedStateSet('read_at', '10.06.2026', $readings['ivanovFirst'])
+        ->assertTableColumnStateSet('read_at', null, $readings['romashka']);
+
+    $may = Livewire::withQueryParams(['source' => 'readings', 'period' => (string) $fixture['may']->id])->test(BuildReport::class)
+        ->assertCanSeeTableRecords([$readings['may']])
+        ->assertCanNotSeeTableRecords([$readings['ivanovFirst'], $readings['petrov']]);
+
+    expect($may->instance()->reportBuild()->billingPeriod?->is($fixture['may']))->toBeTrue();
+});
+
+test('показания: среднесуточное считает база, показания целые, пустые значения — «—» на экране и в XLSX', function (): void {
+    $fixture = reportBuilderFixture();
+    $readings = reportBuilderReadingsFixture($fixture);
+    reportBuilderOperator($fixture['organization']);
+
+    $page = Livewire::withQueryParams([
+        'source' => 'readings',
+        'fields' => 'account_number,meter_number,read_at,previous_reading,current_reading,consumption,controller,daily_consumption',
+    ])->test(BuildReport::class)
+        ->assertTableColumnStateSet('daily_consumption', 1.0, $readings['ivanovFirst'])
+        ->assertTableColumnStateSet('daily_consumption', 0.5, $readings['ivanovRemoved'])
+        ->assertTableColumnStateSet('daily_consumption', 3.0, $readings['petrov'])
+        ->assertTableColumnStateSet('daily_consumption', 0.0, $readings['romashka'])
+        ->assertTableColumnStateSet('daily_consumption', 2.0, $readings['sidorov'])
+        ->assertTableColumnStateSet('previous_reading', 100, $readings['ivanovFirst'])
+        ->assertTableColumnStateSet('controller', 'Контроллер района', $readings['petrov'])
+        ->assertTableColumnStateSet('controller', 'Контроллер улицы', $readings['romashka'])
+        ->assertTableColumnStateSet('controller', null, $readings['sidorov'])
+        ->assertSee('—');
+
+    expect($page->instance()->getTable()->getColumn('controller')->getPlaceholder())->toBe('—')
+        ->and(reportBuilderXlsxRows($page->callAction('downloadXlsx')))->toBe([
+            ['Лицевой счёт', 'Счётчик', 'Дата снятия', 'Предыдущее', 'Текущее', 'Потребление', 'Контроллер', 'Среднесуточное, м³'],
+            ['100001', 'М-1', '10.06.2026', 100, 130, 30, 'Контроллер района', 1],
+            ['100001', 'М-2', '20.06.2026', 50, 65, 15, 'Контроллер района', 0.5],
+            ['100002', 'М-3', '15.06.2026', 200, 290, 90, 'Контроллер района', 3],
+            ['100003', 'М-4', '—', 500, 500, 0, 'Контроллер улицы', 0],
+            ['100004', 'М-5', '25.06.2026', 10, 70, 60, '—', 2],
+        ]);
+
+    $page->sortTable('daily_consumption', 'desc')
+        ->assertCanSeeTableRecords([$readings['petrov'], $readings['sidorov'], $readings['ivanovFirst'], $readings['ivanovRemoved'], $readings['romashka']], inOrder: true);
+
+    expect(array_column(array_slice(reportBuilderXlsxRows($page->callAction('downloadXlsx')), 1), 1))
+        ->toBe(['М-3', 'М-5', 'М-1', 'М-2', 'М-4']);
+});
+
+test('сводка показаний группирует по каждому измерению, а среднее потребление пересчитывается от итогов', function (string $group, array $expected): void {
+    $fixture = reportBuilderFixture();
+    reportBuilderReadingsFixture($fixture);
+    reportBuilderOperator($fixture['organization']);
+
+    $page = Livewire::withQueryParams(['source' => 'readings', 'mode' => 'summary', 'group' => $group])->test(BuildReport::class);
+
+    expect(array_map(
+        fn (array $record): array => [$record['group_label'], $record['clients'], $record['count'], $record['sum'], round($record['average'], 2)],
+        reportBuilderSummary($page),
+    ))->toBe($expected);
+})->with([
+    'по городам' => ['city', [
+        ['Алматы', 3, 4, 135, 33.75],
+        ['Астана', 1, 1, 60, 60.0],
+        ['Итого', 4, 5, 195, 39.0],
+    ]],
+    'по районам' => ['region', [
+        ['Алмалинский', 2, 3, 135, 45.0],
+        ['Бостандыкский', 1, 1, 0, 0.0],
+        ['Есильский', 1, 1, 60, 60.0],
+        ['Итого', 4, 5, 195, 39.0],
+    ]],
+    'по улицам' => ['street', [
+        ['Алмалинский / Абая', 1, 2, 45, 22.5],
+        ['Алмалинский / Гоголя', 1, 1, 90, 90.0],
+        ['Бостандыкский / Сатпаева', 1, 1, 0, 0.0],
+        ['Есильский / Кабанбай батыра', 1, 1, 60, 60.0],
+        ['Итого', 4, 5, 195, 39.0],
+    ]],
+    'по контроллерам' => ['controller', [
+        ['Контроллер района', 2, 3, 135, 45.0],
+        ['Контроллер улицы', 1, 1, 0, 0.0],
+        ['Итого', 3, 4, 135, 33.75],
+    ]],
+]);
+
+test('потребление сводки показаний совпадает с отчётом по потреблениям и выгружается целым числом', function (): void {
+    $fixture = reportBuilderFixture();
+    reportBuilderReadingsFixture($fixture);
+    $user = reportBuilderOperator($fixture['organization']);
+
+    $consumption = app(ReportSummaryService::class)->records(
+        'consumption',
+        ReportSummaryGroup::City,
+        $fixture['organization'],
+        $user,
+        $fixture['june'],
+    )['total'];
+
+    $page = Livewire::withQueryParams(['source' => 'readings', 'mode' => 'summary', 'group' => 'city'])->test(BuildReport::class);
+    $total = collect(reportBuilderSummary($page))->last();
+
+    expect($total['sum'])->toBe(195)
+        ->and($total['sum'])->toEqual($consumption['consumption'])
+        ->and($total['count'])->toEqual($consumption['readings_count']);
+
+    $download = $page->callAction('downloadXlsx')
+        ->assertFileDownloaded('report-builder-readings-summary-city-'.$fixture['organization']->id.'-202606-'.today()->format('Y-m-d').'.xlsx');
+
+    expect(reportBuilderXlsxRows($download))->toBe([
+        ['Город', 'Абонентов', 'Показаний', 'Потребление', 'Среднее потребление'],
+        ['Алматы', 3, 4, 135, 33.75],
+        ['Астана', 1, 1, 60, 60],
+        ['Итого', 4, 5, 195, 39],
+    ]);
+});
+
+test('фильтры показаний по адресу, контроллерам, дате снятия и статусу счётчика действуют в детальном режиме и в сводке', function (): void {
+    $fixture = reportBuilderFixture();
+    $readings = reportBuilderReadingsFixture($fixture);
+    reportBuilderOperator($fixture['organization']);
+
+    $all = [$readings['ivanovFirst'], $readings['ivanovRemoved'], $readings['petrov'], $readings['romashka'], $readings['sidorov']];
+
+    Livewire::withQueryParams(['source' => 'readings'])->test(BuildReport::class)
+        ->assertCanSeeTableRecords($all)
+        ->filterTable('address', ['region_id' => $fixture['almalinsky']->id])
+        ->assertCanSeeTableRecords([$readings['ivanovFirst'], $readings['ivanovRemoved'], $readings['petrov']])
+        ->assertCanNotSeeTableRecords([$readings['romashka'], $readings['sidorov']])
+        ->removeTableFilters()
+        ->filterTable('controller_ids', [$fixture['streetController']->id])
+        ->assertCanSeeTableRecords([$readings['romashka']])
+        ->assertCanNotSeeTableRecords([$readings['ivanovFirst'], $readings['petrov'], $readings['sidorov']])
+        ->removeTableFilters()
+        ->filterTable('read_at', ['start_date' => '2026-06-12', 'end_date' => '2026-06-22'])
+        ->assertCanSeeTableRecords([$readings['ivanovRemoved'], $readings['petrov']])
+        ->assertCanNotSeeTableRecords([$readings['ivanovFirst'], $readings['romashka'], $readings['sidorov']])
+        ->removeTableFilters()
+        ->filterTable('meter_status', 'removed')
+        ->assertCanSeeTableRecords([$readings['ivanovRemoved']])
+        ->assertCanNotSeeTableRecords([$readings['ivanovFirst'], $readings['petrov'], $readings['romashka'], $readings['sidorov']])
+        ->filterTable('meter_status', 'active')
+        ->assertCanSeeTableRecords([$readings['ivanovFirst'], $readings['petrov'], $readings['romashka'], $readings['sidorov']])
+        ->assertCanNotSeeTableRecords([$readings['ivanovRemoved']])
+        ->filterTable('meter_status', 'broken')
+        ->assertCanSeeTableRecords($all);
+
+    $summary = Livewire::withQueryParams(['source' => 'readings', 'mode' => 'summary', 'group' => 'city'])->test(BuildReport::class);
+
+    $summary->filterTable('address', ['region_id' => $fixture['almalinsky']->id]);
+    expect(array_column(reportBuilderSummary($summary), 'sum', 'group_label'))->toBe(['Алматы' => 135, 'Итого' => 135]);
+
+    $summary->removeTableFilters()->filterTable('controller_ids', [$fixture['regionController']->id]);
+    expect(array_column(reportBuilderSummary($summary), 'count', 'group_label'))->toBe(['Алматы' => 3, 'Итого' => 3]);
+
+    $summary->removeTableFilters()->filterTable('read_at', ['start_date' => '2026-06-12', 'end_date' => '2026-06-22']);
+    expect(array_column(reportBuilderSummary($summary), 'sum', 'group_label'))->toBe(['Алматы' => 105, 'Итого' => 105]);
+
+    $summary->removeTableFilters()->filterTable('meter_status', 'removed');
+    expect(reportBuilderSummary($summary))->toBe([
+        ['group_label' => 'Алматы', 'is_total' => false, 'clients' => 1, 'count' => 1, 'sum' => 15, 'average' => 15.0],
+        ['group_label' => 'Итого', 'is_total' => true, 'clients' => 1, 'count' => 1, 'sum' => 15, 'average' => 15.0],
+    ]);
+});
+
+test('показания другой организации не попадают ни в детальный режим, ни в сводку, ни в XLSX', function (): void {
+    $foreign = reportBuilderForeignFixture();
+    $foreignReading = reportBuilderForeignReading($foreign);
+    $fixture = reportBuilderFixture();
+    $readings = reportBuilderReadingsFixture($fixture);
+    reportBuilderOperator($fixture['organization']);
+
+    $detail = Livewire::withQueryParams(['source' => 'readings', 'fields' => 'account_number,meter_number,consumption'])->test(BuildReport::class)
+        ->assertCanSeeTableRecords([$readings['ivanovFirst'], $readings['sidorov']])
+        ->assertCanNotSeeTableRecords([$foreignReading]);
+
+    $rows = collect(reportBuilderXlsxRows($detail->callAction('downloadXlsx')))->flatten();
+
+    expect($rows->contains('FOREIGN-1'))->toBeFalse()
+        ->and($rows->contains('FOREIGN-M'))->toBeFalse()
+        ->and($rows->contains(99999))->toBeFalse();
+
+    $summary = Livewire::withQueryParams(['source' => 'readings', 'mode' => 'summary', 'group' => 'city'])->test(BuildReport::class);
+
+    expect(collect(reportBuilderSummary($summary))->last())->toBe(
+        ['group_label' => 'Итого', 'is_total' => true, 'clients' => 4, 'count' => 5, 'sum' => 195, 'average' => 39.0],
+    )
+        ->and(collect(reportBuilderXlsxRows($summary->callAction('downloadXlsx')))->last())->toBe(['Итого', 4, 5, 195, 39]);
+});
+
+// --- Абоненты ---------------------------------------------------------------
+
+/**
+ * Debts of the clients of reportBuilderFixture() and of the inactive Касымов.
+ *
+ * June is open and is the default month of the source: receipts of 2000 for Иванов,
+ * 3500 for «Ромашка» and 5000 for Сидоров give the debts Иванов 300 + 2000 − 1500 = 800,
+ * Петров 0 − 2000 (an overpayment, so the debt is 0), «Ромашка» 0 + 3500 − 3000 = 500,
+ * Сидоров 500 + 5000 − 4000 = 1500 and the inactive Касымов 700, his incoming balance of June.
+ *
+ * May is closed: Иванов 300, Петров 0, «Ромашка» 0, Сидоров 500; Касымов has no May accrual.
+ *
+ * Residents: Иванов 2, Петров 1, «Ромашка» 0, Сидоров 3, Касымов 1.
+ * Created: Иванов 10.01.2026, Петров 15.02.2026, «Ромашка» 20.03.2026, Сидоров 25.04.2026, Касымов 05.05.2026.
+ *
+ * @param  array<string, mixed>  $fixture
+ */
+function reportBuilderClientsFixture(array $fixture): Client
+{
+    $kasymov = reportBuilderClient($fixture['organization'], $fixture['utilityService'], [
+        'account_number' => '100005',
+        'name' => 'Касымов Ержан',
+        'status' => 'inactive',
+        'region_id' => $fixture['esil']->id,
+        'street_id' => $fixture['kabanbay']->id,
+        'house' => '9',
+    ]);
+
+    BalanceAdjustment::factory()->for($fixture['organization'])->for($kasymov)->create([
+        'period' => '202606',
+        'type' => BalanceAdjustmentType::OpeningBalance->value,
+        'amount' => 700,
+        'adjusted_at' => '2026-06-02',
+    ]);
+
+    foreach (['ivanov' => 2000, 'romashka' => 3500, 'sidorov' => 5000] as $client => $amount) {
+        Receipt::factory()->for($fixture['organization'])->for($fixture[$client])->create([
+            'period' => '202606',
+            'account_number' => $fixture[$client]->account_number,
+            'client_name' => $fixture[$client]->name,
+            'amount' => $amount,
+            'issued_at' => '2026-06-15 10:00:00',
+        ]);
+    }
+
+    $details = [
+        'ivanov' => [2, '2026-01-10 10:00:00'],
+        'petrov' => [1, '2026-02-15 10:00:00'],
+        'romashka' => [0, '2026-03-20 10:00:00'],
+        'sidorov' => [3, '2026-04-25 10:00:00'],
+    ];
+
+    foreach ($details as $client => [$residents, $createdAt]) {
+        DB::table('clients')->where('id', $fixture[$client]->id)->update(['residents_count' => $residents, 'created_at' => $createdAt]);
+    }
+
+    DB::table('clients')->where('id', $kasymov->id)->update(['residents_count' => 1, 'created_at' => '2026-05-05 10:00:00']);
+
+    return $kasymov;
+}
+
+test('источник «Абоненты»: все абоненты организации, колонки каталога и их типы, без счётчика строк', function (): void {
+    $fixture = reportBuilderFixture();
+    $kasymov = reportBuilderClientsFixture($fixture);
+    reportBuilderOperator($fixture['organization']);
+
+    $page = Livewire::withQueryParams(['source' => 'clients'])->test(BuildReport::class)
+        ->assertSee('Строка — абонент организации.')
+        ->assertSee('выбрано 6 из 10');
+
+    $build = $page->instance()->reportBuild();
+
+    expect(array_column($page->instance()->fieldOptions(), 'kind', 'key'))->toBe([
+        'account_number' => 'текст',
+        'client_name' => 'текст',
+        'address' => 'текст',
+        'client_type' => 'текст',
+        'status' => 'текст',
+        'utility_service' => 'текст',
+        'residents_count' => 'число',
+        'controller' => 'текст',
+        'debt' => 'сумма',
+        'debt_per_resident' => 'вычисляемое',
+    ])
+        ->and(reportBuilderColumnNames($page))
+        ->toBe(['account_number', 'client_name', 'address', 'client_type', 'residents_count', 'debt'])
+        ->and(array_values($page->instance()->dimensionOptions()))
+        ->toBe(['Без группировки', 'По городам', 'По районам', 'По улицам', 'По контроллерам', 'По типам абонентов', 'По статусам'])
+        ->and(array_column($page->instance()->metricOptions(), 'label', 'key'))->toBe([
+            'clients' => 'Абонентов',
+            'sum' => 'Долг',
+            'average' => 'Средний долг',
+        ])
+        ->and($build->billingPeriod?->is($fixture['june']))->toBeTrue();
+
+    $page
+        ->assertCanSeeTableRecords([$fixture['ivanov'], $fixture['petrov'], $fixture['romashka'], $fixture['sidorov'], $kasymov], inOrder: true)
+        ->assertTableColumnStateSet('client_type', 'ТОО', $fixture['romashka'])
+        ->assertTableColumnStateSet('residents_count', 2, $fixture['ivanov'])
+        ->assertTableColumnStateSet('debt', 800.0, $fixture['ivanov'])
+        ->assertTableColumnStateSet('debt', 0.0, $fixture['petrov'])
+        ->assertTableColumnStateSet('debt', 700.0, $kasymov);
+});
+
+test('долг абонента на проживающего считает база, а без проживающих — «—» на экране и в XLSX', function (): void {
+    $fixture = reportBuilderFixture();
+    $kasymov = reportBuilderClientsFixture($fixture);
+    reportBuilderOperator($fixture['organization']);
+
+    $page = Livewire::withQueryParams([
+        'source' => 'clients',
+        'fields' => 'account_number,client_type,status,utility_service,residents_count,controller,debt,debt_per_resident',
+    ])->test(BuildReport::class)
+        ->assertTableColumnStateSet('debt_per_resident', 400.0, $fixture['ivanov'])
+        ->assertTableColumnStateSet('debt_per_resident', 0.0, $fixture['petrov'])
+        ->assertTableColumnStateSet('debt_per_resident', null, $fixture['romashka'])
+        ->assertTableColumnStateSet('debt_per_resident', 500.0, $fixture['sidorov'])
+        ->assertTableColumnStateSet('status', 'Неактивный', $kasymov)
+        ->assertTableColumnStateSet('utility_service', $fixture['utilityService']->name, $kasymov)
+        ->assertTableColumnStateSet('controller', 'Контроллер района', $fixture['petrov'])
+        ->assertTableColumnStateSet('controller', null, $kasymov)
+        ->assertSee('—');
+
+    expect($page->instance()->getTable()->getColumn('debt_per_resident')->getPlaceholder())->toBe('—');
+
+    $service = $fixture['utilityService']->name;
+
+    expect(reportBuilderXlsxRows($page->callAction('downloadXlsx')))->toBe([
+        ['Лицевой счёт', 'Тип абонента', 'Статус', 'Услуги', 'Проживающих', 'Контроллер', 'Долг', 'Долг на проживающего'],
+        ['100001', 'Физ. лицо', 'Активный', $service, 2, 'Контроллер района', 800, 400],
+        ['100002', 'Физ. лицо', 'Активный', $service, 1, 'Контроллер района', 0, 0],
+        ['100003', 'ТОО', 'Активный', $service, 0, 'Контроллер улицы', 500, '—'],
+        ['100004', 'Физ. лицо', 'Активный', $service, 3, '—', 1500, 500],
+        ['100005', 'Физ. лицо', 'Неактивный', $service, 1, '—', 700, 700],
+    ]);
+
+    $page->sortTable('debt_per_resident', 'desc')
+        ->assertCanSeeTableRecords([$kasymov, $fixture['sidorov'], $fixture['ivanov'], $fixture['petrov'], $fixture['romashka']], inOrder: true);
+
+    $may = Livewire::withQueryParams([
+        'source' => 'clients',
+        'fields' => 'account_number,debt,debt_per_resident',
+        'period' => (string) $fixture['may']->id,
+    ])->test(BuildReport::class);
+
+    expect(reportBuilderXlsxRows($may->callAction('downloadXlsx')))->toBe([
+        ['Лицевой счёт', 'Долг', 'Долг на проживающего'],
+        ['100001', 300, 150],
+        ['100002', 0, 0],
+        ['100003', 0, '—'],
+        ['100004', 500, 166.67],
+        ['100005', '—', '—'],
+    ]);
+});
+
+test('сводка абонентов группирует по каждому измерению, а средний долг пересчитывается от итогов', function (string $group, array $expected): void {
+    $fixture = reportBuilderFixture();
+    reportBuilderClientsFixture($fixture);
+    reportBuilderOperator($fixture['organization']);
+
+    $page = Livewire::withQueryParams(['source' => 'clients', 'mode' => 'summary', 'group' => $group])->test(BuildReport::class);
+
+    expect(array_map(
+        fn (array $record): array => [$record['group_label'], $record['clients'], $record['sum'], round($record['average'], 2)],
+        reportBuilderSummary($page),
+    ))->toBe($expected);
+})->with([
+    'по городам' => ['city', [
+        ['Алматы', 3, 1300.0, 433.33],
+        ['Астана', 2, 2200.0, 1100.0],
+        ['Итого', 5, 3500.0, 700.0],
+    ]],
+    'по районам' => ['region', [
+        ['Алмалинский', 2, 800.0, 400.0],
+        ['Бостандыкский', 1, 500.0, 500.0],
+        ['Есильский', 2, 2200.0, 1100.0],
+        ['Итого', 5, 3500.0, 700.0],
+    ]],
+    'по улицам' => ['street', [
+        ['Алмалинский / Абая', 1, 800.0, 800.0],
+        ['Алмалинский / Гоголя', 1, 0.0, 0.0],
+        ['Бостандыкский / Сатпаева', 1, 500.0, 500.0],
+        ['Есильский / Кабанбай батыра', 2, 2200.0, 1100.0],
+        ['Итого', 5, 3500.0, 700.0],
+    ]],
+    'по контроллерам' => ['controller', [
+        ['Контроллер района', 2, 800.0, 400.0],
+        ['Контроллер улицы', 1, 500.0, 500.0],
+        ['Итого', 3, 1300.0, 433.33],
+    ]],
+    'по типам абонентов' => ['client_type', [
+        ['Физ. лицо', 4, 3000.0, 750.0],
+        ['ТОО', 1, 500.0, 500.0],
+        ['Итого', 5, 3500.0, 700.0],
+    ]],
+    'по статусам' => ['status', [
+        ['Активный', 4, 2800.0, 700.0],
+        ['Неактивный', 1, 700.0, 700.0],
+        ['Итого', 5, 3500.0, 700.0],
+    ]],
+]);
+
+test('долг абонентов совпадает с отчётом по долгам в открытом месяце и с ведомостью в закрытом', function (): void {
+    $fixture = reportBuilderFixture();
+    reportBuilderClientsFixture($fixture);
+    $user = reportBuilderOperator($fixture['organization']);
+
+    $debts = app(ReportSummaryService::class)->records(
+        'debts',
+        ReportSummaryGroup::City,
+        $fixture['organization'],
+        $user,
+        $fixture['june'],
+    )['total'];
+
+    $active = Livewire::withQueryParams(['source' => 'clients', 'mode' => 'summary', 'group' => 'city'])->test(BuildReport::class)
+        ->filterTable('client_status', 'active');
+
+    expect(collect(reportBuilderSummary($active))->last()['sum'])->toBe(2800.0)
+        ->and(collect(reportBuilderSummary($active))->last()['sum'])->toEqual($debts['debt_amount']);
+
+    $turnover = app(ReportSummaryService::class)->records(
+        'turnover-balance-sheet',
+        ReportSummaryGroup::City,
+        $fixture['organization'],
+        $user,
+        $fixture['may'],
+    )['total'];
+
+    $may = Livewire::withQueryParams([
+        'source' => 'clients',
+        'mode' => 'summary',
+        'group' => 'status',
+        'period' => (string) $fixture['may']->id,
+    ])->test(BuildReport::class);
+
+    expect(reportBuilderSummary($may))->toBe([
+        ['group_label' => 'Активный', 'is_total' => false, 'clients' => 4, 'sum' => 800.0, 'average' => 200.0],
+        ['group_label' => 'Неактивный', 'is_total' => false, 'clients' => 1, 'sum' => 0.0, 'average' => null],
+        ['group_label' => 'Итого', 'is_total' => true, 'clients' => 5, 'sum' => 800.0, 'average' => 160.0],
+    ])
+        ->and(collect(reportBuilderSummary($may))->last()['sum'])->toEqual($turnover['closing_debit']);
+
+    expect(reportBuilderXlsxRows($may->callAction('downloadXlsx')))->toBe([
+        ['Статус', 'Абонентов', 'Долг', 'Средний долг'],
+        ['Активный', 4, 800, 200],
+        ['Неактивный', 1, 0, '—'],
+        ['Итого', 5, 800, 160],
+    ]);
+});
+
+test('фильтры абонентов по адресу, контроллерам, дате создания и статусу действуют в детальном режиме и в сводке', function (): void {
+    $fixture = reportBuilderFixture();
+    $kasymov = reportBuilderClientsFixture($fixture);
+    reportBuilderOperator($fixture['organization']);
+
+    $all = [$fixture['ivanov'], $fixture['petrov'], $fixture['romashka'], $fixture['sidorov'], $kasymov];
+
+    Livewire::withQueryParams(['source' => 'clients'])->test(BuildReport::class)
+        ->assertCanSeeTableRecords($all)
+        ->filterTable('address', ['city_id' => $fixture['astana']->id])
+        ->assertCanSeeTableRecords([$fixture['sidorov'], $kasymov])
+        ->assertCanNotSeeTableRecords([$fixture['ivanov'], $fixture['petrov'], $fixture['romashka']])
+        ->removeTableFilters()
+        ->filterTable('controller_ids', [$fixture['streetController']->id])
+        ->assertCanSeeTableRecords([$fixture['romashka']])
+        ->assertCanNotSeeTableRecords([$fixture['ivanov'], $fixture['petrov'], $fixture['sidorov'], $kasymov])
+        ->removeTableFilters()
+        ->filterTable('created_at', ['start_date' => '2026-03-01', 'end_date' => '2026-04-30'])
+        ->assertCanSeeTableRecords([$fixture['romashka'], $fixture['sidorov']])
+        ->assertCanNotSeeTableRecords([$fixture['ivanov'], $fixture['petrov'], $kasymov])
+        ->removeTableFilters()
+        ->filterTable('client_status', 'inactive')
+        ->assertCanSeeTableRecords([$kasymov])
+        ->assertCanNotSeeTableRecords([$fixture['ivanov'], $fixture['petrov'], $fixture['romashka'], $fixture['sidorov']])
+        ->filterTable('client_status', 'deleted')
+        ->assertCanSeeTableRecords($all);
+
+    $summary = Livewire::withQueryParams(['source' => 'clients', 'mode' => 'summary', 'group' => 'city'])->test(BuildReport::class);
+
+    $summary->filterTable('address', ['city_id' => $fixture['astana']->id]);
+    expect(array_column(reportBuilderSummary($summary), 'sum', 'group_label'))->toBe(['Астана' => 2200.0, 'Итого' => 2200.0]);
+
+    $summary->removeTableFilters()->filterTable('controller_ids', [$fixture['regionController']->id]);
+    expect(array_column(reportBuilderSummary($summary), 'clients', 'group_label'))->toBe(['Алматы' => 2, 'Итого' => 2]);
+
+    $summary->removeTableFilters()->filterTable('created_at', ['start_date' => '2026-03-01', 'end_date' => '2026-04-30']);
+    expect(array_column(reportBuilderSummary($summary), 'sum', 'group_label'))
+        ->toBe(['Алматы' => 500.0, 'Астана' => 1500.0, 'Итого' => 2000.0]);
+
+    $summary->removeTableFilters()->filterTable('client_status', 'inactive');
+    expect(reportBuilderSummary($summary))->toBe([
+        ['group_label' => 'Астана', 'is_total' => false, 'clients' => 1, 'sum' => 700.0, 'average' => 700.0],
+        ['group_label' => 'Итого', 'is_total' => true, 'clients' => 1, 'sum' => 700.0, 'average' => 700.0],
+    ]);
+});
+
+test('абоненты другой организации не попадают ни в детальный режим, ни в сводку, ни в XLSX', function (): void {
+    $foreign = reportBuilderForeignFixture();
+    $fixture = reportBuilderFixture();
+    $kasymov = reportBuilderClientsFixture($fixture);
+    reportBuilderOperator($fixture['organization']);
+
+    $detail = Livewire::withQueryParams(['source' => 'clients'])->test(BuildReport::class)
+        ->assertCanSeeTableRecords([$fixture['ivanov'], $kasymov])
+        ->assertCanNotSeeTableRecords([$foreign['client']]);
+
+    $rows = collect(reportBuilderXlsxRows($detail->callAction('downloadXlsx')))->flatten();
+
+    expect($rows->contains('FOREIGN-1'))->toBeFalse()
+        ->and($rows->contains('Чужой абонент'))->toBeFalse();
+
+    $summary = Livewire::withQueryParams(['source' => 'clients', 'mode' => 'summary', 'group' => 'status'])->test(BuildReport::class);
+
+    expect(collect(reportBuilderSummary($summary))->last())->toBe(
+        ['group_label' => 'Итого', 'is_total' => true, 'clients' => 5, 'sum' => 3500.0, 'average' => 700.0],
+    )
+        ->and(collect(reportBuilderXlsxRows($summary->callAction('downloadXlsx')))->last())->toBe(['Итого', 5, 3500, 700]);
+});
+
+// --- Новые источники: запросы ---------------------------------------------
+
+test('сводка показаний и абонентов считается одним запросом при любом числе групп', function (string $source, array $groups): void {
+    $fixture = reportBuilderFixture();
+    $source === 'readings' ? reportBuilderReadingsFixture($fixture) : reportBuilderClientsFixture($fixture);
+    reportBuilderOperator($fixture['organization']);
+
+    foreach ($groups as $group => $groupsCount) {
+        $page = Livewire::withQueryParams(['source' => $source, 'mode' => 'summary', 'group' => $group])->test(BuildReport::class);
+        $page->instance()->flushCachedTableRecords();
+
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+
+        $records = $page->instance()->getTableRecords();
+
+        $queries = array_column(DB::getQueryLog(), 'query');
+        DB::disableQueryLog();
+
+        $summaryQueries = array_values(array_filter($queries, fn (string $query): bool => str_contains($query, 'report_rows')));
+
+        expect($records)->toHaveCount($groupsCount + 1)
+            ->and($summaryQueries)->toHaveCount(1)
+            ->and($summaryQueries[0])->toContain('union all');
+    }
+})->with([
+    'показания' => ['readings', ['city' => 2, 'street' => 4, 'controller' => 2]],
+    'абоненты' => ['clients', ['city' => 2, 'street' => 4, 'controller' => 2, 'client_type' => 2, 'status' => 2]],
+]);
+
+test('детальный режим показаний и абонентов загружает адрес и контроллеров без запроса на строку', function (string $source, string $fields): void {
+    $fixture = reportBuilderFixture();
+    $source === 'readings' ? reportBuilderReadingsFixture($fixture) : reportBuilderClientsFixture($fixture);
+    reportBuilderOperator($fixture['organization']);
+
+    $queriesForPage = function () use ($fixture, $source, $fields): int {
+        $page = Livewire::withQueryParams(['source' => $source, 'fields' => $fields])->test(BuildReport::class);
+        $page->instance()->flushCachedTableRecords();
+
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+
+        $records = $page->instance()->getTableRecords();
+
+        foreach ($records as $record) {
+            foreach ($page->instance()->reportBuild()->fields as $field) {
+                $field->valueOf($record, $fixture['june']);
+            }
+        }
+
+        $count = count(DB::getQueryLog());
+        DB::disableQueryLog();
+
+        return $count;
+    };
+
+    $before = $queriesForPage();
+
+    foreach (range(1, 10) as $number) {
+        $client = reportBuilderClient($fixture['organization'], $fixture['utilityService'], [
+            'account_number' => (string) (200000 + $number),
+            'region_id' => $number % 2 === 0 ? $fixture['almalinsky']->id : $fixture['esil']->id,
+            'street_id' => $number % 2 === 0 ? $fixture['abay']->id : $fixture['kabanbay']->id,
+        ]);
+
+        $meter = Meter::factory()->for($fixture['organization'])->for($client)->create([
+            'utility_service_id' => $fixture['utilityService']->id,
+            'number' => 'N-'.$number,
+            'initial_reading' => 0,
+        ]);
+
+        MeterReading::factory()->for($fixture['organization'])->for($meter)->create([
+            'period' => '202606',
+            'previous_reading' => 0,
+            'current_reading' => $number,
+            'read_at' => '2026-06-'.str_pad((string) $number, 2, '0', STR_PAD_LEFT),
+        ]);
+    }
+
+    expect($queriesForPage())->toBe($before);
+})->with([
+    'показания' => ['readings', 'account_number,address,meter_number,controller,daily_consumption'],
+    'абоненты' => ['clients', 'account_number,address,controller,debt,debt_per_resident'],
+]);

@@ -105,7 +105,7 @@ test('the client form preview shows the read only client controllers next to the
         ]);
 });
 
-test('the report builder preview shows the source, columns, grouping, filters and both modes', function () {
+test('the report builder preview shows every source, columns, grouping, filters and both modes', function () {
     $response = $this->get(route('design-preview'))->assertSuccessful();
 
     $response
@@ -116,6 +116,10 @@ test('the report builder preview shows the source, columns, grouping, filters an
             '1. Источник данных',
             'Оплаты',
             'Начисления',
+            'Показания счётчиков',
+            'Строка — показание по счётчику.',
+            'Абоненты',
+            'Строка — абонент организации.',
             '2. Колонки',
             'выбрано 6 из 10',
             'Собираемость, %',

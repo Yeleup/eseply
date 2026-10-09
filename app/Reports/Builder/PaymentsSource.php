@@ -101,7 +101,12 @@ final class PaymentsSource implements ReportSource
 
     public function metrics(): array
     {
-        return $this->standardMetrics();
+        return [
+            ReportMetric::clients(),
+            ReportMetric::count('Оплат'),
+            ReportMetric::sum('Сумма оплат', 'amount'),
+            ReportMetric::average('Средняя оплата', 'amount'),
+        ];
     }
 
     public function summaryColumns(): array
@@ -133,26 +138,6 @@ final class PaymentsSource implements ReportSource
                         : $query;
                 }),
         ];
-    }
-
-    public function sumColumn(): string
-    {
-        return 'amount';
-    }
-
-    public function countLabel(): string
-    {
-        return 'Оплат';
-    }
-
-    public function sumLabel(): string
-    {
-        return 'Сумма оплат';
-    }
-
-    public function averageLabel(): string
-    {
-        return 'Средняя оплата';
     }
 
     /**

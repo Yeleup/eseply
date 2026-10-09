@@ -7,8 +7,8 @@ use App\Models\Client;
 use App\Reports\Builder\ReportDimension;
 use App\Reports\Builder\ReportField;
 use App\Reports\Builder\ReportFieldType;
-use App\Reports\Builder\ReportMetric;
 use App\Reports\Concerns\FormatsReportValues;
+use App\Support\ClientControllers;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -60,6 +60,39 @@ trait DescribesClientRows
     }
 
     /**
+     * Controllers whose zone covers the client of the row, by the rule of the clients list
+     * (`ClientControllers`): names in alphabetical order separated by commas, each once,
+     * and a dash when the client is outside every zone.
+     *
+     * The zones of every controller of the organization are read once for the whole
+     * table or export, so the column adds two queries whatever the number of rows.
+     *
+     * @param  string|null  $clientRelation  Relation from the row to its client, `null` when the row is the client.
+     */
+    protected function controllerField(?string $clientRelation): ReportField
+    {
+        $clientControllers = null;
+
+        return ReportField::resolved(
+            'controller',
+            'Контроллер',
+            function (Model $record) use ($clientRelation, &$clientControllers): ?string {
+                $client = $clientRelation === null ? $record : $record->getRelationValue($clientRelation);
+
+                if (! $client instanceof Client) {
+                    return null;
+                }
+
+                $clientControllers ??= ClientControllers::forOrganization((int) $client->organization_id);
+                $names = $clientControllers->namesFor($client);
+
+                return $names === [] ? null : implode(', ', $names);
+            },
+            $clientRelation === null ? [] : [$clientRelation],
+        );
+    }
+
+    /**
      * Every row belongs to the billing period of the report.
      */
     protected function billingPeriodField(): ReportField
@@ -81,21 +114,6 @@ trait DescribesClientRows
             ReportDimension::region(),
             ReportDimension::street(),
             ReportDimension::controller(),
-        ];
-    }
-
-    /**
-     * Distinct clients, number of rows, total amount and the average amount of a row.
-     *
-     * @return list<ReportMetric>
-     */
-    protected function standardMetrics(): array
-    {
-        return [
-            ReportMetric::clients(),
-            ReportMetric::count($this->countLabel()),
-            ReportMetric::sum($this->sumLabel(), $this->sumColumn()),
-            ReportMetric::average($this->averageLabel(), $this->sumColumn()),
         ];
     }
 }

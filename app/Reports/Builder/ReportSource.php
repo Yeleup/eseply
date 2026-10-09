@@ -61,6 +61,9 @@ interface ReportSource
     public function defaultDimensionKey(): string;
 
     /**
+     * Metrics of the summary in catalog order. A source whose row is a client has no
+     * number of rows besides «Абонентов», so it lists no `count` metric.
+     *
      * @return list<ReportMetric>
      */
     public function metrics(): array;
@@ -82,26 +85,6 @@ interface ReportSource
      * @return list<BaseFilter>
      */
     public function filters(Organization $organization): array;
-
-    /**
-     * Summary row column holding the amount of a row.
-     */
-    public function sumColumn(): string;
-
-    /**
-     * Caption of the number of rows, such as «Оплат».
-     */
-    public function countLabel(): string;
-
-    /**
-     * Caption of the total amount, such as «Сумма оплат».
-     */
-    public function sumLabel(): string;
-
-    /**
-     * Caption of the average amount, such as «Средняя оплата».
-     */
-    public function averageLabel(): string;
 
     /**
      * Billing period used while the operator has not chosen one.

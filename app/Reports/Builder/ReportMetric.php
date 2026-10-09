@@ -41,21 +41,23 @@ final readonly class ReportMetric
     }
 
     /**
-     * @param  string  $column  Summary row column holding the summed amount.
+     * @param  string  $column  Summary row column holding the summed value.
+     * @param  ReportFieldType  $type  Type of the sum: an amount of money by default, a whole number for the consumption.
      */
-    public static function sum(string $label, string $column): self
+    public static function sum(string $label, string $column, ReportFieldType $type = ReportFieldType::Money): self
     {
-        return new self(self::SUM, $label, ReportFieldType::Money, "coalesce(sum(report_rows.{$column}), 0)");
+        return new self(self::SUM, $label, $type, "coalesce(sum(report_rows.{$column}), 0)");
     }
 
     /**
      * The sum of the group divided by its number of rows.
      *
-     * @param  string  $column  Summary row column holding the summed amount.
+     * @param  string  $column  Summary row column holding the summed value.
+     * @param  ReportFieldType  $type  Type of the average: an amount of money by default, a fraction for the consumption.
      */
-    public static function average(string $label, string $column): self
+    public static function average(string $label, string $column, ReportFieldType $type = ReportFieldType::Money): self
     {
-        return new self(self::AVERAGE, $label, ReportFieldType::Money, "sum(report_rows.{$column}) / nullif(count(*), 0)");
+        return new self(self::AVERAGE, $label, $type, "sum(report_rows.{$column}) / nullif(count(*), 0)");
     }
 
     /**

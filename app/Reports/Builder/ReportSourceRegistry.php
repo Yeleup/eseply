@@ -16,6 +16,8 @@ class ReportSourceRegistry
     private const SOURCES = [
         PaymentsSource::class,
         AccrualsSource::class,
+        MeterReadingsSource::class,
+        ClientsSource::class,
     ];
 
     /**

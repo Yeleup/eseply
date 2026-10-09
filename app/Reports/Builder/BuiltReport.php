@@ -298,6 +298,12 @@ final class BuiltReport implements FiltersExcelExport
         return $cells;
     }
 
+    /**
+     * A number is written with the decimals the screen shows: a sum or an average
+     * of money keeps its two decimals, a fraction and a percentage are rounded to
+     * two decimals as well, so a computed value such as a debt per resident does
+     * not carry the long tail of the SQL division into the file.
+     */
     private function excelCell(ReportFieldType $type, mixed $value, ?Style $style): Cell
     {
         if ($value === null || $value === '') {
@@ -308,10 +314,11 @@ final class BuiltReport implements FiltersExcelExport
             ReportFieldType::Text => new StringCell((string) $value, $style),
             ReportFieldType::Date => new StringCell(self::date($value), $style),
             ReportFieldType::Int => new NumericCell((int) $value, $style),
-            ReportFieldType::Money, ReportFieldType::Float => new NumericCell((float) $value, $style),
-            ReportFieldType::Percent => new NumericCell(
+            ReportFieldType::Money => new NumericCell(round((float) $value, 2), $style),
+            ReportFieldType::Percent, ReportFieldType::Float => new NumericCell(
                 round((float) $value, 2),
-                ($style ?? new Style)->setFormat('0.00'),
+                // The bold style of «Итого» is shared by the whole row: the format goes on a copy.
+                ($style instanceof Style ? clone $style : new Style)->setFormat('0.00'),
             ),
         };
     }

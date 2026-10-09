@@ -25,9 +25,21 @@ class ListReports extends Page
 
     protected string $view = 'filament.pages.reports.list-reports';
 
+    /**
+     * The list stays highlighted on a report page, but not on the report builder,
+     * which has its own navigation item.
+     */
     public static function getNavigationItemActiveRoutePattern(): string|array
     {
-        return static::getRouteName().'*';
+        return [
+            static::getRouteName(),
+            ViewReport::getRouteName(),
+        ];
+    }
+
+    public function canBuildReports(): bool
+    {
+        return BuildReport::canAccess();
     }
 
     /**

@@ -1,4 +1,26 @@
 <x-filament-panels::page>
+    @if ($this->canBuildReports())
+        <a
+            href="{{ \App\Filament\Pages\Reports\BuildReport::getUrl() }}"
+            class="group flex items-start justify-between gap-4 rounded-xl border border-primary-200 bg-primary-50 p-5 shadow-sm transition hover:border-primary-500 hover:shadow-md dark:border-primary-400/30 dark:bg-primary-400/10"
+        >
+            <div class="space-y-2">
+                <h2 class="text-base font-semibold text-gray-950 group-hover:text-primary-600 dark:text-white dark:group-hover:text-primary-400">
+                    Конструктор отчётов
+                </h2>
+
+                <p class="text-sm leading-6 text-gray-600 dark:text-gray-300">
+                    Разовый отчёт из разрешённых полей: оплаты или начисления, свои колонки, группировка и фильтры. Сборка живёт в адресе страницы, ссылку можно переслать.
+                </p>
+            </div>
+
+            <x-filament::icon
+                icon="heroicon-o-adjustments-horizontal"
+                class="h-5 w-5 shrink-0 text-primary-500 transition group-hover:translate-x-0.5"
+            />
+        </a>
+    @endif
+
     <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         @foreach ($this->getReports() as $report)
             <a

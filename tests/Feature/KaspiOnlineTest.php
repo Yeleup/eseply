@@ -1606,6 +1606,42 @@ test('подбор: срок кончился на подготовительн�
     expect($pendingOf(2))->toBe(1);
 });
 
+test('подбор: у организации кончился только свой лимит до первой попытки — проход идёт дальше и проводит следующую', function (): void {
+    $received = now()->subMinutes(5);
+    $organizations = [];
+
+    foreach (range(1, 2) as $number) {
+        ['organization' => $organization, 'utilityService' => $utilityService] = kaspiOrganization();
+        $client = kaspiClient($organization, $utilityService, ['iin' => '90010130005'.$number, 'phone' => '+7701000005'.$number]);
+        $organizations[$number] = $organization;
+        KaspiOperation::factory()->forClient($client)->pending(100)->create(['txn_id' => "48213378{$number}01", 'received_at' => $received]);
+    }
+
+    config(['kaspi.posting.pickup_seconds' => 5, 'kaspi.posting.pickup_organization_seconds' => 0.3]);
+
+    // Reading the operations of the first organization outlives its own limit,
+    // not the time of the round.
+    $slowRead = true;
+    DB::listen(function (QueryExecuted $query) use ($organizations, &$slowRead): void {
+        if ($slowRead
+            && str_starts_with($query->sql, 'select `id` from `kaspi_operations` where `organization_id` = ?')
+            && (int) $query->bindings[0] === $organizations[1]->id) {
+            $slowRead = false;
+            usleep(400_000);
+        }
+    });
+
+    $this->artisan('kaspi:post-pending')->assertSuccessful();
+
+    $first = KaspiOperation::query()->where('organization_id', $organizations[1]->id)->sole();
+    $second = KaspiOperation::query()->where('organization_id', $organizations[2]->id)->sole();
+
+    expect($slowRead)->toBeFalse()
+        ->and($first->state)->toBe(KaspiOperationState::Pending)
+        ->and($first->posting_attempted_at)->toBeNull()
+        ->and($second->state)->toBe(KaspiOperationState::Posted);
+});
+
 test('ссылки сайта: через доверенный HTTPS-прокси — https, прямой HTTP-вход — http, даже при APP_URL на https', function (): void {
     config(['app.url' => 'https://pay.example.test', 'trustedproxy.proxies' => [KASPI_TEST_PROXY]]);
     // Boot as production would with this APP_URL: nothing forces the scheme.

@@ -150,9 +150,11 @@ final class PostPendingKaspiOperations
             $turn = $this->turnOf($organizationId, $pickupAfter, $perOrganization, $organizationBudget);
             $posted += $turn['posted'];
 
-            // The time ran out before its first try — on the month or on reading
-            // its operations: the turn stays with it, the next round starts here.
-            if ($turn['attempts'] === 0 && $organizationBudget->expired()) {
+            // The time of the round ran out before its first try — on the month
+            // or on reading its operations: the turn stays with it, the next
+            // round starts here. When only its own limit ran out, its turn is
+            // used and the round goes on to the next organization.
+            if ($turn['attempts'] === 0 && $round->expired()) {
                 break;
             }
 

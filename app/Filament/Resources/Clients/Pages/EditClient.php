@@ -8,6 +8,7 @@ use App\Models\Client;
 use Filament\Actions\Action;
 use Filament\Actions\DeleteAction;
 use Filament\Facades\Filament;
+use Filament\Notifications\Notification;
 use Filament\Resources\Pages\EditRecord;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
@@ -46,7 +47,21 @@ class EditClient extends EditRecord
                     'client' => $this->record,
                 ]), shouldOpenInNewTab: true),
             DeleteAction::make()
-                ->visible(fn (): bool => $this->record instanceof Client && OrganizationMemberAccess::canDeleteClient($this->record)),
+                ->visible(fn (): bool => $this->record instanceof Client && OrganizationMemberAccess::canDeleteClient($this->record))
+                ->before(function (DeleteAction $action): void {
+                    if (! $this->record instanceof Client || ! $this->record->hasKaspiOperations()) {
+                        return;
+                    }
+
+                    Notification::make()
+                        ->danger()
+                        ->title('Абонент не удалён')
+                        ->body(Client::KASPI_OPERATIONS_DELETE_MESSAGE)
+                        ->persistent()
+                        ->send();
+
+                    $action->cancel();
+                }),
         ];
     }
 

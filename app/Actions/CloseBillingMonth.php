@@ -5,21 +5,28 @@ namespace App\Actions;
 use App\BalanceAdjustmentType;
 use App\BillingPeriodStatus;
 use App\ClientType;
+use App\Jobs\PostPendingKaspiOperationsJob;
+use App\Kaspi\KaspiOperationState;
 use App\Models\Accrual;
 use App\Models\BalanceAdjustment;
 use App\Models\BillingPeriod;
 use App\Models\Client;
+use App\Models\KaspiOperation;
 use App\Models\Meter;
 use App\Models\Organization;
 use App\Models\Payment;
+use App\Models\Receipt;
 use App\Models\Tariff;
 use App\Models\User;
 use App\Models\UtilityService;
 use App\Support\BillingClosureIssue;
 use App\Support\BillingPeriodOperationLock;
+use App\Support\Money;
+use App\Support\NextBillingPeriodNotOpened;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
 use RuntimeException;
 use Throwable;
@@ -92,10 +99,36 @@ class CloseBillingMonth
         } catch (Throwable $exception) {
             $billingPeriod->markFailed(
                 $this->emptySummary(),
-                'Закрытие расчётного месяца прервано технической ошибкой.',
+                $exception instanceof NextBillingPeriodNotOpened
+                    ? $exception->getMessage()
+                    : 'Закрытие расчётного месяца прервано технической ошибкой.',
             );
 
             throw $exception;
+        } finally {
+            // Whatever the branch, the month is no longer closing: Kaspi payments
+            // that waited for it are posted now, not when Kaspi repeats them.
+            self::queuePendingKaspiPosting($organization);
+        }
+    }
+
+    /**
+     * Queue the posting of the organization's Kaspi payments in processing, if it has any.
+     */
+    public static function queuePendingKaspiPosting(Organization $organization): void
+    {
+        try {
+            $hasPending = KaspiOperation::query()
+                ->where('organization_id', $organization->getKey())
+                ->where('state', KaspiOperationState::Pending->value)
+                ->exists();
+
+            if ($hasPending) {
+                PostPendingKaspiOperationsJob::dispatch((int) $organization->getKey());
+            }
+        } catch (Throwable $exception) {
+            // The scheduler picks them up within a minute; the closing result stands.
+            report($exception);
         }
     }
 
@@ -122,6 +155,15 @@ class CloseBillingMonth
             ->orderBy('id')
             ->pluck('id')
             ->all();
+
+        /**
+         * An inactive client with a payment or an adjustment in the month still
+         * moves money: the accrual carries the balance on with no charge for the
+         * service, otherwise the payment would drop out of the balance.
+         *
+         * @var array<int, int> $movementOnlyClientIds
+         */
+        $movementOnlyClientIds = array_flip($this->inactiveClientIdsWithMovement($organization, $billingPeriod));
 
         $summary = $this->emptySummary();
         $summary['active'] = count($activeClientIds);
@@ -155,20 +197,29 @@ class CloseBillingMonth
             return $summary;
         }
 
-        /** Second pass: write the accruals of the whole organization atomically. */
+        $closingClientIds = array_merge($activeClientIds, array_keys($movementOnlyClientIds));
+        sort($closingClientIds);
+
+        /**
+         * Second pass: write the accruals of the whole organization atomically.
+         * The next month opens in the same transaction, so a month is never
+         * closed without the next one open, and a failure to open it rolls the
+         * closing back.
+         */
         $summary['created'] = DB::transaction(function () use (
             $organization,
             $billingPeriod,
             $utilityService,
             $periodStart,
             $tariffs,
-            $activeClientIds,
+            $closingClientIds,
+            $movementOnlyClientIds,
             $summary,
             $closedBy,
         ): int {
             $created = 0;
 
-            foreach (array_chunk($activeClientIds, self::CHUNK_SIZE) as $clientIdChunk) {
+            foreach (array_chunk($closingClientIds, self::CHUNK_SIZE) as $clientIdChunk) {
                 $created += $this->createAccrualChunk(
                     $organization,
                     $billingPeriod,
@@ -176,10 +227,13 @@ class CloseBillingMonth
                     $periodStart,
                     $tariffs,
                     $clientIdChunk,
+                    $movementOnlyClientIds,
                 );
             }
 
             $billingPeriod->markClosed([...$summary, 'created' => $created], $closedBy);
+
+            $this->openNextBillingPeriod($organization, $billingPeriod);
 
             return $created;
         }, attempts: 5);
@@ -188,8 +242,54 @@ class CloseBillingMonth
     }
 
     /**
+     * The next month opens on its own after a successful closing, without an
+     * operator, so payments always have a month to go to.
+     */
+    private function openNextBillingPeriod(Organization $organization, BillingPeriod $closedBillingPeriod): void
+    {
+        try {
+            BillingPeriod::openNextFor($organization);
+        } catch (Throwable $exception) {
+            $reason = $exception instanceof ValidationException
+                ? (string) $exception->validator->errors()->first()
+                : '';
+
+            throw new NextBillingPeriodNotOpened($closedBillingPeriod, $reason, $exception);
+        }
+    }
+
+    /**
+     * Inactive clients of the organization with a payment or a balance
+     * adjustment in the billing period.
+     *
+     * @return list<int>
+     */
+    private function inactiveClientIdsWithMovement(Organization $organization, BillingPeriod $billingPeriod): array
+    {
+        $paidClientIds = Payment::query()
+            ->where('organization_id', $organization->id)
+            ->where('billing_period_id', $billingPeriod->id)
+            ->select('client_id');
+
+        $adjustedClientIds = BalanceAdjustment::query()
+            ->where('organization_id', $organization->id)
+            ->where('billing_period_id', $billingPeriod->id)
+            ->select('client_id');
+
+        return $organization->clients()
+            ->where('status', '!=', 'active')
+            ->where(fn ($query) => $query
+                ->whereIn('id', $paidClientIds)
+                ->orWhereIn('id', $adjustedClientIds))
+            ->orderBy('id')
+            ->pluck('id')
+            ->all();
+    }
+
+    /**
      * @param  array<string, Tariff>  $tariffs
      * @param  list<int>  $clientIdChunk
+     * @param  array<int, int>  $movementOnlyClientIds  Inactive clients that get no charge for the service.
      */
     private function createAccrualChunk(
         Organization $organization,
@@ -198,6 +298,7 @@ class CloseBillingMonth
         CarbonImmutable $periodStart,
         array $tariffs,
         array $clientIdChunk,
+        array $movementOnlyClientIds = [],
     ): int {
         $clients = $this->clientChunk($clientIdChunk);
         $closedClientIds = $this->closedClientIds($billingPeriod, $clientIdChunk);
@@ -215,19 +316,21 @@ class CloseBillingMonth
                 continue;
             }
 
-            $calculation = $this->calculation($client, $utilityService, $periodStart, $tariffs, $metersByClient);
+            $calculation = isset($movementOnlyClientIds[$client->id])
+                ? ['volume' => null, 'tariff_price' => null, 'amount' => 0.0]
+                : $this->calculation($client, $utilityService, $periodStart, $tariffs, $metersByClient);
 
             if ($calculation instanceof BillingClosureIssue) {
                 throw new RuntimeException("Данные абонента {$client->account_number} изменились во время закрытия месяца.");
             }
 
-            $openingBalance = round(
-                (float) ($openingBalances[$client->id] ?? 0)
-                    + (float) ($openingAdjustmentAmounts[$client->id] ?? 0),
-                2,
+            // Exact sums: the totals are wider than a float carries to the tiyn.
+            $openingBalance = Money::sum(
+                $openingBalances[$client->id] ?? null,
+                $openingAdjustmentAmounts[$client->id] ?? null,
             );
-            $paidAmount = (float) ($paidAmounts[$client->id] ?? 0);
-            $adjustmentAmount = (float) ($adjustmentAmounts[$client->id] ?? 0);
+            $paidAmount = Money::sum($paidAmounts[$client->id] ?? null);
+            $adjustmentAmount = Money::sum($adjustmentAmounts[$client->id] ?? null);
 
             $rows[] = [
                 'organization_id' => $organization->id,
@@ -244,7 +347,7 @@ class CloseBillingMonth
                 'paid_amount' => $paidAmount,
                 'adjustment_amount' => $adjustmentAmount,
                 'opening_balance' => $openingBalance,
-                'closing_balance' => round($openingBalance + $calculation['amount'] - $paidAmount + $adjustmentAmount, 2),
+                'closing_balance' => Receipt::closingBalance($openingBalance, $calculation['amount'], $paidAmount, $adjustmentAmount),
                 'closed_at' => $closedAt,
                 'created_at' => $closedAt,
                 'updated_at' => $closedAt,

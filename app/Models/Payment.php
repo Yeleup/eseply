@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Validation\ValidationException;
 
 #[Fillable([
     'organization_id',
@@ -30,11 +31,43 @@ class Payment extends Model
     use HasFactory;
 
     /**
+     * Provider of the payments the Kaspi integration posts.
+     */
+    public const string KASPI_PROVIDER = 'kaspi';
+
+    public const string INTEGRATION_LOCKED_MESSAGE = 'Оплату из интеграции нельзя изменить или удалить: ошибку исправляют корректировкой сальдо.';
+
+    /**
      * @var array<string, mixed>
      */
     protected $attributes = [
         'method' => 'cash',
     ];
+
+    /**
+     * A payment from an integration mirrors the provider's record, so nobody
+     * changes or deletes it here: the two records would no longer match.
+     */
+    public function isFromIntegration(): bool
+    {
+        return filled($this->external_provider) || filled($this->external_payment_id);
+    }
+
+    /**
+     * Short note under the payment method in the payment tables: the Kaspi
+     * number of an integration payment, or that an old Kaspi payment was
+     * entered by hand before the integration.
+     */
+    public function methodNote(): ?string
+    {
+        if ($this->isFromIntegration()) {
+            return $this->external_provider === self::KASPI_PROVIDER
+                ? '№ Kaspi '.$this->external_payment_id
+                : 'из интеграции, № '.$this->external_payment_id;
+        }
+
+        return $this->method === PaymentMethod::Kaspi ? 'внесена вручную' : null;
+    }
 
     public function organization(): BelongsTo
     {
@@ -72,7 +105,16 @@ class Payment extends Model
             $payment->ensureBillingPeriodIsEditable();
         });
 
+        static::updating(function (Payment $payment): void {
+            $payment->ensureNotFromIntegration();
+
+            if ($payment->isDirty(['external_provider', 'external_payment_id'])) {
+                throw ValidationException::withMessages(['payment' => self::INTEGRATION_LOCKED_MESSAGE]);
+            }
+        });
+
         static::deleting(function (Payment $payment): void {
+            $payment->ensureNotFromIntegration();
             $payment->ensureBillingPeriodIsEditable();
         });
 
@@ -101,5 +143,18 @@ class Payment extends Model
                 $payment->billing_period_id,
             );
         });
+    }
+
+    /**
+     * Checked against the stored values: clearing the provider fields in the
+     * same save must not unlock an integration payment.
+     */
+    private function ensureNotFromIntegration(): void
+    {
+        if (blank($this->getOriginal('external_provider')) && blank($this->getOriginal('external_payment_id'))) {
+            return;
+        }
+
+        throw ValidationException::withMessages(['payment' => self::INTEGRATION_LOCKED_MESSAGE]);
     }
 }

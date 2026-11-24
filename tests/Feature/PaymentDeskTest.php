@@ -503,7 +503,6 @@ test('модалка оплаты показывает карточку абон
         ])
         ->assertSchemaStateSet([
             'amount' => null,
-            'method' => PaymentMethod::Cash,
             'paid_at' => today()->toDateString(),
             'note' => null,
         ]);
@@ -653,7 +652,6 @@ test('новая оплата первой появляется в ленте з
         ->set('search', $client->account_number)
         ->callAction(paymentDeskPay($client), [
             'amount' => 500,
-            'method' => PaymentMethod::Kaspi->value,
             'paid_at' => today()->toDateString(),
         ])
         ->assertHasNoFormErrors();
@@ -665,33 +663,80 @@ test('новая оплата первой появляется в ленте з
     expect($page->instance()->todayTotals())->toBe(['count' => 2, 'amount' => 600.0]);
 });
 
-test('кассир принимает оплату способом Kaspi вручную и может её исправить', function (): void {
+test('ручная оплата всегда наличные: подложенный способ и данные интеграции не сохраняются', function (): void {
     ['organization' => $organization, 'utilityService' => $utilityService] = paymentDeskOrganization();
     $billingPeriod = billingPeriodFor($organization);
     paymentDeskOperator($organization);
 
     $client = paymentDeskDebtFromReading($organization, $utilityService, $billingPeriod, 30);
 
-    Livewire::test(PaymentDesk::class)
+    $page = Livewire::test(PaymentDesk::class)
         ->set('search', $client->account_number)
-        ->callAction(paymentDeskPay($client), [
+        ->mountAction(paymentDeskPay($client));
+
+    // В окне приёма способа оплаты больше нет.
+    expect($page->getMountedActionModalHtml())->not->toContain('data.method')
+        ->and($page->getMountedActionModalHtml())->not->toContain('Способ оплаты');
+
+    $page
+        ->set('mountedActions.0.data.method', PaymentMethod::Kaspi->value)
+        ->set('mountedActions.0.data.external_provider', Payment::KASPI_PROVIDER)
+        ->set('mountedActions.0.data.external_payment_id', '48213377190')
+        ->fillForm([
             'amount' => 1500,
-            'method' => PaymentMethod::Kaspi->value,
             'paid_at' => today()->toDateString(),
         ])
+        ->callMountedAction()
         ->assertHasNoFormErrors()
         ->assertNotified('Оплата принята');
 
-    $payment = Payment::query()->where('client_id', $client->id)->firstOrFail();
+    $payment = Payment::query()->where('client_id', $client->id)->sole();
 
-    expect($payment->method)->toBe(PaymentMethod::Kaspi)
-        ->and($payment->method->getLabel())->toBe('Kaspi')
+    expect($payment->method)->toBe(PaymentMethod::Cash)
+        ->and($payment->external_provider)->toBeNull()
+        ->and($payment->external_payment_id)->toBeNull()
+        ->and($payment->isFromIntegration())->toBeFalse()
         ->and((float) Receipt::query()->where('client_id', $client->id)->value('paid_amount'))->toBe(1500.0);
 
+    // Исправление в ленте способ не меняет, даже если его подложить.
     Livewire::test(PaymentDesk::class)
-        ->assertCanSeeTableRecords([$payment])
-        ->assertActionVisible(TestAction::make(EditAction::getDefaultName())->table($payment))
-        ->assertActionVisible(TestAction::make(DeleteAction::getDefaultName())->table($payment));
+        ->mountAction(TestAction::make(EditAction::getDefaultName())->table($payment))
+        ->set('mountedActions.0.data.method', PaymentMethod::Kaspi->value)
+        ->fillForm(['amount' => 1600, 'paid_at' => today()->toDateString()])
+        ->callMountedAction()
+        ->assertHasNoFormErrors();
+
+    expect($payment->refresh()->method)->toBe(PaymentMethod::Cash)
+        ->and((float) $payment->amount)->toBe(1600.0);
+});
+
+test('старая ручная оплата Kaspi остаётся Kaspi с подписью «внесена вручную» и исправляется без смены способа', function (): void {
+    ['organization' => $organization, 'utilityService' => $utilityService] = paymentDeskOrganization();
+    $billingPeriod = billingPeriodFor($organization);
+    paymentDeskOperator($organization);
+
+    $client = paymentDeskDebtFromReading($organization, $utilityService, $billingPeriod, 30);
+
+    $legacyKaspi = Payment::query()->create([
+        'organization_id' => $organization->id,
+        'client_id' => $client->id,
+        'billing_period_id' => $billingPeriod->id,
+        'amount' => 700,
+        'method' => PaymentMethod::Kaspi->value,
+    ]);
+
+    Livewire::test(PaymentDesk::class)
+        ->assertCanSeeTableRecords([$legacyKaspi])
+        ->assertTableColumnFormattedStateSet('method', 'Kaspi', $legacyKaspi)
+        ->assertTableColumnHasDescription('method', 'внесена вручную', $legacyKaspi)
+        ->callAction(TestAction::make(EditAction::getDefaultName())->table($legacyKaspi), [
+            'amount' => 750,
+            'paid_at' => today()->toDateString(),
+        ])
+        ->assertHasNoFormErrors();
+
+    expect($legacyKaspi->refresh()->method)->toBe(PaymentMethod::Kaspi)
+        ->and((float) $legacyKaspi->amount)->toBe(750.0);
 });
 
 test('сумма обязательна и не может быть нулевой: модалка остаётся открытой', function (mixed $amount): void {
@@ -1080,7 +1125,7 @@ test('страница показывает строку клавиш, пане�
             'В окне приёма',
             'пустая сумма — подставить весь долг, иначе принять оплату',
             'вся сумма долга',
-            'сумма, способ оплаты, дата, примечание',
+            'сумма, дата, примечание',
             'принять из примечания',
             'отмена, курсор снова в поиске',
         ])
@@ -1120,14 +1165,15 @@ test('модалка приёма показывает клавиши и при�
 
     $html = $page->getMountedActionModalHtml();
 
-    // Способ и дата — поля браузера: Enter в них принимает оплату, а не раскрывает список.
-    expect($html)->toMatch('/<select[^>]*wire:model="mountedActions\.0\.data\.method"/')
+    // Дата — поле браузера: Enter в нём принимает оплату, а не раскрывает календарь.
+    // Способа оплаты в окне нет: ручная оплата всегда наличные.
+    expect($html)->not->toContain('mountedActions.0.data.method')
         ->and($html)->toMatch('/<input[^>]*type="date"[^>]*wire:model="mountedActions\.0\.data\.paid_at"/')
         ->and($html)->toMatch('/Принять оплату\s*<kbd[^>]*>Enter<\/kbd>/u')
         ->and($html)->toMatch('/Вся сумма\s*<kbd[^>]*>F4<\/kbd>/u');
 
-    // Tab идёт сумма → способ → дата → примечание: «Вся сумма» вне обхода, с клавиатуры это F4.
+    // Tab идёт сумма → дата → примечание: «Вся сумма» вне обхода, с клавиатуры это F4.
     expect($html)->toMatch('/<button(?=[^>]*\btabindex="-1")(?=[^>]*\baria-keyshortcuts="F4")[^>]*>(?:(?!<\/button>).)*Вся сумма/su');
 
-    expect($html)->toMatch('/id="mountedActionSchema0\.amount".*id="mountedActionSchema0\.method".*id="mountedActionSchema0\.paid_at".*id="mountedActionSchema0\.note"/s');
+    expect($html)->toMatch('/id="mountedActionSchema0\.amount".*id="mountedActionSchema0\.paid_at".*id="mountedActionSchema0\.note"/s');
 });

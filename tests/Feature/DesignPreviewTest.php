@@ -33,7 +33,10 @@ test('the payment desk preview shows every required state', function () {
         'Вся сумма',
         'Принять оплату',
         'Лента за сегодня',
-        'Оплата провайдера, правка недоступна',
+        'Оплата из Kaspi, правка недоступна',
+        'внесена вручную',
+        'Оплаты не удалены',
+        'Способа оплаты в форме нет',
         'Сегодня оплат ещё не было',
         'Оплата не принята',
     ] as $marker) {
@@ -159,4 +162,46 @@ test('the report builder preview shows every source, columns, grouping, filters 
     expect($selectedColumns[1])->toBe(['Лицевой счёт', 'Абонент', 'Сальдо на начало', 'Начислено', 'Оплачено', 'Собираемость, %'])
         ->and(array_map(fn (string $heading): string => trim(str_replace(' ↑', '', $heading)), $detailHeadings[1]))
         ->toBe($selectedColumns[1]);
+});
+
+test('the billing periods preview shows the automatic opening of the next month', function () {
+    $this->get(route('design-preview'))
+        ->assertSuccessful()
+        ->assertSee('следующий месяц открывается сам')
+        ->assertSee('Организация без месяцев')
+        ->assertSee('открыт автоматически после закрытия 04.2026')
+        ->assertSee('Не удалось открыть следующий расчётный месяц 06.2026');
+});
+
+test('the kaspi online preview shows the profile section and the journal in every state', function () {
+    $response = $this->get(route('design-preview'))->assertSuccessful();
+
+    foreach ([
+        'Kaspi онлайн в профиле',
+        'Принимать оплаты Kaspi онлайн',
+        'Адрес для Kaspi',
+        '^[0-9]{6,10}$',
+        'JSON, UTF-8',
+        'Последний запрос от Kaspi: сегодня в 10:15. Ошибок за сутки нет.',
+        'Запросов от Kaspi ещё не было.',
+        'Ошибок за сутки: 3 — откройте журнал «Kaspi онлайн».',
+        'Включить приём можно, только когда у организации есть расчётный месяц',
+        'Журнал Kaspi',
+        'Оплат сегодня',
+        'В обработке',
+        'Ошибок за сутки',
+        'ответ: 4 · идёт закрытие расчётного месяца',
+        'расхождение в повторе: проведено по первому запросу',
+        'Операций Kaspi ещё не было',
+        'Загрузка журнала',
+        'Выгрузить для сверки',
+        'Абонент не удалён',
+        'Сервер платформы ещё не настроен для Kaspi',
+        'расхождение в повторе: проведётся по первому запросу',
+        'Раздел «Оплаты»: новая оплата',
+        'Выберите абонента — лицевой счёт или ФИО',
+        'Расчётный месяц закрывается: оплату можно будет внести после закрытия',
+    ] as $marker) {
+        $response->assertSee($marker);
+    }
 });

@@ -2,21 +2,21 @@
 
 namespace App\Filament\Pages;
 
+use App\Actions\RecordManualPayment;
 use App\Filament\Support\CurrentBillingPeriod;
 use App\Filament\Support\OrganizationMemberAccess;
+use App\Filament\Support\PaymentTableParts;
 use App\Models\BillingPeriod;
 use App\Models\Client;
 use App\Models\Organization;
 use App\Models\Payment;
 use App\Models\User;
-use App\PaymentMethod;
 use App\Reports\TurnoverBalanceValues;
 use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
 use Filament\Forms\Components\DatePicker;
-use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
@@ -294,13 +294,13 @@ class PaymentDesk extends Page implements HasTable
                     ->label('Сумма')
                     ->money('KZT')
                     ->weight('bold'),
-                TextColumn::make('method')
-                    ->label('Способ')
-                    ->badge()
-                    ->formatStateUsing(fn (mixed $state): ?string => PaymentMethod::labelFor($state))
-                    ->color(fn (mixed $state): string => PaymentMethod::colorFor($state)),
-                TextColumn::make('receivedByUser.name')
+                PaymentTableParts::methodColumn(),
+                TextColumn::make('received_by')
                     ->label('Принял')
+                    // Nobody at the desk took a payment from the integration: Kaspi did.
+                    ->state(fn (Payment $record): ?string => $record->isFromIntegration()
+                        ? 'Kaspi'
+                        : $record->receivedByUser?->name)
                     ->placeholder('-'),
                 TextColumn::make('note')
                     ->label('Примечание')
@@ -395,18 +395,13 @@ class PaymentDesk extends Page implements HasTable
         abort_unless($client instanceof Client, 404);
 
         try {
-            $billingPeriod = BillingPeriod::requireCurrentEditableFor($organization);
-
-            $payment = Payment::query()->create([
-                'organization_id' => $organization->getKey(),
-                'client_id' => $client->getKey(),
-                'billing_period_id' => $billingPeriod->getKey(),
-                'method' => $data['method'] ?? PaymentMethod::Cash->value,
-                'received_by_user_id' => $user->getKey(),
-                'amount' => $data['amount'],
-                'paid_at' => $data['paid_at'] ?? today(),
-                'note' => $data['note'] ?? null,
-            ]);
+            // Always cash, with the subscriber row locked first (RecordManualPayment).
+            $payment = app(RecordManualPayment::class)->handle(
+                $organization,
+                (int) $client->getKey(),
+                $data,
+                (int) $user->getKey(),
+            );
         } catch (ValidationException|QueryException $exception) {
             Notification::make()
                 ->danger()
@@ -568,15 +563,8 @@ class PaymentDesk extends Page implements HasTable
                         : null)
                     ->suffixAction($this->fillFullDebtAction($fullDebt))
                     ->columnSpanFull(),
-                // Browser controls rather than Filament's dropdowns: the dropdowns
-                // take Enter to open themselves, and here Enter accepts the payment.
-                Select::make('method')
-                    ->label('Способ оплаты')
-                    ->options(PaymentMethod::class)
-                    ->default(PaymentMethod::Cash->value)
-                    ->required()
-                    ->selectablePlaceholder(false)
-                    ->native(),
+                // A browser control rather than Filament's date picker: the picker
+                // takes Enter to open itself, and here Enter accepts the payment.
                 DatePicker::make('paid_at')
                     ->label('Дата оплаты')
                     ->default(fn (): string => today()->toDateString())
@@ -685,14 +673,13 @@ class PaymentDesk extends Page implements HasTable
     }
 
     /**
-     * Payments recorded by an external payment provider mirror the provider's record,
-     * so correcting them by hand here would split the two records.
+     * Payments from an integration mirror the provider's record, so correcting
+     * them by hand here would split the two records.
      */
     private function canCorrect(Payment $payment): bool
     {
         return OrganizationMemberAccess::canManageTenant()
-            && blank($payment->external_payment_id)
-            && blank($payment->external_provider)
+            && ! $payment->isFromIntegration()
             && ($payment->billingPeriod?->isEditable() ?? false);
     }
 
@@ -711,11 +698,6 @@ class PaymentDesk extends Page implements HasTable
                         ->step('0.01')
                         ->minValue(0.01)
                         ->required(),
-                    Select::make('method')
-                        ->label('Способ оплаты')
-                        ->options(PaymentMethod::class)
-                        ->required()
-                        ->native(false),
                     DatePicker::make('paid_at')
                         ->label('Дата оплаты')
                         ->native(false),
@@ -734,9 +716,9 @@ class PaymentDesk extends Page implements HasTable
         abort_unless($this->canCorrect($payment), 403);
 
         try {
+            // The correction never changes the method: a payment entered by hand stays as it was taken.
             $payment->update([
                 'amount' => $data['amount'],
-                'method' => $data['method'],
                 'paid_at' => $data['paid_at'] ?? null,
                 'note' => $data['note'] ?? null,
             ]);

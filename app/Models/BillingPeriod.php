@@ -134,6 +134,17 @@ class BillingPeriod extends Model
         return $billingPeriod;
     }
 
+    /**
+     * Whether the latest month of the organization is closed with no month after it.
+     */
+    public static function latestIsClosedFor(Organization|int $organization): bool
+    {
+        return self::query()
+            ->forOrganization($organization)
+            ->orderByDesc('starts_on')
+            ->value('status') === BillingPeriodStatus::Closed;
+    }
+
     public static function openNextFor(Organization|int $organization, User|int|null $openedBy = null): self
     {
         $organizationId = $organization instanceof Organization ? (int) $organization->getKey() : $organization;

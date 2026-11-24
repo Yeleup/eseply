@@ -5,6 +5,7 @@ namespace App\Filament\Resources\Clients\Tables;
 use App\ClientType;
 use App\Filament\Resources\Clients\ClientResource;
 use App\Models\Client;
+use App\Models\KaspiOperation;
 use App\Models\Organization;
 use App\Models\User;
 use App\Support\ClientControllers;
@@ -13,10 +14,12 @@ use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Facades\Filament;
+use Filament\Notifications\Notification;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 
 class ClientsTable
 {
@@ -149,7 +152,28 @@ class ClientsTable
             ->toolbarActions([
                 BulkActionGroup::make([
                     DeleteBulkAction::make()
-                        ->visible(fn (): bool => ClientResource::canDeleteAny()),
+                        ->visible(fn (): bool => ClientResource::canDeleteAny())
+                        // Kaspi operations are kept forever: a selection with such a
+                        // subscriber is not deleted at all, and the operator sees why.
+                        ->before(function (DeleteBulkAction $action, Collection $records): void {
+                            $withKaspi = KaspiOperation::query()
+                                ->whereIn('client_id', $records->modelKeys())
+                                ->distinct()
+                                ->count('client_id');
+
+                            if ($withKaspi === 0) {
+                                return;
+                            }
+
+                            Notification::make()
+                                ->danger()
+                                ->title('Абоненты не удалены')
+                                ->body("По абонентам в выборке есть операции Kaspi онлайн: {$withKaspi}. Они хранятся бессрочно, поэтому не удалён ни один абонент. Снимите таких абонентов с выборки или сделайте их неактивными.")
+                                ->persistent()
+                                ->send();
+
+                            $action->cancel();
+                        }),
                 ]),
             ]);
     }

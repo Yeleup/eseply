@@ -2,18 +2,18 @@
 
 namespace App\Filament\Resources\Clients\RelationManagers;
 
+use App\Actions\RecordManualPayment;
 use App\Filament\Support\BillingPeriodOptions;
 use App\Filament\Support\CurrentBillingPeriod;
 use App\Filament\Support\OrganizationMemberAccess;
+use App\Filament\Support\PaymentTableParts;
 use App\Models\Payment;
 use App\PaymentMethod;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
-use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Forms\Components\DatePicker;
-use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Resources\RelationManagers\RelationManager;
@@ -61,12 +61,6 @@ class PaymentsRelationManager extends RelationManager
                             ->step('0.01')
                             ->minValue(0)
                             ->required(),
-                        Select::make('method')
-                            ->label('Способ оплаты')
-                            ->options(PaymentMethod::class)
-                            ->default(PaymentMethod::Cash->value)
-                            ->required()
-                            ->native(false),
                         DatePicker::make('paid_at')
                             ->label('Дата оплаты')
                             ->native(false),
@@ -93,11 +87,7 @@ class PaymentsRelationManager extends RelationManager
                     ->label('Сумма')
                     ->money('KZT')
                     ->sortable(),
-                TextColumn::make('method')
-                    ->label('Способ')
-                    ->badge()
-                    ->formatStateUsing(fn (mixed $state): string => PaymentMethod::labelFor($state) ?? (string) $state)
-                    ->color(fn (mixed $state): string => PaymentMethod::colorFor($state)),
+                PaymentTableParts::methodColumn(),
                 TextColumn::make('paid_at')
                     ->label('Дата оплаты')
                     ->date('d.m.Y')
@@ -122,24 +112,38 @@ class PaymentsRelationManager extends RelationManager
                     ->label('Добавить оплату')
                     ->disabled(fn (): bool => CurrentBillingPeriod::missing($this->ownerRecord->organization))
                     ->tooltip(fn (): ?string => CurrentBillingPeriod::missingTooltip($this->ownerRecord->organization))
-                    ->mutateDataUsing(function (array $data): array {
-                        $data['organization_id'] = $this->ownerRecord->organization_id;
-                        $data['method'] ??= PaymentMethod::Cash->value;
-                        $data['received_by_user_id'] = auth()->id();
-
-                        return $data;
-                    }),
+                    ->mutateDataUsing(fn (array $data): array => RecordManualPayment::manualData(
+                        $data,
+                        (int) $this->ownerRecord->organization_id,
+                        auth()->id(),
+                    ))
+                    // Filament saves the payment itself, in one transaction with
+                    // the locks of RecordManualPayment taken first.
+                    ->databaseTransaction()
+                    ->before(fn () => app(RecordManualPayment::class)->lockClientAndMonth(
+                        $this->ownerRecord->organization,
+                        (int) $this->ownerRecord->getKey(),
+                    )),
             ])
             ->recordActions([
                 EditAction::make()
-                    ->visible(fn (Payment $record): bool => $record->billingPeriod?->isEditable() ?? false),
+                    ->visible(fn (Payment $record): bool => $this->canChange($record)),
                 DeleteAction::make()
-                    ->visible(fn (Payment $record): bool => $record->billingPeriod?->isEditable() ?? false),
+                    ->visible(fn (Payment $record): bool => $this->canChange($record)),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([
-                    DeleteBulkAction::make(),
+                    PaymentTableParts::deleteBulkAction(),
                 ]),
             ]);
+    }
+
+    /**
+     * Only a payment entered by hand, and only while its month is editable.
+     */
+    private function canChange(Payment $payment): bool
+    {
+        return ! $payment->isFromIntegration()
+            && ($payment->billingPeriod?->isEditable() ?? false);
     }
 }

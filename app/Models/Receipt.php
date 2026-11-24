@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\BalanceAdjustmentType;
 use App\ClientType;
+use App\Support\Money;
 use Carbon\CarbonImmutable;
 use Database\Factories\ReceiptFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -106,13 +107,24 @@ class Receipt extends Model
             'paid_amount' => $paidAmount,
             'adjustment_amount' => $adjustmentAmount,
             'opening_balance' => $openingBalance,
-            'closing_balance' => $openingBalance + $amount - $paidAmount + $adjustmentAmount,
+            'closing_balance' => self::closingBalance($openingBalance, $amount, $paidAmount, $adjustmentAmount),
             'issued_at' => now(),
         ]);
 
         $receipt->save();
 
         return $receipt;
+    }
+
+    /**
+     * Opening + accrued − paid + adjustment, exactly: the totals are wider than
+     * a float can carry to the tiyn (App\Support\Money).
+     */
+    public static function closingBalance(string|float|null $opening, string|float|null $amount, string|float|null $paid, string|float|null $adjustment): string
+    {
+        return Money::format(
+            Money::cents($opening) + Money::cents($amount) - Money::cents($paid) + Money::cents($adjustment),
+        );
     }
 
     public static function refreshPaymentTotalsFor(
@@ -124,10 +136,14 @@ class Receipt extends Model
             return null;
         }
 
+        // Locking reads: the totals are taken from the latest committed payments,
+        // not from the snapshot the transaction may have started with before
+        // the subscriber row was locked.
         $receipt = self::query()
             ->where('organization_id', (int) $organizationId)
             ->where('client_id', (int) $clientId)
             ->where('billing_period_id', (int) $billingPeriodId)
+            ->lockForUpdate()
             ->first();
 
         if (! $receipt) {
@@ -142,10 +158,12 @@ class Receipt extends Model
 
         $receipt->fill([
             'paid_amount' => $paidAmount,
-            'closing_balance' => (float) $receipt->opening_balance
-                + (float) $receipt->amount
-                - $paidAmount
-                + (float) $receipt->adjustment_amount,
+            'closing_balance' => self::closingBalance(
+                $receipt->opening_balance,
+                $receipt->amount,
+                $paidAmount,
+                $receipt->adjustment_amount,
+            ),
             'issued_at' => now(),
         ]);
 
@@ -222,7 +240,7 @@ class Receipt extends Model
             ->first();
     }
 
-    private static function paidAmount(Client $client, BillingPeriod $billingPeriod): float
+    private static function paidAmount(Client $client, BillingPeriod $billingPeriod): string
     {
         return self::paidAmountFor(
             (int) $client->organization_id,
@@ -231,21 +249,22 @@ class Receipt extends Model
         );
     }
 
-    private static function paidAmountFor(int $organizationId, int $clientId, int $billingPeriodId): float
+    private static function paidAmountFor(int $organizationId, int $clientId, int $billingPeriodId): string
     {
-        return (float) Payment::query()
+        return Money::sum(Payment::query()
             ->where('organization_id', $organizationId)
             ->where('client_id', $clientId)
             ->where('billing_period_id', $billingPeriodId)
-            ->sum('amount');
+            ->sharedLock()
+            ->sum('amount'));
     }
 
-    private static function adjustmentAmount(Client $client, BillingPeriod $billingPeriod): float
+    private static function adjustmentAmount(Client $client, BillingPeriod $billingPeriod): string
     {
-        return (float) $client->balanceAdjustments()
+        return Money::sum($client->balanceAdjustments()
             ->whereBelongsTo($billingPeriod)
             ->where('type', '!=', BalanceAdjustmentType::OpeningBalance->value)
-            ->sum('amount');
+            ->sum('amount'));
     }
 
     /**
@@ -253,21 +272,19 @@ class Receipt extends Model
      * period: opening balance adjustments belong to the opening balance of the
      * period they are entered in, not to its turnover.
      */
-    private static function openingBalance(Client $client, BillingPeriod $billingPeriod): float
+    private static function openingBalance(Client $client, BillingPeriod $billingPeriod): string
     {
         $previousReceipt = $client->receipts()
             ->beforePeriod($billingPeriod->code)
             ->orderByBillingPeriodDesc()
             ->first();
 
-        $carriedBalance = $previousReceipt ? (float) $previousReceipt->closing_balance : 0.0;
-
-        $openingAdjustmentAmount = (float) $client->balanceAdjustments()
+        $openingAdjustmentAmount = $client->balanceAdjustments()
             ->whereBelongsTo($billingPeriod)
             ->where('type', BalanceAdjustmentType::OpeningBalance->value)
             ->sum('amount');
 
-        return round($carriedBalance + $openingAdjustmentAmount, 2);
+        return Money::sum($previousReceipt?->closing_balance, $openingAdjustmentAmount);
     }
 
     private static function clientTypeValue(Client $client): string

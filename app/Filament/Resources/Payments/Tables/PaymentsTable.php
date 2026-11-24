@@ -2,10 +2,12 @@
 
 namespace App\Filament\Resources\Payments\Tables;
 
+use App\Filament\Resources\Payments\PaymentResource;
 use App\Filament\Support\BillingPeriodOptions;
+use App\Filament\Support\PaymentTableParts;
+use App\Models\Payment;
 use App\PaymentMethod;
 use Filament\Actions\BulkActionGroup;
-use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Facades\Filament;
 use Filament\Tables\Columns\TextColumn;
@@ -41,11 +43,7 @@ class PaymentsTable
                     ->label('Сумма')
                     ->money('KZT')
                     ->sortable(),
-                TextColumn::make('method')
-                    ->label('Способ')
-                    ->badge()
-                    ->formatStateUsing(fn (mixed $state): string => PaymentMethod::labelFor($state) ?? (string) $state)
-                    ->color(fn (mixed $state): string => PaymentMethod::colorFor($state)),
+                PaymentTableParts::methodColumn(),
                 TextColumn::make('paid_at')
                     ->label('Дата оплаты')
                     ->date('d.m.Y')
@@ -73,11 +71,12 @@ class PaymentsTable
                     ->options(PaymentMethod::class),
             ])
             ->recordActions([
-                EditAction::make(),
+                EditAction::make()
+                    ->visible(fn (Payment $record): bool => PaymentResource::canEdit($record)),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([
-                    DeleteBulkAction::make(),
+                    PaymentTableParts::deleteBulkAction(),
                 ]),
             ]);
     }

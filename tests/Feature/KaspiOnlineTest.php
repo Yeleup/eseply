@@ -43,6 +43,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Testing\TestResponse;
 
 uses(RefreshDatabase::class);
@@ -1166,6 +1167,18 @@ test('любая допустимая сумма проводится: итог�
     kaspiGet($organization, kaspiPayQuery('48213377705', sum: '999999999999.99'));
 
     expect(Receipt::closingBalance('-1999999998999.98', '0', '1999999999999.96', '0'))->toBe('-3999999998999.94');
+});
+
+test('итоги месяца в квитанциях и начислениях — DECIMAL(18,2), не NULL, по умолчанию 0', function (): void {
+    foreach (['receipts', 'accruals'] as $table) {
+        $columns = collect(Schema::getColumns($table))->keyBy('name');
+
+        foreach (['paid_amount', 'adjustment_amount', 'opening_balance', 'closing_balance'] as $column) {
+            expect($columns[$column]['type'])->toBe('decimal(18,2)', "{$table}.{$column}")
+                ->and($columns[$column]['nullable'])->toBeFalse("{$table}.{$column}")
+                ->and($columns[$column]['default'])->toBe('0.00', "{$table}.{$column}");
+        }
+    }
 });
 
 test('итоги денег считаются без потери тиынов там, где float уже ошибается', function (): void {

@@ -4,6 +4,8 @@ use App\Actions\CloseBillingMonth;
 use App\BalanceAdjustmentType;
 use App\BillingPeriodStatus;
 use App\ClientType;
+use App\Filament\Pages\PaymentDesk;
+use App\Filament\Pages\Reports\ViewReport;
 use App\Jobs\PostKaspiOperationJob;
 use App\Kaspi\CannotPostKaspiOperation;
 use App\Kaspi\KaspiActivity;
@@ -24,12 +26,15 @@ use App\Models\Organization;
 use App\Models\Payment;
 use App\Models\Receipt;
 use App\Models\Tariff;
+use App\Models\User;
 use App\Models\UtilityService;
+use App\OrganizationMemberRole;
 use App\PaymentMethod;
 use App\Providers\AppServiceProvider;
 use App\Support\BillingPeriodOperationLock;
 use App\Support\Money;
 use Carbon\CarbonImmutable;
+use Filament\Facades\Filament;
 use Illuminate\Cache\ArrayLock;
 use Illuminate\Cache\ArrayStore;
 use Illuminate\Console\Scheduling\Event;
@@ -45,6 +50,7 @@ use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Testing\TestResponse;
+use Livewire\Livewire;
 
 uses(RefreshDatabase::class);
 
@@ -582,6 +588,52 @@ test('check: обычный долг — сальдо закрытого мес�
     expect(kaspiGet($organization, kaspiCheckQuery('48213377601'))->getContent())
         ->toBe('{"txn_id":"48213377601","result":0,"sum":3500.00,"comment":"","fields":{"field1":{"@name":"Абонент","#text":"Иванов И. И."},"field2":{"@name":"Долг на 24.11.2026","#text":"3500.00"}}}');
 });
+
+test('долг в check, в кассе, в квитанции и в оборотно-сальдовой ведомости совпадает до тиына — и на суммах порядка наибольшей оплаты Kaspi', function (string $opening, string $adjustment, string $paid, string $expected): void {
+    ['organization' => $organization, 'utilityService' => $utilityService, 'billingPeriod' => $billingPeriod] = kaspiOrganization();
+    $client = kaspiClient($organization, $utilityService, ['billing_type' => 'meter']);
+
+    kaspiOpeningBalance($client, $billingPeriod, (float) $opening);
+    BalanceAdjustment::query()->create([
+        'organization_id' => $organization->id,
+        'client_id' => $client->id,
+        'billing_period_id' => $billingPeriod->id,
+        'type' => BalanceAdjustmentType::ManualAdjustment->value,
+        'amount' => $adjustment,
+        'adjusted_at' => '2026-11-02',
+    ]);
+    // 30 м³ × 100 = 3000 by the receipt.
+    kaspiMeterDebt($organization, $utilityService, $billingPeriod, $client, 30);
+
+    expect(kaspiGet($organization, kaspiPayQuery('48213377611', sum: $paid))->json('result'))->toBe(0);
+
+    $check = kaspiGet($organization, kaspiCheckQuery('48213377612'))->getContent();
+    preg_match('/"sum":([0-9.]+),/', $check, $checkSum);
+
+    $operator = User::factory()->create();
+    $operator->organizations()->attach($organization, ['role' => OrganizationMemberRole::Operator->value]);
+    Livewire::actingAs($operator);
+    Filament::setCurrentPanel('admin');
+    Filament::setTenant($organization);
+    Filament::bootCurrentPanel();
+
+    $desk = Livewire::test(PaymentDesk::class)->set('search', $client->account_number)->instance();
+    $deskDebt = $desk->balanceOf($desk->searchResults()->firstWhere('id', $client->id))['debt'];
+
+    expect($checkSum[1] ?? null)->toBe($expected)
+        ->and(Receipt::query()->whereBelongsTo($client)->whereBelongsTo($billingPeriod)->sole()->closing_balance)->toBe($expected)
+        ->and(number_format($deskDebt, 2, '.', ''))->toBe($expected);
+
+    Livewire::test(ViewReport::class, ['report' => 'turnover-balance-sheet', 'period' => (string) $billingPeriod->getKey()])
+        ->assertOk()
+        ->assertTableColumnStateSet('closing_debit', (float) $expected, $client)
+        ->assertTableColumnSummarySet('closing_debit', 'total', (float) $expected);
+})->with([
+    // 1250.50 + 3000 − 100.25 − 700.10
+    'обычные суммы' => ['1250.50', '-100.25', '700.10', '3450.15'],
+    // 999 999 999 999.99 + 999 999 999 999.98 + 3000 − 999 999 999 999.99
+    'суммы порядка наибольшей оплаты Kaspi' => ['999999999999.99', '999999999999.98', '999999999999.99', '1000000002999.98'],
+]);
 
 test('check: повтор txn_id отдаёт первый ответ, даже если долг изменился', function (): void {
     ['organization' => $organization, 'utilityService' => $utilityService, 'billingPeriod' => $billingPeriod] = kaspiOrganization();

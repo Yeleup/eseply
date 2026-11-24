@@ -4,18 +4,19 @@ namespace App\Http\Middleware;
 
 use App\Kaspi\KaspiInput;
 use App\Kaspi\KaspiResponse;
+use App\Kaspi\KaspiSender;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 /**
- * The Kaspi address takes GET from Kaspi's addresses only.
+ * The Kaspi address takes GET from Kaspi only (`KaspiSender`).
  *
- * The address is not secret, so the IP is its only protection. `request()->ip()`
- * honours X-Forwarded-For only from the trusted proxies of
- * config/trustedproxy.php, so the header cannot fake an address from outside.
- * Any other client gets result 5 before the organization is looked up.
+ * The address is not secret, so this is its only protection. Every other
+ * method — HEAD, OPTIONS, POST and the rest — gets 405; any other sender gets
+ * result 5 before the organization is looked up.
  */
 class EnsureKaspiRequest
 {
@@ -24,7 +25,6 @@ class EnsureKaspiRequest
      */
     public function handle(Request $request, Closure $next): SymfonyResponse
     {
-        // Route::get() also answers HEAD; Kaspi sends GET only.
         if (! $request->isMethod('GET')) {
             return new Response('', 405, [
                 'Allow' => 'GET',
@@ -32,7 +32,16 @@ class EnsureKaspiRequest
             ]);
         }
 
-        if (! in_array($request->ip(), (array) config('kaspi.allowed_ips'), true)) {
+        $sender = KaspiSender::check($request);
+
+        if ($sender !== 'accepted') {
+            // The source address helps to set TRUSTED_PROXIES: a request sent
+            // through the web server shows its address here.
+            Log::info('Kaspi: запрос не принят', [
+                'reason' => $sender,
+                'remote_addr' => $request->server->get('REMOTE_ADDR'),
+            ]);
+
             return KaspiResponse::http(KaspiResponse::error(KaspiInput::responseTxnIdOf($request)));
         }
 

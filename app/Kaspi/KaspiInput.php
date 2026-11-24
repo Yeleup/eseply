@@ -171,8 +171,9 @@ final readonly class KaspiInput
             return null;
         }
 
-        // A real date and time only: 20261131… or …246000 would roll over.
-        if (! $date instanceof CarbonImmutable || $date->format('YmdHis') !== $value || $date->year < 2000) {
+        // A real date and time only: 20261131… or …246000 would roll over. Years
+        // before 1000 are left out only because a DATETIME column cannot hold them.
+        if (! $date instanceof CarbonImmutable || $date->format('YmdHis') !== $value || $date->year < 1000) {
             return null;
         }
 

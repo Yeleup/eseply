@@ -5,35 +5,74 @@ namespace App\Kaspi;
 use App\Models\KaspiOperation;
 use App\Models\Organization;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
- * Figures of the Kaspi journal of one organization: the tiles of the journal
- * and the line under the Kaspi section of the profile.
+ * Figures of Kaspi online of one organization: the tiles of the journal and
+ * the line under the Kaspi section of the profile.
  *
  * Every query starts with the organization and uses an index of
  * `kaspi_operations`, so the figures cost the same for 1 or 100 organizations.
  */
 final class KaspiActivity
 {
+    /**
+     * Count a request that came from Kaspi to this organization, whatever the
+     * answer — a rejected `pay` that creates no operation and a repeat
+     * included. Bookkeeping only: it never holds the answer past the deadline.
+     */
+    public static function record(Organization $organization, int $result, KaspiDeadline $deadline): void
+    {
+        $now = now();
+
+        try {
+            $deadline->limitBookkeepingWait();
+
+            DB::table('kaspi_request_stats')->upsert(
+                [[
+                    'organization_id' => $organization->getKey(),
+                    'hour_start' => $now->copy()->startOfHour(),
+                    'requests' => 1,
+                    'errors' => $result === 5 ? 1 : 0,
+                    'last_request_at' => $now,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]],
+                ['organization_id', 'hour_start'],
+                [
+                    'requests' => DB::raw('requests + 1'),
+                    'errors' => DB::raw('errors + '.($result === 5 ? 1 : 0)),
+                    'last_request_at' => DB::raw('greatest(last_request_at, values(last_request_at))'),
+                    'updated_at' => DB::raw('values(updated_at)'),
+                ],
+            );
+        } catch (QueryException $exception) {
+            Log::info('Kaspi: запрос не учтён в статистике', ['error' => $exception->getMessage()]);
+        }
+    }
+
     public static function lastRequestAt(Organization $organization): ?CarbonImmutable
     {
-        $receivedAt = KaspiOperation::query()
+        $lastRequestAt = DB::table('kaspi_request_stats')
             ->where('organization_id', $organization->getKey())
-            ->max('received_at');
+            ->orderByDesc('hour_start')
+            ->value('last_request_at');
 
-        return $receivedAt === null ? null : CarbonImmutable::parse($receivedAt);
+        return $lastRequestAt === null ? null : CarbonImmutable::parse($lastRequestAt);
     }
 
     /**
-     * Operations received in the last 24 hours that Kaspi got an error for.
+     * Answers with code 5 that Kaspi got in the last 24 hours, counted by the
+     * hour the request came in.
      */
     public static function errorsInLastDay(Organization $organization): int
     {
-        return KaspiOperation::query()
+        return (int) DB::table('kaspi_request_stats')
             ->where('organization_id', $organization->getKey())
-            ->where('received_at', '>=', now()->subDay())
-            ->where('state', KaspiOperationState::Error->value)
-            ->count();
+            ->where('hour_start', '>', now()->subDay())
+            ->sum('errors');
     }
 
     public static function pendingCount(Organization $organization): int

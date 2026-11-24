@@ -52,14 +52,17 @@ return [
     |
     | A queued posting job retries with these pauses (seconds); the scheduler
     | picks up every operation still in processing after `pickup_after`
-    | seconds, in case a job was lost.
+    | seconds, in case a job was lost, reading `batch_size` operations at a
+    | time and at most `pickup_per_organization` of one organization a round.
     |
     */
 
     'posting' => [
         'backoff' => [10, 30, 60, 120, 300],
-        'job_lock_wait_seconds' => 30,
+        'job_lock_wait_seconds' => (int) env('KASPI_POSTING_LOCK_WAIT_SECONDS', 30),
         'pickup_after' => 60,
+        'batch_size' => 100,
+        'pickup_per_organization' => 200,
     ],
 
 ];

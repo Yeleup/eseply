@@ -108,7 +108,11 @@ class KaspiOperationsTable
         }
 
         if ($record->retry_mismatch) {
-            $parts[] = 'расхождение в повторе: проведено по первому запросу';
+            $parts[] = match ($record->state) {
+                KaspiOperationState::Posted => 'расхождение в повторе: проведено по первому запросу',
+                KaspiOperationState::Pending => 'расхождение в повторе: проведётся по первому запросу',
+                default => 'расхождение в повторе: ответ по первому запросу',
+            };
         }
 
         return implode(' · ', $parts);

@@ -149,9 +149,9 @@ test('new billing period must follow latest period without gaps', function () {
         ->toThrow(ValidationException::class, 'Новый расчётный месяц должен идти сразу после последнего расчётного месяца.');
 });
 
-test('new billing period action opens next month after latest period is closed', function () {
+test('new billing period action is hidden and refused once the organization has a closed month', function () {
     $organization = Organization::factory()->create();
-    $user = actingAsBillingPeriodTenant($organization);
+    actingAsBillingPeriodTenant($organization);
 
     BillingPeriod::factory()
         ->for($organization)
@@ -159,19 +159,14 @@ test('new billing period action opens next month after latest period is closed',
         ->closed()
         ->create();
 
-    Livewire::test(ListBillingPeriods::class)
+    $page = Livewire::test(ListBillingPeriods::class)
         ->assertOk()
-        ->assertActionExists('openNextBillingPeriod')
-        ->callAction('openNextBillingPeriod')
-        ->assertNotified();
+        ->assertActionHidden('openNextBillingPeriod');
 
-    $billingPeriod = BillingPeriod::query()
-        ->forOrganization($organization)
-        ->forCode('202606')
-        ->sole();
+    // The server refuses it too, not only the button.
+    (new ReflectionMethod(ListBillingPeriods::class, 'openNextBillingPeriod'))->invoke($page->instance());
 
-    expect($billingPeriod->status)->toBe(BillingPeriodStatus::Open)
-        ->and($billingPeriod->opened_by_user_id)->toBe($user->id);
+    expect(BillingPeriod::query()->forOrganization($organization)->forCode('202606')->exists())->toBeFalse();
 });
 
 test('new billing period action is offered only when there is no month to continue from', function () {

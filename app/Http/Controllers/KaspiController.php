@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Kaspi\KaspiActivity;
 use App\Kaspi\KaspiCommand;
 use App\Kaspi\KaspiDeadline;
 use App\Kaspi\KaspiGateway;
@@ -25,13 +26,37 @@ class KaspiController extends Controller
     public function __invoke(Request $request, string $uid, KaspiGateway $gateway): Response
     {
         $input = KaspiInput::fromRequest($request);
+        $deadline = KaspiDeadline::in((float) config('kaspi.lock_wait_seconds'));
+        $organization = null;
 
-        $organization = Str::isUuid($uid)
-            ? Organization::query()->where('kaspi_uid', $uid)->first()
-            : null;
+        try {
+            $organization = Str::isUuid($uid)
+                ? Organization::query()->where('kaspi_uid', $uid)->first()
+                : null;
 
+            $body = $this->answer($organization, $input, $deadline, $gateway);
+        } catch (Throwable $exception) {
+            // The database included: any failure is result 5, never a page of an error.
+            report($exception);
+
+            $body = KaspiResponse::error($input->responseTxnId);
+        }
+
+        try {
+            if ($organization instanceof Organization) {
+                KaspiActivity::record($organization, KaspiResponse::resultOf($body), $deadline);
+            }
+        } finally {
+            $this->restore($deadline);
+        }
+
+        return KaspiResponse::http($body);
+    }
+
+    private function answer(?Organization $organization, KaspiInput $input, KaspiDeadline $deadline, KaspiGateway $gateway): string
+    {
         if (! $organization instanceof Organization) {
-            return KaspiResponse::http(KaspiResponse::error($input->responseTxnId));
+            return KaspiResponse::error($input->responseTxnId);
         }
 
         if (! $input->isValid()) {
@@ -41,27 +66,20 @@ class KaspiController extends Controller
                 'rule' => $input->error,
             ]);
 
-            return KaspiResponse::http(KaspiResponse::error($input->responseTxnId));
+            return KaspiResponse::error($input->responseTxnId);
         }
 
-        $deadline = KaspiDeadline::in((float) config('kaspi.lock_wait_seconds'));
+        return $input->command === KaspiCommand::Check
+            ? $gateway->check($organization, $input, $deadline)
+            : $gateway->pay($organization, $input, $deadline);
+    }
 
+    private function restore(KaspiDeadline $deadline): void
+    {
         try {
-            $body = $input->command === KaspiCommand::Check
-                ? $gateway->check($organization, $input, $deadline)
-                : $gateway->pay($organization, $input, $deadline);
+            $deadline->restore();
         } catch (Throwable $exception) {
             report($exception);
-
-            $body = KaspiResponse::error($input->responseTxnId);
-        } finally {
-            try {
-                $deadline->restore();
-            } catch (Throwable $exception) {
-                report($exception);
-            }
         }
-
-        return KaspiResponse::http($body);
     }
 }

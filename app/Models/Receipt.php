@@ -124,10 +124,14 @@ class Receipt extends Model
             return null;
         }
 
+        // Locking reads: the totals are taken from the latest committed payments,
+        // not from the snapshot the transaction may have started with before
+        // the subscriber row was locked.
         $receipt = self::query()
             ->where('organization_id', (int) $organizationId)
             ->where('client_id', (int) $clientId)
             ->where('billing_period_id', (int) $billingPeriodId)
+            ->lockForUpdate()
             ->first();
 
         if (! $receipt) {
@@ -237,6 +241,7 @@ class Receipt extends Model
             ->where('organization_id', $organizationId)
             ->where('client_id', $clientId)
             ->where('billing_period_id', $billingPeriodId)
+            ->sharedLock()
             ->sum('amount');
     }
 

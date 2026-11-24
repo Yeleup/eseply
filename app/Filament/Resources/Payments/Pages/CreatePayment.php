@@ -16,8 +16,23 @@ class CreatePayment extends CreateRecord
     protected static string $resource = PaymentResource::class;
 
     /**
-     * Always cash, with the subscriber row locked first (RecordManualPayment);
-     * the subscriber is looked up inside the current organization only.
+     * The payment is saved by Filament itself, in one transaction with the
+     * locks of RecordManualPayment.
+     */
+    protected ?bool $hasDatabaseTransactions = true;
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    protected function mutateFormDataBeforeCreate(array $data): array
+    {
+        return RecordManualPayment::manualData($data, (int) Filament::getTenant()?->getKey(), auth()->id());
+    }
+
+    /**
+     * The subscriber is looked up inside the current organization only; its
+     * row and the month are locked before Filament's own save.
      *
      * @param  array<string, mixed>  $data
      */
@@ -27,12 +42,9 @@ class CreatePayment extends CreateRecord
 
         abort_unless($organization instanceof Organization, 404);
 
-        return app(RecordManualPayment::class)->handle(
-            $organization,
-            (int) $data['client_id'],
-            $data,
-            auth()->id(),
-        );
+        app(RecordManualPayment::class)->lockClientAndMonth($organization, (int) $data['client_id']);
+
+        return parent::handleRecordCreation($data);
     }
 
     protected function getCreateFormAction(): Action

@@ -14,6 +14,8 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-Route::get('/kaspi/{uid}', KaspiController::class)
+// Every method reaches the route, so the middleware answers each of them
+// itself: GET is served, the rest get 405 with `Cache-Control: no-store`.
+Route::any('/kaspi/{uid}', KaspiController::class)
     ->middleware(EnsureKaspiRequest::class)
     ->name('kaspi.endpoint');

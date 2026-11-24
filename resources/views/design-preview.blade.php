@@ -145,6 +145,10 @@
                             <p class="mt-2 text-sm text-red-700 dark:text-red-300">Включить приём можно, только когда у организации есть расчётный месяц «Открыт» или «Ошибка закрытия».</p>
                         </div>
                         <div class="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
+                            <p class="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Сервер не настроен</p>
+                            <p class="mt-2 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/30 dark:text-red-300">⛨ Сервер платформы ещё не настроен для Kaspi: пока не задан точный адрес веб-сервера, Kaspi на любой запрос получает код 5. Настройку делает администратор платформы по чек-листу включения.</p>
+                        </div>
+                        <div class="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
                             <p class="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">До первого запроса</p>
                             <p class="mt-2 rounded-md bg-zinc-100 px-3 py-2 text-sm text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">◷ Запросов от Kaspi ещё не было.</p>
                         </div>
@@ -162,7 +166,7 @@
                         <p class="text-sm font-medium text-teal-700 dark:text-teal-300">Учёт / Kaspi онлайн</p>
                         <h2 class="mt-1 text-base font-semibold">Журнал Kaspi</h2>
                         <p class="mt-1 max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
-                            Одна строка на операцию Kaspi (номер Kaspi): повторы считаются в ней же. Состояние проводки и последний отправленный Kaspi код показаны отдельно. Только оператор своей организации.
+                            Одна строка на операцию Kaspi (номер Kaspi): повторы считаются в ней же. Состояние проводки и последний отправленный Kaspi код показаны отдельно. «Ошибок за сутки» — ответы с кодом 5 за последние 24 часа, отклонённые запросы тоже; «последний запрос» учитывает и повторы. Только оператор своей организации.
                         </p>
                     </div>
                     <button class="w-fit rounded-md bg-amber-600 px-3 py-2 text-sm font-medium text-white hover:bg-amber-700 dark:bg-amber-400 dark:text-zinc-950 dark:hover:bg-amber-300">⤓ Выгрузить для сверки</button>
@@ -237,7 +241,7 @@
                                 <td class="px-4 py-3">Ахметова Дана<p class="text-xs text-zinc-500 dark:text-zinc-400">л/с 100523</p></td>
                                 <td class="px-4 py-3">2 750,00 ₸</td>
                                 <td class="px-4 py-3">24.11 09:58:33</td>
-                                <td class="px-4 py-3"><span class="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-950/60 dark:text-amber-200">В обработке</span><p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">ответ: 4 · идёт закрытие расчётного месяца</p></td>
+                                <td class="px-4 py-3"><span class="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-950/60 dark:text-amber-200">В обработке</span><p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">ответ: 4 · идёт закрытие расчётного месяца · расхождение в повторе: проведётся по первому запросу</p></td>
                                 <td class="px-4 py-3 text-zinc-400">—</td>
                             </tr>
                             <tr>
@@ -1650,6 +1654,35 @@
                             </div>
                         </div>
                         <p class="mt-3 text-xs text-zinc-500 dark:text-zinc-400">Способа оплаты в форме нет: ручная оплата сохраняется наличными, что бы ни прислал браузер.</p>
+
+                        <div class="mt-5 border-t border-zinc-200 pt-4 dark:border-zinc-800">
+                            <p class="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Учёт / Оплаты / Создать</p>
+                            <p class="mt-1 text-sm font-semibold">Раздел «Оплаты»: новая оплата</p>
+                            <div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-1">
+                                <div class="sm:col-span-2 xl:col-span-1">
+                                    <label class="text-sm font-medium">Абонент<span class="text-rose-600 dark:text-rose-400">*</span></label>
+                                    <div class="mt-1 flex items-center justify-between rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400">
+                                        <span>Выберите абонента — лицевой счёт или ФИО</span>
+                                        <span aria-hidden="true">▾</span>
+                                    </div>
+                                    <p class="mt-1 text-sm text-rose-600 dark:text-rose-400">Поле «Абонент» обязательно.</p>
+                                </div>
+                                <div>
+                                    <label class="text-sm font-medium">Сумма<span class="text-rose-600 dark:text-rose-400">*</span></label>
+                                    <div class="mt-1 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900">1 600,00</div>
+                                </div>
+                                <div>
+                                    <label class="text-sm font-medium">Дата оплаты</label>
+                                    <div class="mt-1 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900">24.11.2026</div>
+                                </div>
+                                <div class="sm:col-span-2 xl:col-span-1">
+                                    <label class="text-sm font-medium">Примечание</label>
+                                    <div class="mt-1 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400">Необязательно</div>
+                                </div>
+                            </div>
+                            <p class="mt-3 text-xs text-zinc-500 dark:text-zinc-400">Та же форма без способа оплаты, но с выбором абонента; пока абонент не выбран, оплата не сохраняется.</p>
+                            <div class="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">Расчётный месяц закрывается: оплату можно будет внести после закрытия, в следующий месяц.</div>
+                        </div>
                     </div>
                 </div>
             </section>

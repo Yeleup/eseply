@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Kaspi\CannotPostKaspiOperation;
 use App\Kaspi\KaspiDeadline;
 use App\Kaspi\KaspiOperationState;
+use App\Kaspi\KaspiSumOutOfRange;
 use App\Kaspi\PostKaspiOperation;
 use App\Models\KaspiOperation;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -50,11 +51,14 @@ class PostKaspiOperationJob implements ShouldQueue
         try {
             $posting->handle($operation, $deadline);
         } catch (CannotPostKaspiOperation $exception) {
-            $posting->rememberReason($operation, $exception->getMessage());
+            $posting->rememberReason($operation, $exception->getMessage(), $deadline);
 
             if ($this->attempts() < $this->tries) {
                 $this->release($this->pauses()[$this->attempts() - 1] ?? 60);
             }
+        } catch (KaspiSumOutOfRange) {
+            // Marked as an error with the reason; trying again would not help.
+            return;
         } finally {
             $deadline->restore();
         }

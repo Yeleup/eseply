@@ -7,6 +7,7 @@ use App\Filament\Pages\Tenancy\RelationManagers\UsersRelationManager;
 use App\Filament\Resources\KaspiOperations\KaspiOperationResource;
 use App\Filament\Support\OrganizationMemberAccess;
 use App\Kaspi\KaspiActivity;
+use App\Kaspi\KaspiSender;
 use App\Models\BillingPeriod;
 use App\Models\Organization;
 use App\Models\User;
@@ -153,6 +154,13 @@ class EditOrganizationProfile extends EditTenantProfile
                 TextEntry::make('kaspi_format')
                     ->label('Формат ответа')
                     ->state('JSON, UTF-8'),
+                TextEntry::make('kaspi_server_not_configured')
+                    ->hiddenLabel()
+                    ->state('Сервер платформы ещё не настроен для Kaspi: пока не задан точный адрес веб-сервера, Kaspi на любой запрос получает код 5. Настройку делает администратор платформы по чек-листу включения.')
+                    ->color('danger')
+                    ->icon(Heroicon::OutlinedShieldExclamation)
+                    ->visible(fn (): bool => ! KaspiSender::isConfigured())
+                    ->columnSpanFull(),
                 TextEntry::make('kaspi_activity')
                     ->hiddenLabel()
                     ->state(fn (): string => $this->kaspiActivityLine())

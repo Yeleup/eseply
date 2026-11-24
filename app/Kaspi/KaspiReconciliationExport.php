@@ -16,8 +16,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 /**
  * Kaspi payments of one day by the Kaspi date, as in Kaspi's register: posted
  * and in processing, one row per txn_id. Kaspi numbers and accounts are text,
- * so a spreadsheet never turns them into numbers; the file is written as a
- * stream, chunk by chunk.
+ * so a spreadsheet never turns them into numbers; the rows are read and
+ * written chunk by chunk.
  */
 final class KaspiReconciliationExport
 {
@@ -35,10 +35,58 @@ final class KaspiReconciliationExport
             ->where('txn_date', '>=', $day->startOfDay())
             ->where('txn_date', '<', $day->startOfDay()->addDay())
             ->where('command', KaspiCommand::Pay->value)
-            ->whereIn('state', [KaspiOperationState::Posted->value, KaspiOperationState::Pending->value])
-            ->with('client:id,name')
-            ->orderBy('txn_date')
-            ->orderBy('id');
+            ->whereIn('state', [KaspiOperationState::Posted->value, KaspiOperationState::Pending->value]);
+    }
+
+    /**
+     * The rows of the day, chunk by chunk, each operation exactly once.
+     *
+     * The set is fixed when the export starts — operations accepted while it
+     * runs have a larger id and stay out — and the chunks follow the key
+     * `(txn_date, id)` instead of an offset, so a new operation with an
+     * earlier Kaspi date cannot shift a chunk and repeat a row.
+     *
+     * @return iterable<KaspiOperation>
+     */
+    public function rows(Organization $organization, CarbonImmutable $day, int $chunkSize = self::CHUNK_SIZE): iterable
+    {
+        $lastIdAtStart = $this->query($organization, $day)->max('id');
+
+        if ($lastIdAtStart === null) {
+            return;
+        }
+
+        $lastTxnDate = null;
+        $lastId = 0;
+
+        while (true) {
+            $chunk = $this->query($organization, $day)
+                ->where('id', '<=', $lastIdAtStart)
+                ->when($lastTxnDate !== null, fn (Builder $query): Builder => $query->where(
+                    fn (Builder $query): Builder => $query
+                        ->where('txn_date', '>', $lastTxnDate)
+                        ->orWhere(fn (Builder $query): Builder => $query
+                            ->where('txn_date', $lastTxnDate)
+                            ->where('id', '>', $lastId)),
+                ))
+                ->with('client:id,name')
+                ->orderBy('txn_date')
+                ->orderBy('id')
+                ->limit($chunkSize)
+                ->get();
+
+            foreach ($chunk as $operation) {
+                yield $operation;
+            }
+
+            if ($chunk->count() < $chunkSize) {
+                return;
+            }
+
+            $last = $chunk->last();
+            $lastTxnDate = $last->txn_date;
+            $lastId = (int) $last->getKey();
+        }
     }
 
     public function download(Organization $organization, CarbonImmutable $day): StreamedResponse
@@ -47,7 +95,7 @@ final class KaspiReconciliationExport
             sprintf('kaspi-%d-%s.xlsx', $organization->getKey(), $day->format('Y-m-d')),
             $this->options(),
             ['Номер Kaspi', 'Дата Kaspi', 'Лицевой счёт', 'Абонент', 'Сумма', 'Наш номер оплаты', 'Состояние'],
-            fn (): iterable => $this->query($organization, $day)->lazy(self::CHUNK_SIZE),
+            fn (): iterable => $this->rows($organization, $day),
             fn (KaspiOperation $operation): array => $this->cells($operation),
         );
     }

@@ -6,10 +6,15 @@ use App\Filament\Pages\Tenancy\EditOrganizationProfile;
 use App\Filament\Pages\Tenancy\RegisterOrganization;
 use App\Filament\Resources\Clients\Pages\EditClient;
 use App\Filament\Resources\Clients\Pages\ListClients;
+use App\Filament\Resources\Clients\RelationManagers\PaymentsRelationManager;
 use App\Filament\Resources\KaspiOperations\Pages\ListKaspiOperations;
+use App\Filament\Resources\Payments\Pages\CreatePayment;
 use App\Filament\Widgets\KaspiOperationsStatsWidget;
+use App\Kaspi\KaspiActivity;
 use App\Kaspi\KaspiCommand;
+use App\Kaspi\KaspiDeadline;
 use App\Kaspi\KaspiOperationState;
+use App\Kaspi\KaspiReconciliationExport;
 use App\Models\BillingPeriod;
 use App\Models\Client;
 use App\Models\KaspiOperation;
@@ -19,6 +24,7 @@ use App\Models\User;
 use App\Models\UtilityService;
 use App\OrganizationMemberRole;
 use App\Support\KaspiUidBackfill;
+use Carbon\CarbonImmutable;
 use Filament\Actions\DeleteAction;
 use Filament\Facades\Filament;
 use Illuminate\Database\QueryException;
@@ -92,6 +98,16 @@ function kaspiJournalPosted(Client $client, BillingPeriod $billingPeriod, string
         'payment_id' => $payment->id,
         'posted_at' => $receivedAt,
     ]);
+}
+
+/**
+ * A request from Kaspi counted at a given moment with the code it got.
+ */
+function kaspiJournalRequestAt(Organization $organization, string $moment, int $result): void
+{
+    test()->travelTo(CarbonImmutable::parse($moment));
+    KaspiActivity::record($organization, $result, KaspiDeadline::in(1));
+    test()->travelTo(CarbonImmutable::parse('2026-11-24 15:00:00'));
 }
 
 /**
@@ -218,8 +234,12 @@ test('плитки: оплат сегодня по дате Kaspi, в обраб
     kaspiJournalPosted($client, $billingPeriod, '48213300002', 2000.5, '2026-11-24 10:00:00', '2026-11-24 10:00:02');
     kaspiJournalPosted($client, $billingPeriod, '48213300003', 1500, '2026-11-24 12:00:00', '2026-11-24 12:00:02');
     KaspiOperation::factory()->forClient($client)->pending(2750)->create(['txn_id' => '48213300004', 'received_at' => '2026-11-24 09:58:40']);
-    KaspiOperation::factory()->create(['organization_id' => $organization->id, 'txn_id' => '48213300005', 'state' => KaspiOperationState::Error, 'last_result' => 5, 'received_at' => '2026-11-24 12:30:00']);
-    KaspiOperation::factory()->create(['organization_id' => $organization->id, 'txn_id' => '48213300006', 'state' => KaspiOperationState::Error, 'last_result' => 5, 'received_at' => '2026-11-23 14:00:00']);
+
+    // Ответы Kaspi считаются по часу получения: вчерашняя ошибка в сутки не входит.
+    kaspiJournalRequestAt($organization, '2026-11-23 14:00:00', 5);
+    kaspiJournalRequestAt($organization, '2026-11-24 09:58:40', 4);
+    kaspiJournalRequestAt($organization, '2026-11-24 12:30:00', 5);
+    kaspiJournalRequestAt($organization, '2026-11-24 12:00:02', 0);
 
     Livewire::test(KaspiOperationsStatsWidget::class)
         ->assertSeeInOrder([
@@ -314,14 +334,20 @@ test('профиль показывает оператору раздел Kaspi:
         ->assertSee('JSON, UTF-8')
         ->assertSee('194.187.247.152')
         ->assertSee('Запросов от Kaspi ещё не было.')
+        ->assertSee('Сервер платформы ещё не настроен для Kaspi')
         ->assertDontSee('сменить адрес');
 
-    KaspiOperation::factory()->forClient($client)->create(['received_at' => '2026-11-24 10:15:00', 'state' => KaspiOperationState::Found, 'last_result' => 0]);
+    config(['trustedproxy.configured' => ['172.18.0.1']]);
+
+    Livewire::test(EditOrganizationProfile::class)
+        ->assertDontSee('Сервер платформы ещё не настроен для Kaspi');
+
+    kaspiJournalRequestAt($organization, '2026-11-24 10:15:00', 0);
 
     Livewire::test(EditOrganizationProfile::class)
         ->assertSee('Последний запрос от Kaspi: сегодня в 10:15. Ошибок за сутки нет.');
 
-    KaspiOperation::factory()->create(['organization_id' => $organization->id, 'received_at' => '2026-11-24 10:40:00', 'state' => KaspiOperationState::Error, 'last_result' => 5]);
+    kaspiJournalRequestAt($organization, '2026-11-24 10:40:00', 5);
 
     Livewire::test(EditOrganizationProfile::class)
         ->assertSee('Последний запрос от Kaspi: сегодня в 10:40. Ошибок за сутки: 1 — откройте журнал «Kaspi онлайн».');
@@ -497,3 +523,73 @@ test('касса при приёме оплаты блокирует строк�
         ->and($clientLock)->toBeLessThan($paymentInsert)
         ->and(Payment::query()->sole()->amount)->toBe('500.00');
 });
+
+test('отметка расхождения в повторе зависит от состояния: проведено, проведётся, ответ', function (): void {
+    ['organization' => $organization, 'client' => $client, 'billingPeriod' => $billingPeriod] = kaspiJournalFixture();
+    kaspiJournalActingAs($organization);
+
+    $posted = kaspiJournalPosted($client, $billingPeriod, '48213300011', 1000, '2026-11-24 10:00:00', '2026-11-24 10:00:02');
+    $posted->forceFill(['retry_mismatch' => true])->save();
+    $pending = KaspiOperation::factory()->forClient($client)->pending(2750)->create(['txn_id' => '48213300012', 'retry_mismatch' => true]);
+    $check = KaspiOperation::factory()->forClient($client)->create(['txn_id' => '48213300013', 'state' => KaspiOperationState::Found, 'last_result' => 0, 'retry_mismatch' => true]);
+
+    Livewire::test(ListKaspiOperations::class)
+        ->assertTableColumnHasDescription('state', 'ответ: 0 · расхождение в повторе: проведено по первому запросу', $posted)
+        ->assertTableColumnHasDescription('state', 'ответ: 4 · идёт закрытие расчётного месяца · расхождение в повторе: проведётся по первому запросу', $pending)
+        ->assertTableColumnHasDescription('state', 'ответ: 0 · расхождение в повторе: ответ по первому запросу', $check);
+});
+
+test('выгрузка идёт порциями по ключу: операция, пришедшая во время выгрузки, не повторяет строку и не попадает в файл', function (): void {
+    ['organization' => $organization, 'client' => $client, 'billingPeriod' => $billingPeriod] = kaspiJournalFixture();
+
+    foreach (range(1, 5) as $number) {
+        kaspiJournalPosted($client, $billingPeriod, '4821330010'.$number, 100 * $number, '2026-11-23 1'.$number.':00:00', '2026-11-23 1'.$number.':00:02');
+    }
+
+    $day = CarbonImmutable::parse('2026-11-23');
+    $seen = [];
+
+    foreach (app(KaspiReconciliationExport::class)->rows($organization, $day, chunkSize: 2) as $operation) {
+        $seen[] = $operation->txn_id;
+
+        if (count($seen) === 1) {
+            // Kaspi date earlier than every row already read: an offset would shift.
+            KaspiOperation::factory()->forClient($client)->pending(50)->create(['txn_id' => '48213300199', 'txn_date' => '2026-11-23 00:30:00']);
+        }
+    }
+
+    expect($seen)->toBe(['48213300101', '48213300102', '48213300103', '48213300104', '48213300105']);
+});
+
+test('карточка абонента и раздел «Оплаты» сохраняют оплату штатно, но сначала блокируют абонента и месяц', function (string $form): void {
+    ['organization' => $organization, 'client' => $client] = kaspiJournalFixture();
+    kaspiJournalActingAs($organization);
+
+    $queries = [];
+    DB::listen(function ($query) use (&$queries): void {
+        $queries[] = strtolower($query->sql);
+    });
+
+    if ($form === 'card') {
+        Livewire::test(PaymentsRelationManager::class, ['ownerRecord' => $client, 'pageClass' => EditClient::class])
+            ->callTableAction('create', data: ['amount' => 400, 'paid_at' => '2026-11-24'])
+            ->assertHasNoTableActionErrors();
+    } else {
+        Livewire::test(CreatePayment::class)
+            ->fillForm(['client_id' => $client->id, 'amount' => 400, 'paid_at' => '2026-11-24'])
+            ->call('create')
+            ->assertHasNoFormErrors();
+    }
+
+    $position = fn (callable $match): int|false => collect($queries)->search($match);
+    $clientLock = $position(fn (string $sql): bool => str_contains($sql, 'from `clients`') && str_contains($sql, 'for update'));
+    $monthLock = $position(fn (string $sql): bool => str_contains($sql, 'from `billing_periods`') && str_contains($sql, 'lock in share mode'));
+    $insert = $position(fn (string $sql): bool => str_starts_with($sql, 'insert into `payments`'));
+
+    expect($clientLock)->not->toBeFalse()
+        ->and($monthLock)->not->toBeFalse()
+        ->and($insert)->not->toBeFalse()
+        ->and($clientLock)->toBeLessThan($monthLock)
+        ->and($monthLock)->toBeLessThan($insert)
+        ->and(Payment::query()->whereBelongsTo($client)->sole()->method->value)->toBe('cash');
+})->with(['card', 'payments']);

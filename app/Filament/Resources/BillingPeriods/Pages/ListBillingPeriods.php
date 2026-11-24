@@ -37,19 +37,14 @@ class ListBillingPeriods extends ListRecords
 
     /**
      * After a successful closing the next month opens on its own, so the button
-     * is only for an organization without a single month, or for the rare case
-     * when the latest month is closed and no month follows it.
+     * is only for an organization without a single month.
      */
     private function needsManualOpening(): bool
     {
         $tenant = Filament::getTenant();
 
-        if (! $tenant instanceof Organization) {
-            return false;
-        }
-
-        return ! BillingPeriod::query()->forOrganization($tenant)->exists()
-            || BillingPeriod::latestIsClosedFor($tenant);
+        return $tenant instanceof Organization
+            && ! BillingPeriod::query()->forOrganization($tenant)->exists();
     }
 
     private function openNextBillingPeriod(): null
@@ -59,6 +54,15 @@ class ListBillingPeriods extends ListRecords
         $tenant = Filament::getTenant();
 
         if (! $tenant instanceof Organization) {
+            return null;
+        }
+
+        if (! $this->needsManualOpening()) {
+            Notification::make()
+                ->title('Следующий расчётный месяц открывается сам после закрытия текущего')
+                ->danger()
+                ->send();
+
             return null;
         }
 

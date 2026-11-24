@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Schema;
 /**
  * Journal of Kaspi online: one row per Kaspi operation (organization + txn_id),
  * kept forever, so a repeated request always finds the answer to the first one.
+ * Neither its subscriber nor its organization can be deleted while it exists.
  */
 return new class extends Migration
 {
@@ -17,7 +18,8 @@ return new class extends Migration
     {
         Schema::create('kaspi_operations', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('organization_id')->constrained()->cascadeOnDelete();
+            // Kept forever: an organization with Kaspi operations cannot be deleted.
+            $table->foreignId('organization_id')->constrained()->restrictOnDelete();
             $table->string('command', 8);
             $table->string('txn_id', 18);
             $table->foreignId('client_id')->nullable()->constrained()->restrictOnDelete();

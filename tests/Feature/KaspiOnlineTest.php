@@ -5,6 +5,7 @@ use App\BalanceAdjustmentType;
 use App\BillingPeriodStatus;
 use App\ClientType;
 use App\Jobs\PostKaspiOperationJob;
+use App\Kaspi\KaspiActivity;
 use App\Kaspi\KaspiCommand;
 use App\Kaspi\KaspiDeadline;
 use App\Kaspi\KaspiOperationState;
@@ -23,9 +24,13 @@ use App\Models\Tariff;
 use App\Models\UtilityService;
 use App\PaymentMethod;
 use App\Support\BillingPeriodOperationLock;
+use Illuminate\Cache\ArrayLock;
+use Illuminate\Cache\ArrayStore;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\QueryException;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Testing\TestResponse;
@@ -33,6 +38,9 @@ use Illuminate\Testing\TestResponse;
 uses(RefreshDatabase::class);
 
 const KASPI_TEST_IP = '194.187.247.152';
+
+// The web server in front of the application, as the application sees it.
+const KASPI_TEST_PROXY = '172.18.0.1';
 
 // Samples of the task, byte for byte.
 const KASPI_SAMPLE_CHECK_FOUND = '{"txn_id":"48213377188","result":0,"sum":4250.00,"comment":"","fields":{"field1":{"@name":"Абонент","#text":"Иванов И. И."},"field2":{"@name":"Долг на 24.11.2026","#text":"4250.00"}}}';
@@ -43,7 +51,13 @@ const KASPI_SAMPLE_PAY_PENDING = '{"txn_id":"48213350311","result":4,"comment":"
 
 beforeEach(function (): void {
     $this->travelTo(now()->setDate(2026, 11, 24)->setTime(10, 15, 20));
-    config(['kaspi.lock_wait_seconds' => 1, 'kaspi.posting.job_lock_wait_seconds' => 1]);
+    config([
+        'kaspi.lock_wait_seconds' => 1,
+        'kaspi.posting.job_lock_wait_seconds' => 1,
+        // TRUSTED_PROXIES=172.18.0.1 on the server.
+        'trustedproxy.proxies' => [KASPI_TEST_PROXY],
+        'trustedproxy.configured' => [KASPI_TEST_PROXY],
+    ]);
 });
 
 /**
@@ -88,13 +102,17 @@ function kaspiOpeningBalance(Client $client, BillingPeriod $billingPeriod, float
 }
 
 /**
+ * A request as the web server passes it on: from the proxy's address, with the
+ * client's address in X-Forwarded-For.
+ *
  * @param  array<string, string>  $headers
  */
-function kaspiGet(Organization|string $organization, string $query, string $ip = KASPI_TEST_IP, array $headers = [], string $method = 'GET'): TestResponse
+function kaspiGet(Organization|string $organization, string $query, string $ip = KASPI_TEST_IP, array $headers = [], string $method = 'GET', string $remoteAddress = KASPI_TEST_PROXY): TestResponse
 {
     $uid = $organization instanceof Organization ? $organization->kaspi_uid : $organization;
 
-    $server = ['REMOTE_ADDR' => $ip];
+    $headers += ['X-Forwarded-For' => $ip];
+    $server = ['REMOTE_ADDR' => $remoteAddress];
 
     // call() takes headers only as server variables.
     foreach ($headers as $name => $value) {
@@ -259,15 +277,6 @@ test('sum и dataN у check игнорируются, ведущие нули л
         ->and(KaspiOperation::query()->where('txn_id', '48213377202')->value('account'))->toBe('0100246');
 });
 
-test('HEAD и POST отклоняются и ничего не создают', function (string $method): void {
-    ['organization' => $organization, 'utilityService' => $utilityService] = kaspiOrganization();
-    kaspiClient($organization, $utilityService);
-
-    kaspiGet($organization, kaspiPayQuery(), method: $method)->assertStatus(405);
-
-    kaspiAssertNothingCreated();
-})->with(['HEAD', 'POST', 'PUT', 'DELETE']);
-
 test('неизвестный uid даёт 5', function (string $uid): void {
     ['organization' => $organization, 'utilityService' => $utilityService] = kaspiOrganization();
     kaspiClient($organization, $utilityService);
@@ -281,37 +290,97 @@ test('неизвестный uid даёт 5', function (string $uid): void {
 
 // --- Доступ по IP -----------------------------------------------------------------
 
-test('запрос не с адреса Kaspi даёт 5, в том числе с подложенным X-Forwarded-For', function (string $remoteAddress, array $headers): void {
+test('запрос не от Kaspi через свой веб-сервер даёт 5, какие бы заголовки ни пришли', function (string $remoteAddress, array $headers): void {
     ['organization' => $organization, 'utilityService' => $utilityService] = kaspiOrganization();
     kaspiClient($organization, $utilityService);
 
-    expect(kaspiGet($organization, kaspiPayQuery('48213377195'), $remoteAddress, $headers)->assertOk()->getContent())
+    $server = ['REMOTE_ADDR' => $remoteAddress];
+
+    foreach ($headers as $name => $value) {
+        $server['HTTP_'.strtoupper(str_replace('-', '_', $name))] = $value;
+    }
+
+    expect($this->call('GET', '/kaspi/'.$organization->kaspi_uid.'?'.kaspiPayQuery('48213377195'), server: $server)->assertOk()->getContent())
         ->toBe(KASPI_SAMPLE_ERROR);
 
     kaspiAssertNothingCreated();
 })->with([
-    'чужой адрес' => ['203.0.113.9', []],
+    'прямое подключение с адреса Kaspi' => [KASPI_TEST_IP, []],
+    'чужой публичный адрес' => ['203.0.113.9', []],
     'подложенный X-Forwarded-For напрямую' => ['203.0.113.9', ['X-Forwarded-For' => KASPI_TEST_IP]],
-    'подложенный X-Forwarded-For через прокси' => ['172.18.0.1', ['X-Forwarded-For' => KASPI_TEST_IP.', 203.0.113.9']],
-    'подложенный X-Real-IP' => ['203.0.113.9', ['X-Real-IP' => KASPI_TEST_IP]],
+    'соседний частный адрес, не веб-сервер' => ['172.18.0.7', ['X-Forwarded-For' => KASPI_TEST_IP]],
+    'шлюз другой сети Docker' => ['172.19.0.1', ['X-Forwarded-For' => KASPI_TEST_IP]],
+    'через веб-сервер с подложенным X-Forwarded-For' => [KASPI_TEST_PROXY, ['X-Forwarded-For' => KASPI_TEST_IP.', 203.0.113.9']],
+    'через веб-сервер не с адреса Kaspi' => [KASPI_TEST_PROXY, ['X-Forwarded-For' => '203.0.113.9']],
+    'подложенный X-Real-IP' => [KASPI_TEST_PROXY, ['X-Forwarded-For' => '203.0.113.9', 'X-Real-IP' => KASPI_TEST_IP]],
+    'веб-сервер без X-Forwarded-For' => [KASPI_TEST_PROXY, []],
 ]);
 
-test('свой прокси передаёт реальный адрес Kaspi, и запрос принимается', function (): void {
+test('свой веб-сервер передаёт адрес Kaspi, дописанный в конец цепочки, и запрос принимается', function (string $forwardedFor): void {
     ['organization' => $organization, 'utilityService' => $utilityService] = kaspiOrganization();
     kaspiClient($organization, $utilityService);
 
-    $response = kaspiGet($organization, kaspiCheckQuery(), '172.18.0.1', [
-        'X-Forwarded-For' => KASPI_TEST_IP,
+    $response = kaspiGet($organization, kaspiCheckQuery(), headers: [
+        'X-Forwarded-For' => $forwardedFor,
         'X-Forwarded-Proto' => 'https',
     ]);
 
     expect($response->json('result'))->toBe(0);
+})->with([
+    'только адрес Kaspi' => [KASPI_TEST_IP],
+    'клиент дописал своё, веб-сервер — настоящий адрес' => ['198.51.100.7, '.KASPI_TEST_IP],
+]);
+
+test('пока TRUSTED_PROXIES не задан точными адресами, приём Kaspi закрыт, а сайт доверяет частным сетям', function (array $configured): void {
+    ['organization' => $organization, 'utilityService' => $utilityService] = kaspiOrganization();
+    kaspiClient($organization, $utilityService);
+
+    config([
+        'trustedproxy.proxies' => $configured === [] ? ['127.0.0.0/8', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16'] : $configured,
+        'trustedproxy.configured' => $configured,
+    ]);
+
+    expect(kaspiGet($organization, kaspiCheckQuery('48213377195'))->getContent())->toBe(KASPI_SAMPLE_ERROR);
+    kaspiAssertNothingCreated();
+})->with([
+    'не задан' => [[]],
+    'диапазон вместо адреса' => [['172.16.0.0/12']],
+    'звёздочка' => [['*']],
+]);
+
+test('по умолчанию сайт доверяет частным сетям, а Kaspi не доверяет никому; адрес Kaspi — из конфига', function (): void {
+    $default = require base_path('config/trustedproxy.php');
+
+    expect($default['configured'])->toBe([])
+        ->and($default['proxies'])->toBe(['127.0.0.0/8', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '::1/128', 'fc00::/7'])
+        ->and($default['proxies'])->not->toContain('*')
+        ->and(config('kaspi.allowed_ips'))->toBe([KASPI_TEST_IP]);
 });
 
-test('доверенные прокси — только частные сети из конфига, а не любой адрес', function (): void {
-    expect(config('trustedproxy.proxies'))->not->toContain('*')
-        ->and(explode(',', (string) config('trustedproxy.proxies')))->toContain('127.0.0.0/8', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16')
-        ->and(config('kaspi.allowed_ips'))->toBe([KASPI_TEST_IP]);
+test('другие методы, включая HEAD и OPTIONS, получают 405 с no-store и ничего не создают', function (string $method): void {
+    ['organization' => $organization, 'utilityService' => $utilityService] = kaspiOrganization();
+    kaspiClient($organization, $utilityService);
+
+    $response = kaspiGet($organization, kaspiPayQuery(), method: $method)
+        ->assertStatus(405)
+        ->assertHeader('Allow', 'GET');
+
+    expect($response->headers->get('Cache-Control'))->toContain('no-store');
+    kaspiAssertNothingCreated();
+})->with(['HEAD', 'OPTIONS', 'POST', 'PUT', 'PATCH', 'DELETE']);
+
+test('после запроса Kaspi соединение получает свой тайм-аут ожидания блокировки обратно', function (): void {
+    ['organization' => $organization, 'utilityService' => $utilityService] = kaspiOrganization();
+    kaspiClient($organization, $utilityService);
+
+    DB::statement('set session innodb_lock_wait_timeout = 37');
+
+    kaspiGet($organization, kaspiPayQuery());
+    kaspiGet($organization, kaspiPayQuery());
+    kaspiGet($organization, kaspiCheckQuery());
+
+    expect((int) DB::scalar('select @@session.innodb_lock_wait_timeout'))->toBe(37)
+        ->and(Payment::query()->count())->toBe(1);
 });
 
 // --- check -----------------------------------------------------------------------
@@ -323,7 +392,7 @@ test('check: найден, не найден, неактивный и абоне
     kaspiClient($organization, $utilityService, ['account_number' => '100523', 'status' => 'inactive', 'iin' => '900101300002', 'phone' => '+77010000003']);
 
     ['organization' => $other, 'utilityService' => $otherService] = kaspiOrganization();
-    kaspiClient($other, $otherService, ['account_number' => '100777', 'name' => 'Ким Ольга', 'iin' => '900101300003', 'phone' => '+77010000004']);
+    kaspiClient($other, $otherService, ['account_number' => '100777', 'name' => 'Ахметова Дана', 'iin' => '900101300003', 'phone' => '+77010000004']);
 
     expect(kaspiGet($organization, kaspiCheckQuery())->getContent())->toBe(KASPI_SAMPLE_CHECK_FOUND)
         ->and(kaspiGet($organization, kaspiCheckQuery('48213377301', '100523'))->json('result'))->toBe(1)
@@ -349,7 +418,7 @@ test('check: юрлицо видит наименование полностью
     expect(kaspiGet($organization, kaspiCheckQuery())->json('fields.field1.#text'))->toBe($expected);
 })->with([
     'ИП' => [ClientType::SoleProprietor, 'ИП Нурланов Ерлан Серикович', 'Нурланов Е. С.'],
-    'физлицо без отчества' => [ClientType::Individual, 'Ким Ольга', 'Ким О.'],
+    'физлицо без отчества' => [ClientType::Individual, 'Ахметова Дана', 'Ахметова Д.'],
     'ТОО' => [ClientType::Llp, 'ТОО «Пример Сервис»', 'ТОО «Пример Сервис»'],
     'коммерческий объект' => [ClientType::Commercial, 'Магазин «Тест»', 'Магазин «Тест»'],
     'бюджетная организация' => [ClientType::Budget, 'КГУ «Школа № 1»', 'КГУ «Школа № 1»'],
@@ -846,7 +915,7 @@ test('не дождались блокировки месяца — операц
         ->and($elapsed)->toBeLessThan(3.0)
         ->and(Payment::query()->count())->toBe(0)
         ->and($operation->state)->toBe(KaspiOperationState::Pending)
-        ->and($operation->state_reason)->toBe('Не дождались блокировки, проведётся автоматически');
+        ->and($operation->state_reason)->toBe('Не дождались блокировки расчётного месяца, проведётся автоматически');
 
     Queue::assertPushed(PostKaspiOperationJob::class);
 
@@ -870,4 +939,151 @@ test('задание проводки при закрывающемся меся
     expect($job->tries)->toBe(6)
         ->and($job->backoff())->toBe([10, 30, 60, 120, 300])
         ->and($operation->refresh()->state_reason)->toBe('Идёт закрытие расчётного месяца');
+});
+
+// --- Раунд ревью 1 -----------------------------------------------------------------
+
+test('txn_date: реальная дата до 2000 года принимается, непредставимая и несуществующая — нет', function (string $txnDate, int $result): void {
+    ['organization' => $organization, 'utilityService' => $utilityService] = kaspiOrganization();
+    kaspiClient($organization, $utilityService);
+
+    expect(kaspiGet($organization, kaspiPayQuery('48213377701', txnDate: $txnDate))->json('result'))->toBe($result);
+})->with([
+    'конец 1999 года' => ['19991231235959', 0],
+    'год 0999' => ['09991231235959', 5],
+    '29 февраля не високосного' => ['19990229120000', 5],
+]);
+
+test('check не отвечает 0 или 1, если операция не записалась: Kaspi получает 5', function (): void {
+    ['organization' => $organization, 'utilityService' => $utilityService] = kaspiOrganization();
+    kaspiClient($organization, $utilityService);
+
+    KaspiOperation::creating(function (): void {
+        throw new RuntimeException('База недоступна в тесте.');
+    });
+
+    expect(kaspiGet($organization, kaspiCheckQuery('48213377195'))->getContent())->toBe(KASPI_SAMPLE_ERROR);
+
+    KaspiOperation::flushEventListeners();
+    Model::clearBootedModels();
+
+    expect(KaspiOperation::query()->count())->toBe(0);
+});
+
+test('сбой базы при поиске организации — ответ 5 в формате протокола', function (): void {
+    ['organization' => $organization, 'utilityService' => $utilityService] = kaspiOrganization();
+    kaspiClient($organization, $utilityService);
+
+    Organization::retrieved(function (): void {
+        throw new RuntimeException('База недоступна в тесте.');
+    });
+
+    $response = kaspiGet($organization, kaspiCheckQuery('48213377195'))->assertOk();
+
+    Organization::flushEventListeners();
+    Model::clearBootedModels();
+
+    expect($response->getContent())->toBe(KASPI_SAMPLE_ERROR);
+});
+
+test('сумма, которая не помещается в итоги месяца, не проводится и не висит «в обработке»: Kaspi получает 5', function (): void {
+    ['organization' => $organization, 'utilityService' => $utilityService, 'billingPeriod' => $billingPeriod] = kaspiOrganization();
+    $client = kaspiClient($organization, $utilityService, ['billing_type' => 'meter']);
+    kaspiMeterDebt($organization, $utilityService, $billingPeriod, $client, 10);
+
+    Payment::query()->create([
+        'organization_id' => $organization->id,
+        'client_id' => $client->id,
+        'billing_period_id' => $billingPeriod->id,
+        'amount' => '999999999000.00',
+    ]);
+
+    $body = kaspiGet($organization, kaspiPayQuery('48213377702', sum: '999999999999.99'))->getContent();
+    $operation = KaspiOperation::query()->sole();
+
+    expect($body)->toBe('{"txn_id":"48213377702","result":5,"comment":"Приём оплат недоступен"}')
+        ->and($operation->state)->toBe(KaspiOperationState::Error)
+        ->and($operation->state_reason)->toContain('не помещается')
+        ->and($operation->last_result)->toBe(5)
+        ->and(Payment::query()->count())->toBe(1)
+        ->and((float) Receipt::query()->whereBelongsTo($client)->value('paid_amount'))->toBe(999999999000.0);
+
+    // Повтор получает тот же ответ, планировщик операцию не трогает.
+    $this->travel(2)->minutes();
+    $this->artisan('kaspi:post-pending')->assertSuccessful();
+
+    expect(kaspiGet($organization, kaspiPayQuery('48213377702', sum: '999999999999.99'))->getContent())->toBe($body)
+        ->and(Payment::query()->count())->toBe(1);
+
+    // Обычный платёж того же абонента по-прежнему проводится, а месяц закрывается.
+    expect(kaspiGet($organization, kaspiPayQuery('48213377703', sum: '500.00'))->json('result'))->toBe(0);
+
+    app(CloseBillingMonth::class)->handle($organization, $billingPeriod);
+
+    expect($billingPeriod->refresh()->status)->toBe(BillingPeriodStatus::Closed);
+});
+
+test('сбой освобождения блокировки месяца после коммита не превращает проведённую оплату в «4»', function (): void {
+    ['organization' => $organization, 'utilityService' => $utilityService] = kaspiOrganization();
+    kaspiClient($organization, $utilityService);
+
+    Cache::extend('kaspi-failing-release', fn () => Cache::repository(new class extends ArrayStore
+    {
+        public function lock($name, $seconds = 0, $owner = null)
+        {
+            return new class($this, $name, $seconds, $owner) extends ArrayLock
+            {
+                public function release()
+                {
+                    throw new RuntimeException('Redis недоступен в тесте.');
+                }
+            };
+        }
+    }));
+    config(['cache.stores.kaspi-failing-release' => ['driver' => 'kaspi-failing-release'], 'cache.default' => 'kaspi-failing-release']);
+    Cache::forgetDriver('kaspi-failing-release');
+
+    $body = kaspiGet($organization, kaspiPayQuery())->getContent();
+
+    expect($body)->toBe(kaspiPostedSample(Payment::query()->sole()))
+        ->and(KaspiOperation::query()->sole()->state)->toBe(KaspiOperationState::Posted);
+});
+
+test('последний запрос и ошибки за сутки учитывают повторы и отклонённые pay, но не создают операций', function (): void {
+    ['organization' => $organization, 'utilityService' => $utilityService] = kaspiOrganization();
+    kaspiClient($organization, $utilityService, ['status' => 'inactive']);
+
+    expect(KaspiActivity::lastRequestAt($organization))->toBeNull();
+
+    kaspiGet($organization, kaspiPayQuery('48213377801'));
+    kaspiGet($organization, 'command=pay&txn_id=48213377802&account=1');
+
+    expect(KaspiOperation::query()->count())->toBe(0)
+        ->and(KaspiActivity::lastRequestAt($organization)?->format('Y-m-d H:i:s'))->toBe('2026-11-24 10:15:20')
+        ->and(KaspiActivity::errorsInLastDay($organization))->toBe(2);
+
+    $this->travel(3)->hours();
+    kaspiClient($organization, $utilityService, ['account_number' => '100600', 'iin' => '900101300009', 'phone' => '+77010000010']);
+    kaspiGet($organization, kaspiCheckQuery('48213377803', '100600'));
+    $this->travel(1)->hours();
+    kaspiGet($organization, kaspiCheckQuery('48213377803', '100600'));
+
+    expect(KaspiActivity::lastRequestAt($organization)?->format('Y-m-d H:i:s'))->toBe('2026-11-24 14:15:20')
+        ->and(KaspiActivity::errorsInLastDay($organization))->toBe(2);
+
+    $this->travel(1)->days();
+
+    expect(KaspiActivity::errorsInLastDay($organization))->toBe(0);
+});
+
+test('организацию с операциями Kaspi удалить нельзя, даже если в журнале только check без абонента', function (): void {
+    ['organization' => $organization] = kaspiOrganization();
+    kaspiGet($organization, kaspiCheckQuery('48213377901', '999990'));
+
+    expect(KaspiOperation::query()->sole()->client_id)->toBeNull();
+
+    expect(fn () => DB::transaction(fn () => $organization->delete()))->toThrow(QueryException::class);
+
+    expect(Organization::query()->whereKey($organization->id)->exists())->toBeTrue()
+        ->and(KaspiOperation::query()->count())->toBe(1);
 });

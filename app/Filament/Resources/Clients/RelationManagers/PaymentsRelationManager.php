@@ -112,12 +112,17 @@ class PaymentsRelationManager extends RelationManager
                     ->label('Добавить оплату')
                     ->disabled(fn (): bool => CurrentBillingPeriod::missing($this->ownerRecord->organization))
                     ->tooltip(fn (): ?string => CurrentBillingPeriod::missingTooltip($this->ownerRecord->organization))
-                    // Always cash, with the subscriber row locked first (RecordManualPayment).
-                    ->using(fn (array $data): Payment => app(RecordManualPayment::class)->handle(
+                    ->mutateDataUsing(fn (array $data): array => RecordManualPayment::manualData(
+                        $data,
+                        (int) $this->ownerRecord->organization_id,
+                        auth()->id(),
+                    ))
+                    // Filament saves the payment itself, in one transaction with
+                    // the locks of RecordManualPayment taken first.
+                    ->databaseTransaction()
+                    ->before(fn () => app(RecordManualPayment::class)->lockClientAndMonth(
                         $this->ownerRecord->organization,
                         (int) $this->ownerRecord->getKey(),
-                        $data,
-                        auth()->id(),
                     )),
             ])
             ->recordActions([

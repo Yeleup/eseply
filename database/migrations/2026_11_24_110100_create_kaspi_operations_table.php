@@ -42,7 +42,8 @@ return new class extends Migration
 
             $table->unique(['organization_id', 'txn_id'], 'kaspi_operations_org_txn_unique');
             $table->index(['organization_id', 'txn_date'], 'kaspi_operations_org_txn_date_idx');
-            $table->index(['organization_id', 'state'], 'kaspi_operations_org_state_idx');
+            // The state filter of the journal and the turn of tries of the pickup.
+            $table->index(['organization_id', 'state', 'posting_attempted_at'], 'kaspi_operations_org_state_attempt_idx');
             $table->index(['organization_id', 'received_at'], 'kaspi_operations_org_received_idx');
             $table->index(['organization_id', 'account'], 'kaspi_operations_org_account_idx');
             $table->index(['state', 'received_at'], 'kaspi_operations_state_received_idx');

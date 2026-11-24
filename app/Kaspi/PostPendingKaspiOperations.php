@@ -4,6 +4,7 @@ namespace App\Kaspi;
 
 use App\Models\BillingPeriod;
 use App\Models\KaspiOperation;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
@@ -17,8 +18,9 @@ use Throwable;
  * - operations are taken in turn of their last try — never tried first, then
  *   the one tried longest ago — so operations that keep failing go to the end
  *   of the line and never hide the ones behind them;
- * - organizations are taken the same way, by the oldest try among their
- *   operations;
+ * - organizations are taken in a circle by their id, starting after the one
+ *   the previous round of the scheduler worked on last, so an organization
+ *   a round did not reach is the first in the next one;
  * - every operation, every organization and the whole round have their own
  *   time budget: a held row costs its operation a short wait, never the round;
  * - a locked subscriber holds only its own operation; a reason of the whole
@@ -27,6 +29,11 @@ use Throwable;
  */
 final class PostPendingKaspiOperations
 {
+    /**
+     * The organization the scheduler's pickup worked on last.
+     */
+    public const string LAST_ORGANIZATION_KEY = 'kaspi:pickup:last-organization';
+
     public function __construct(private readonly PostKaspiOperation $posting) {}
 
     /**
@@ -50,8 +57,8 @@ final class PostPendingKaspiOperations
                 ->where('state', KaspiOperationState::Pending->value)
                 ->when($receivedBefore !== null, fn ($query) => $query->where('received_at', '<=', $receivedBefore))
                 ->when($tried !== [], fn ($query) => $query->whereNotIn('id', $tried))
-                // Never tried first, then the one tried longest ago.
-                ->orderByRaw('posting_attempted_at is not null')
+                // Never tried first — NULL sorts first — then the one tried longest
+                // ago, along the index (organization, state, time of the last try).
                 ->orderBy('posting_attempted_at')
                 ->orderBy('id')
                 ->limit($limit === null ? $batchSize : min($batchSize, $limit - count($tried)))
@@ -82,9 +89,10 @@ final class PostPendingKaspiOperations
 
     /**
      * The scheduler's pickup: organizations with operations in processing
-     * older than the pickup age, in turn of their oldest try, within the time
-     * budget of the round. An organization whose latest month is closed with
-     * nothing after it gets the next month first, as at deployment.
+     * older than the pickup age, in a circle by organization id from the one
+     * after the organization the previous round worked on last, within the
+     * time budget of the round. An organization whose latest month is closed
+     * with nothing after it gets the next month first, as at deployment.
      *
      * @return int Number of posted operations.
      */
@@ -97,30 +105,58 @@ final class PostPendingKaspiOperations
         $organizationIds = KaspiOperation::query()
             ->where('state', KaspiOperationState::Pending->value)
             ->where('received_at', '<=', now()->subSeconds($pickupAfter))
-            ->groupBy('organization_id')
-            ->orderByRaw('min(posting_attempted_at is not null)')
-            ->orderByRaw('min(posting_attempted_at)')
+            ->distinct()
             ->orderBy('organization_id')
-            ->pluck('organization_id');
+            ->pluck('organization_id')
+            ->map(fn (mixed $organizationId): int => (int) $organizationId);
+
+        $lastOrganizationId = $this->lastPickedUpOrganization();
+
+        $inTurn = $organizationIds->filter(fn (int $organizationId): bool => $organizationId > $lastOrganizationId)
+            ->concat($organizationIds->filter(fn (int $organizationId): bool => $organizationId <= $lastOrganizationId));
 
         $posted = 0;
 
-        foreach ($organizationIds as $organizationId) {
+        foreach ($inTurn as $organizationId) {
             if ($round->expired()) {
                 break;
             }
 
-            $this->openNextMonthAfterClosed((int) $organizationId);
+            $this->openNextMonthAfterClosed($organizationId);
 
             $organizationBudget = KaspiDeadline::in(min(
                 (float) config('kaspi.posting.pickup_organization_seconds', 10),
                 $round->remaining(),
             ));
 
-            $posted += $this->forOrganization((int) $organizationId, $pickupAfter, $perOrganization, $organizationBudget);
+            $posted += $this->forOrganization($organizationId, $pickupAfter, $perOrganization, $organizationBudget);
+
+            // Its turn is used, finished or not: the next round starts after it.
+            $this->rememberPickedUpOrganization($organizationId);
         }
 
         return $posted;
+    }
+
+    private function lastPickedUpOrganization(): int
+    {
+        try {
+            return (int) Cache::get(self::LAST_ORGANIZATION_KEY, 0);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return 0;
+        }
+    }
+
+    private function rememberPickedUpOrganization(int $organizationId): void
+    {
+        try {
+            Cache::forever(self::LAST_ORGANIZATION_KEY, $organizationId);
+        } catch (Throwable $exception) {
+            // The next round starts from the beginning of the circle instead.
+            report($exception);
+        }
     }
 
     /**

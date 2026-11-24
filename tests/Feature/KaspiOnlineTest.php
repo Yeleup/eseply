@@ -11,6 +11,7 @@ use App\Kaspi\KaspiCommand;
 use App\Kaspi\KaspiDeadline;
 use App\Kaspi\KaspiOperationState;
 use App\Kaspi\PostKaspiOperation;
+use App\Kaspi\PostPendingKaspiOperations;
 use App\Models\Accrual;
 use App\Models\BalanceAdjustment;
 use App\Models\BillingPeriod;
@@ -1266,6 +1267,48 @@ test('медленная организация не задерживает сл
     expect($waiting->refresh()->state)->toBe(KaspiOperationState::Posted)
         ->and(KaspiOperation::query()->where('organization_id', $slow->id)->whereNotNull('posting_attempted_at')->count())->toBeLessThan(5)
         ->and(microtime(true) - $startedAt)->toBeLessThan(3.0);
+});
+
+test('подбор обходит организации по кругу: проход кончился на первой — следующий проводит вторую и третью', function (): void {
+    $received = now()->subMinutes(5);
+    $organizations = [];
+    $operations = [];
+
+    foreach (range(1, 3) as $number) {
+        ['organization' => $organization, 'utilityService' => $utilityService] = kaspiOrganization();
+        $client = kaspiClient($organization, $utilityService, ['iin' => '90010130002'.$number, 'phone' => '+7701000003'.$number]);
+
+        $organizations[$number] = $organization;
+        $operations[$number] = collect(range(1, 2))->map(fn (int $index) => KaspiOperation::factory()->forClient($client)->pending(100)
+            ->create(['txn_id' => "482133783{$number}{$index}", 'received_at' => $received]));
+    }
+
+    config(['kaspi.posting.pickup_seconds' => 0.5]);
+
+    // Every posting of the first organization takes longer than the whole round,
+    // and it always has an operation that was never tried.
+    Payment::created(function (Payment $payment) use ($organizations): void {
+        if ($payment->organization_id === $organizations[1]->id) {
+            usleep(600_000);
+        }
+    });
+
+    $pendingOf = fn (int $number): int => KaspiOperation::query()
+        ->where('organization_id', $organizations[$number]->id)
+        ->where('state', KaspiOperationState::Pending->value)
+        ->count();
+
+    $this->artisan('kaspi:post-pending')->assertSuccessful();
+
+    expect($pendingOf(1))->toBe(1)
+        ->and($pendingOf(2))->toBe(2)
+        ->and($pendingOf(3))->toBe(2);
+
+    $this->artisan('kaspi:post-pending')->assertSuccessful();
+
+    expect($pendingOf(2))->toBe(0)
+        ->and($pendingOf(3))->toBe(0)
+        ->and(Cache::get(PostPendingKaspiOperations::LAST_ORGANIZATION_KEY))->toBeIn([$organizations[1]->id, $organizations[3]->id]);
 });
 
 test('ссылки сайта: через доверенный HTTPS-прокси — https, прямой HTTP-вход — http, даже при APP_URL на https', function (): void {

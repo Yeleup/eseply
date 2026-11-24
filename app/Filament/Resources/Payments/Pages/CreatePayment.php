@@ -20,7 +20,9 @@ class CreatePayment extends CreateRecord
     protected function mutateFormDataBeforeCreate(array $data): array
     {
         $data['organization_id'] = Filament::getTenant()?->getKey();
-        $data['method'] ??= PaymentMethod::Cash->value;
+        // A payment entered by hand is always cash: Kaspi comes only through the integration.
+        $data['method'] = PaymentMethod::Cash->value;
+        unset($data['external_provider'], $data['external_payment_id']);
         $data['received_by_user_id'] = auth()->id();
 
         return $data;

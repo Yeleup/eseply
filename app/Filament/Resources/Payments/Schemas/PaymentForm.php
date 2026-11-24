@@ -3,9 +3,7 @@
 namespace App\Filament\Resources\Payments\Schemas;
 
 use App\Filament\Support\ClientSelect;
-use App\PaymentMethod;
 use Filament\Forms\Components\DatePicker;
-use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Components\Section;
@@ -21,12 +19,6 @@ class PaymentForm
                     ->columns(2)
                     ->schema([
                         ClientSelect::make(),
-                        Select::make('method')
-                            ->label('Способ оплаты')
-                            ->options(PaymentMethod::class)
-                            ->default(PaymentMethod::Cash->value)
-                            ->required()
-                            ->native(false),
                         TextInput::make('amount')
                             ->label('Сумма')
                             ->numeric()

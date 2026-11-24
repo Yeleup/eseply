@@ -1314,12 +1314,14 @@ test('client related tables can create meters, payments and balance adjustments 
             'note' => 'Оплата из карточки абонента',
         ])
         ->assertHasNoTableActionErrors()
-        ->callTableAction('create', data: [
+        ->mountTableAction('create')
+        ->set('mountedActions.0.data.method', PaymentMethod::Kaspi->value)
+        ->fillForm([
             'amount' => 1200,
-            'method' => PaymentMethod::Kaspi->value,
             'paid_at' => '2026-05-29',
-            'note' => 'Kaspi перевод абонента',
+            'note' => 'Подложенный способ Kaspi',
         ])
+        ->callMountedTableAction()
         ->assertHasNoTableActionErrors();
 
     Livewire::test(BalanceAdjustmentsRelationManager::class, [
@@ -1350,7 +1352,7 @@ test('client related tables can create meters, payments and balance adjustments 
             ->whereBelongsTo($client)
             ->where('amount', 1200)
             ->firstOrFail()
-            ->method)->toBe(PaymentMethod::Kaspi)
+            ->method)->toBe(PaymentMethod::Cash)
         ->and(BalanceAdjustment::query()
             ->whereBelongsTo($organization)
             ->whereBelongsTo($client)

@@ -53,7 +53,7 @@
                     </div>
                     <div class="flex items-baseline gap-3">
                         <dt class="w-32 shrink-0">@include($chip, ['key' => 'Tab']) @include($chip, ['key' => 'Shift']) @include($chip, ['key' => 'Tab'])</dt>
-                        <dd class="text-gray-700 dark:text-gray-300">сумма, способ оплаты, дата, примечание</dd>
+                        <dd class="text-gray-700 dark:text-gray-300">сумма, дата, примечание</dd>
                     </div>
                     <div class="flex items-baseline gap-3">
                         <dt class="w-32 shrink-0">@include($chip, ['key' => 'Ctrl']) @include($chip, ['key' => 'Enter'])</dt>

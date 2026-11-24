@@ -1062,7 +1062,7 @@
                             <dl class="mt-3 flex flex-col gap-2 text-sm">
                                 <div class="flex items-baseline gap-3"><dt class="w-32 shrink-0"><kbd class="{{ $paymentDeskKbd }}">Enter</kbd></dt><dd class="text-zinc-700 dark:text-zinc-300">пустая сумма — подставить весь долг, иначе принять оплату</dd></div>
                                 <div class="flex items-baseline gap-3"><dt class="w-32 shrink-0"><kbd class="{{ $paymentDeskKbd }}">F4</kbd></dt><dd class="text-zinc-700 dark:text-zinc-300">вся сумма долга</dd></div>
-                                <div class="flex items-baseline gap-3"><dt class="w-32 shrink-0"><kbd class="{{ $paymentDeskKbd }}">Tab</kbd> <kbd class="{{ $paymentDeskKbd }}">Shift</kbd> <kbd class="{{ $paymentDeskKbd }}">Tab</kbd></dt><dd class="text-zinc-700 dark:text-zinc-300">сумма, способ оплаты, дата, примечание</dd></div>
+                                <div class="flex items-baseline gap-3"><dt class="w-32 shrink-0"><kbd class="{{ $paymentDeskKbd }}">Tab</kbd> <kbd class="{{ $paymentDeskKbd }}">Shift</kbd> <kbd class="{{ $paymentDeskKbd }}">Tab</kbd></dt><dd class="text-zinc-700 dark:text-zinc-300">сумма, дата, примечание</dd></div>
                                 <div class="flex items-baseline gap-3"><dt class="w-32 shrink-0"><kbd class="{{ $paymentDeskKbd }}">Ctrl</kbd> <kbd class="{{ $paymentDeskKbd }}">Enter</kbd></dt><dd class="text-zinc-700 dark:text-zinc-300">принять из примечания, на Mac — <kbd class="{{ $paymentDeskKbd }}">⌘</kbd> <kbd class="{{ $paymentDeskKbd }}">Enter</kbd>; просто Enter переносит строку</dd></div>
                                 <div class="flex items-baseline gap-3"><dt class="w-32 shrink-0"><kbd class="{{ $paymentDeskKbd }}">Esc</kbd></dt><dd class="text-zinc-700 dark:text-zinc-300">отмена, курсор снова в поиске</dd></div>
                             </dl>
@@ -1157,7 +1157,7 @@
                         <p class="text-sm font-medium text-teal-700 dark:text-teal-300">Шаг 2</p>
                         <h3 class="mt-1 text-base font-semibold">Модалка приёма оплаты</h3>
                         <p class="mt-1 max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
-                            Открывается кнопкой «Оплатить» поверх поиска; поиск и список под ней не сбрасываются. Долг считается тем же движком, что и оборотно-сальдовая ведомость. Плитка «Корректировки» появляется, только когда корректировки не нулевые. Поле суммы всегда пустое: оператор вводит фактически принятую сумму, а весь долг подставляет кнопкой «Вся сумма», клавишей F4 или Enter на пустой сумме — оплата всего долга это Enter Enter. Enter в сумме, способе и дате принимает оплату, в примечании Enter переносит строку, а Ctrl+Enter принимает. Способ оплаты и дата — обычные поля браузера, чтобы Enter не раскрывал в них список. После «Принять оплату» или «Отмена» модалка закрывается, курсор возвращается в поиск; при ошибке модалка остаётся открытой с введённой суммой.
+                            Открывается кнопкой «Оплатить» поверх поиска; поиск и список под ней не сбрасываются. Долг считается тем же движком, что и оборотно-сальдовая ведомость. Плитка «Корректировки» появляется, только когда корректировки не нулевые. Поле суммы всегда пустое: оператор вводит фактически принятую сумму, а весь долг подставляет кнопкой «Вся сумма», клавишей F4 или Enter на пустой сумме — оплата всего долга это Enter Enter. Enter в сумме и дате принимает оплату, в примечании Enter переносит строку, а Ctrl+Enter принимает. Способа оплаты в окне нет: ручная оплата всегда наличные, Kaspi приходит только через интеграцию. Дата — обычное поле браузера, чтобы Enter не раскрывал в ней календарь. После «Принять оплату» или «Отмена» модалка закрывается, курсор возвращается в поиск; при ошибке модалка остаётся открытой с введённой суммой.
                         </p>
                     </div>
 
@@ -1232,13 +1232,6 @@
                                         <p class="mt-1 text-sm text-rose-600 dark:text-rose-400">Поле «Сумма» обязательно.</p>
                                     </div>
                                     <div>
-                                        <label class="text-sm font-medium">Способ оплаты</label>
-                                        <div class="mt-1 flex items-center justify-between rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900">
-                                            <span>Наличные</span>
-                                            <span aria-hidden="true" class="text-zinc-400">▾</span>
-                                        </div>
-                                    </div>
-                                    <div>
                                         <label class="text-sm font-medium">Дата оплаты</label>
                                         <div class="mt-1 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900">24.08.2026</div>
                                     </div>
@@ -1270,7 +1263,7 @@
                         <p class="text-sm font-medium text-teal-700 dark:text-teal-300">Шаг 3</p>
                         <h3 class="mt-1 text-base font-semibold">Лента за сегодня</h3>
                         <p class="mt-1 max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
-                            Все оплаты организации за сегодня, свежие сверху. Ручную оплату можно исправить или удалить, пока расчётный месяц редактируем. Оплату от провайдера онлайн-платежей править нельзя.
+                            Все оплаты организации за сегодня, свежие сверху. Ручную оплату можно исправить или удалить, пока расчётный месяц редактируем; исправление способ не меняет. Оплату из Kaspi править и удалять нельзя: в «Принял» у неё Kaspi, под способом — номер Kaspi. Старая ручная оплата Kaspi подписана «внесена вручную».
                         </p>
                     </div>
 
@@ -1320,9 +1313,24 @@
                                         <td class="px-4 py-3 font-semibold">2 000,00 ₸</td>
                                         <td class="px-4 py-3">
                                             <span class="inline-flex items-center rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-800 dark:bg-rose-950/60 dark:text-rose-200">Kaspi</span>
+                                            <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">№ Kaspi 48213377190</p>
                                         </td>
-                                        <td class="px-4 py-3 text-zinc-400 dark:text-zinc-500">-</td>
-                                        <td class="px-4 py-3 text-xs text-zinc-400 dark:text-zinc-500">Оплата провайдера, правка недоступна</td>
+                                        <td class="px-4 py-3">Kaspi</td>
+                                        <td class="px-4 py-3 text-xs text-zinc-400 dark:text-zinc-500">🔒 Оплата из Kaspi, правка недоступна</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-4 py-3">13:40</td>
+                                        <td class="px-4 py-3">100042</td>
+                                        <td class="px-4 py-3">Ким Ольга</td>
+                                        <td class="px-4 py-3 font-semibold">900,00 ₸</td>
+                                        <td class="px-4 py-3">
+                                            <span class="inline-flex items-center rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-800 dark:bg-rose-950/60 dark:text-rose-200">Kaspi</span>
+                                            <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">внесена вручную</p>
+                                        </td>
+                                        <td class="px-4 py-3">Петрова А.</td>
+                                        <td class="px-4 py-3">
+                                            <span class="text-xs text-teal-700 dark:text-teal-300">Исправить · Удалить</span>
+                                        </td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -1346,6 +1354,94 @@
                         <p class="mt-2 text-sm text-red-700 dark:text-red-300">
                             Нет открытого расчётного месяца. Уведомление не исчезает само, чтобы принятую оплату не посчитали проведённой.
                         </p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="preview-client-payments" class="overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+                <div class="border-b border-zinc-200 p-4 dark:border-zinc-800">
+                    <p class="text-sm font-medium text-teal-700 dark:text-teal-300">Учёт / Абоненты / 100245</p>
+                    <h2 class="mt-1 text-base font-semibold">Оплаты абонента</h2>
+                    <p class="mt-1 max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
+                        Та же таблица в карточке абонента и в разделе «Оплаты». Оплату из Kaspi нельзя изменить и удалить нигде, включая массовое удаление: под способом — номер Kaspi, действий нет. Старая ручная оплата Kaspi подписана «внесена вручную». В форме ручной оплаты способа нет: она всегда наличные.
+                    </p>
+                </div>
+
+                <div class="grid grid-cols-1 gap-4 p-4 xl:grid-cols-[1fr_22rem]">
+                    <div class="overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-800">
+                        <div class="flex items-center justify-between gap-3 border-b border-zinc-200 bg-zinc-50 px-4 py-2 dark:border-zinc-800 dark:bg-zinc-950">
+                            <p class="text-sm font-semibold">Оплаты</p>
+                            <span class="rounded-md bg-teal-700 px-3 py-1.5 text-xs font-medium text-white dark:bg-teal-500 dark:text-zinc-950">Добавить оплату</span>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full min-w-[40rem] text-left text-sm">
+                                <thead class="bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500 dark:bg-zinc-950 dark:text-zinc-400">
+                                    <tr>
+                                        <th class="px-4 py-2 font-medium"><span class="sr-only">Выбрать</span></th>
+                                        <th class="px-4 py-2 font-medium">Период</th>
+                                        <th class="px-4 py-2 font-medium">Сумма</th>
+                                        <th class="px-4 py-2 font-medium">Способ</th>
+                                        <th class="px-4 py-2 font-medium">Дата оплаты</th>
+                                        <th class="px-4 py-2 font-medium">Действия</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-zinc-200 dark:divide-zinc-800">
+                                    <tr>
+                                        <td class="px-4 py-3"><input type="checkbox" checked class="rounded border-zinc-300 dark:border-zinc-600" aria-label="Выбрать"></td>
+                                        <td class="px-4 py-3">11.2026</td>
+                                        <td class="px-4 py-3 font-semibold">4 250,00 ₸</td>
+                                        <td class="px-4 py-3">
+                                            <span class="inline-flex items-center rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-800 dark:bg-rose-950/60 dark:text-rose-200">Kaspi</span>
+                                            <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">№ Kaspi 48213377190</p>
+                                        </td>
+                                        <td class="px-4 py-3">24.11.2026</td>
+                                        <td class="px-4 py-3 text-xs text-zinc-400 dark:text-zinc-500">🔒 из Kaspi</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-4 py-3"><input type="checkbox" checked class="rounded border-zinc-300 dark:border-zinc-600" aria-label="Выбрать"></td>
+                                        <td class="px-4 py-3">11.2026</td>
+                                        <td class="px-4 py-3 font-semibold">2 000,00 ₸</td>
+                                        <td class="px-4 py-3"><span class="inline-flex items-center rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">Наличные</span></td>
+                                        <td class="px-4 py-3">10.11.2026</td>
+                                        <td class="px-4 py-3"><span class="text-xs text-teal-700 dark:text-teal-300">Изменить · Удалить</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-4 py-3"><input type="checkbox" class="rounded border-zinc-300 dark:border-zinc-600" aria-label="Выбрать"></td>
+                                        <td class="px-4 py-3">09.2026</td>
+                                        <td class="px-4 py-3 font-semibold">5 900,00 ₸</td>
+                                        <td class="px-4 py-3">
+                                            <span class="inline-flex items-center rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-800 dark:bg-rose-950/60 dark:text-rose-200">Kaspi</span>
+                                            <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">внесена вручную</p>
+                                        </td>
+                                        <td class="px-4 py-3">12.09.2026</td>
+                                        <td class="px-4 py-3 text-xs text-zinc-400 dark:text-zinc-500">месяц закрыт</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="border-t border-red-200 bg-red-50 px-4 py-3 dark:border-red-900/60 dark:bg-red-950/30">
+                            <p class="text-sm font-semibold text-red-800 dark:text-red-200">Оплаты не удалены</p>
+                            <p class="mt-1 text-sm text-red-700 dark:text-red-300">В выборке оплат из Kaspi: 1. Оплату из интеграции нельзя удалить, поэтому не удалена ни одна оплата. Снимите такие оплаты с выборки; ошибку в них исправляют корректировкой сальдо.</p>
+                        </div>
+                    </div>
+
+                    <div class="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
+                        <p class="text-sm font-semibold">Добавить оплату</p>
+                        <div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-1">
+                            <div>
+                                <label class="text-sm font-medium">Сумма<span class="text-rose-600 dark:text-rose-400">*</span></label>
+                                <div class="mt-1 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900">2 000,00</div>
+                            </div>
+                            <div>
+                                <label class="text-sm font-medium">Дата оплаты</label>
+                                <div class="mt-1 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900">24.11.2026</div>
+                            </div>
+                            <div class="sm:col-span-2 xl:col-span-1">
+                                <label class="text-sm font-medium">Примечание</label>
+                                <div class="mt-1 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400">Необязательно</div>
+                            </div>
+                        </div>
+                        <p class="mt-3 text-xs text-zinc-500 dark:text-zinc-400">Способа оплаты в форме нет: ручная оплата сохраняется наличными, что бы ни прислал браузер.</p>
                     </div>
                 </div>
             </section>

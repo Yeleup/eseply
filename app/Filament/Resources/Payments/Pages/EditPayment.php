@@ -15,14 +15,14 @@ class EditPayment extends EditRecord
     public function form(Schema $schema): Schema
     {
         return parent::form($schema)
-            ->disabled(fn (): bool => $this->record instanceof Payment && ! $this->record->billingPeriod?->isEditable());
+            ->disabled(fn (): bool => ! PaymentResource::canEdit($this->record));
     }
 
     protected function getHeaderActions(): array
     {
         return [
             DeleteAction::make()
-                ->visible(fn (): bool => $this->record instanceof Payment && $this->record->billingPeriod?->isEditable()),
+                ->visible(fn (): bool => $this->record instanceof Payment && PaymentResource::canDelete($this->record)),
         ];
     }
 }

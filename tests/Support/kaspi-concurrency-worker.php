@@ -80,6 +80,12 @@ $actAsOperator = function (array $spec): void {
     Filament::bootCurrentPanel();
 };
 
+// An exception of the step fails the side with its message, never a silent exit 0.
+set_exception_handler(function (Throwable $exception): void {
+    fwrite(STDERR, $exception::class.': '.$exception->getMessage());
+    exit(1);
+});
+
 switch ($spec['type']) {
     case 'http':
         $request = Request::create($spec['uri'], 'GET', server: $spec['server']);

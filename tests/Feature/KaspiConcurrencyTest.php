@@ -16,6 +16,7 @@ use App\Models\Tariff;
 use App\Models\User;
 use App\Models\UtilityService;
 use App\OrganizationMemberRole;
+use App\PaymentMethod;
 use Illuminate\Database\Connection;
 use Illuminate\Foundation\Testing\RefreshDatabaseState;
 use Illuminate\Process\InvokedProcess;
@@ -274,7 +275,11 @@ function concurrencyRun(array $steps, callable $whileBlocked, array $environment
 
             expect($result->successful())->toBeTrue($result->errorOutput().$result->output());
 
-            return json_decode($result->output(), true, flags: JSON_THROW_ON_ERROR);
+            $output = json_decode($result->output(), true);
+
+            expect($output)->toBeArray('Not a result: '.mb_substr($result->output(), 0, 2000));
+
+            return $output;
         }, $processes);
     } finally {
         foreach ($processes as $process) {
@@ -391,10 +396,21 @@ test('два разных pay одного абонента и оплата на
 test('формы «Оплаты» и карточки абонента при одновременной проводке Kaspi сохраняют оплату без отказа снимка', function (string $form): void {
     ['organization' => $organization, 'operator' => $operator, 'client' => $client, 'billingPeriod' => $billingPeriod] = concurrencyFixture();
 
-    // A Kaspi posting holds the subscriber and has already changed the receipt.
+    // A Kaspi posting holds the subscriber and has already saved its payment,
+    // which changed the receipt: the form's transaction must not have taken its
+    // snapshot before this commit, or MariaDB refuses its locking reads (1020).
     DB::beginTransaction();
     DB::select('select id from clients where id = ? for update', [$client->id]);
-    DB::update('update receipts set issued_at = now() where client_id = ?', [$client->id]);
+    Payment::query()->create([
+        'organization_id' => $organization->id,
+        'client_id' => $client->id,
+        'billing_period_id' => $billingPeriod->id,
+        'method' => PaymentMethod::Kaspi->value,
+        'external_provider' => Payment::KASPI_PROVIDER,
+        'external_payment_id' => '48213377190',
+        'amount' => '300.00',
+        'paid_at' => '2026-11-24',
+    ]);
 
     $results = concurrencyRun(
         [[
@@ -411,8 +427,8 @@ test('формы «Оплаты» и карточки абонента при о
     );
 
     expect($results[0]['errors'])->toBe([])
-        ->and(Payment::query()->whereBelongsTo($client)->whereBelongsTo($billingPeriod)->sole()->amount)->toBe('700.00')
-        ->and(Receipt::query()->whereBelongsTo($client)->value('paid_amount'))->toBe('700.00');
+        ->and(Payment::query()->whereBelongsTo($client)->whereBelongsTo($billingPeriod)->orderBy('id')->pluck('amount')->all())->toBe(['300.00', '700.00'])
+        ->and(Receipt::query()->whereBelongsTo($client)->value('paid_amount'))->toBe('1000.00');
 })->with(['form_payments', 'form_card']);
 
 test('начало закрытия и оплаты одновременно: ни касса, ни Kaspi не пишут в закрывающийся месяц', function (): void {

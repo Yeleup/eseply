@@ -42,7 +42,8 @@ ENV_ENSURE_NODE_MODULES := $(if $(IS_PRODUCTION),,ensure-node-modules)
 # use it only with `run --rm --no-deps`, never with up/down/exec. On the main checkout's network a
 # worktree keeps cache, queue and sessions away from the shared Redis and queue worker.
 RUN_ISOLATION := $(if $(filter-out $(DOCKER_PROJECT_NAME),$(RUN_PROJECT)),-e CACHE_STORE=file -e QUEUE_CONNECTION=sync -e SESSION_DRIVER=file,)
-RUN_APP_BASE := $(LOAD_ENV) docker compose -p $(RUN_PROJECT) $(COMPOSE_ENV_FILE) -f docker-compose.yml -f docker-compose.override.yml run --rm --no-deps
+RUN_APP_COMPOSE := docker compose -p $(RUN_PROJECT) $(COMPOSE_ENV_FILE) -f docker-compose.yml -f docker-compose.override.yml run --rm --no-deps
+RUN_APP_BASE := $(LOAD_ENV) $(RUN_APP_COMPOSE)
 RUN_APP := $(RUN_APP_BASE) $(RUN_ISOLATION)
 NO_DB_HINT := $(if $(DOCKER_INFRA_PROJECT),start the main checkout stack (make up there) or this worktree's own database (make db-up),start it with make up or make db-up)
 WORKTREE_SH := bash docker/worktree/worktree.sh
@@ -263,18 +264,33 @@ import-media:
 	mv "$$tmp_storage_dir/$(storage_dir)" "$(storage_dir)"; \
 	trap - EXIT
 
+# Every make test records its result for the agent queue (agent-queue-kit): one JSON file per run under
+# TEST_RESULT_DIR/<SHA>/ (format, and when a run is full and green: docker/test-result.sh). The queue merges a commit
+# only with a full green run of it (agent-queue merge); a run narrowed by test_args or started on an unclean tree is
+# recorded as not full. TEST_RESULT_DIR is <cache_dir>/test-results of .agent-queue/config.json, and
+# AGENT_QUEUE_CACHE_DIR moves both. Empty: nothing is recorded. The output and the exit code stay the same.
+TEST_RESULT_DIR ?= $(or $(AGENT_QUEUE_CACHE_DIR),$(HOME)/.cache/agent-queue-kit/esepteu)/test-results
+TEST_RESULT = bash docker/test-result.sh
+PHP_TEST = $(RUN_APP_COMPOSE) -T \
+	-e APP_ENV=testing \
+	-e APP_DEBUG=true \
+	-e DB_CONNECTION=mysql \
+	-e DB_HOST=db \
+	-e DB_PORT=3306 \
+	-e DB_DATABASE="$(or $(test_database),$${MARIADB_TEST_DATABASE:-laravel_app_testing})" \
+	-e QUEUE_CONNECTION=sync \
+	-e CACHE_STORE=array \
+	-e SESSION_DRIVER=array \
+	--entrypoint php app artisan test $(test_args)
+
+test: export TEST_RESULT_ARGS = $(test_args)
 test: require-not-production require-db $(ENV_ENSURE_VENDOR) ensure-db
-	$(RUN_APP_BASE) -T \
-		-e APP_ENV=testing \
-		-e APP_DEBUG=true \
-		-e DB_CONNECTION=mysql \
-		-e DB_HOST=db \
-		-e DB_PORT=3306 \
-		-e DB_DATABASE="$(or $(test_database),$${MARIADB_TEST_DATABASE:-laravel_app_testing})" \
-		-e QUEUE_CONNECTION=sync \
-		-e CACHE_STORE=array \
-		-e SESSION_DRIVER=array \
-		--entrypoint php app artisan test $(test_args)
+	@$(LOAD_ENV) \
+	run=; [ -z "$(TEST_RESULT_DIR)" ] || run="$$(mktemp -u -t test-run.XXXXXXXX)"; status=0; \
+	[ -z "$$run" ] || $(TEST_RESULT) start "$$run" "$(TEST_RESULT_DIR)"; \
+	if [ -n "$$run" ]; then $(TEST_RESULT) step "$$run" php $(PHP_TEST); else $(PHP_TEST); fi || status=$$?; \
+	[ -z "$$run" ] || $(TEST_RESULT) finish "$$run" "$$status"; \
+	exit "$$status"
 
 # Laravel Boost MCP stdio server for this checkout: nothing but the server may write to stdout.
 boost-mcp: require-not-production require-env

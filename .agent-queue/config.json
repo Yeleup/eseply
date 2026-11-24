@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "project": "esepteu",
+  "repo": "Yeleup/eseply",
+  "base_branch": "master",
+  "tests": {
+    "full": "make test",
+    "filtered": "make test test_args=\"--compact --filter=<Name>\""
+  },
+  "data_rule": "The repository is public: the issue never contains data from the local database, the production servers or real documents (names, phone numbers, addresses, personal account numbers, meter readings, payments, ids of real organizations or subscribers, tokens or keys).",
+  "worktree_cleanup": {
+    "run": "make -C <main> --no-print-directory worktree-prune",
+    "report_if": "stale|not running",
+    "hint": "остатки удалённых worktree: make worktree-prune CONFIRM=yes в основном чекауте"
+  },
+  "automation": { "name": "esepteu: очередь агентов", "trigger": "*/5 * * * *" },
+  "after_merge": [
+    { "if_changed": ["composer.json", "composer.lock"],
+      "run": ["make -C <main> --no-print-directory composer composer_args=\"install --no-interaction\""] },
+    { "if_changed": ["database/migrations"],
+      "run": ["make -C <main> --no-print-directory artisan artisan_args=\"migrate --no-interaction\""] },
+    { "if_running": "esepteu-queue-1",
+      "run": ["make -C <main> --no-print-directory artisan artisan_args=\"queue:restart\""] },
+    { "if_changed": ["package.json", "package-lock.json"],
+      "run": ["make -C <main> --no-print-directory npm npm_args=ci"] },
+    { "if_changed": ["package.json", "package-lock.json"], "if_running": "esepteu-vite-1",
+      "run": ["docker restart esepteu-vite-1"] },
+    { "if_changed": ["Dockerfile", "docker/app"], "note": "в основном checkout нужен `make build`" }
+  ]
+}

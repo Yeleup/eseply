@@ -83,7 +83,7 @@ make shell
 make test
 ```
 
-`make test`, `make artisan`, `make composer` and `make shell` run in one-off containers (`docker compose run --rm`) that mount the current checkout, so only the database has to be running (`make db-up` starts just `db` and `redis`). `make up`, `make build`, `make down` and the other stack commands refuse to touch a compose project whose containers were created from another directory.
+`make test`, `make artisan`, `make composer` and `make shell` run in one-off containers (`docker compose run --rm`) that mount the current checkout, so only the database has to be running (`make db-up` starts just `db` and `redis`). With `TEST_RESULT_DIR` set (empty by default; a project of the agent queue sets it to `<cache_dir>/test-results` of its `.agent-queue/config.json`), `make test` also records each run as JSON under `TEST_RESULT_DIR/<SHA>/` (format, and when a run is full and green: `docker/test-result.sh`); its output and exit code stay the same. `make up`, `make build`, `make down` and the other stack commands refuse to touch a compose project whose containers were created from another directory.
 
 ## Git worktrees (Orca, Claude Code, `git worktree add`)
 

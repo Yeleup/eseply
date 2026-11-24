@@ -22,6 +22,10 @@ use Throwable;
  * rolled back and tried again after a short pause, as long as the deadline
  * allows. The deadline bounds the sum of all waits, however many locks there
  * are.
+ *
+ * The zero timeout also holds on a connection Laravel opens again after losing
+ * one, before it repeats the statement (KaspiSessionLockWait), and the deadline
+ * is checked before every try, the first one included.
  */
 final class KaspiDeadline
 {
@@ -65,8 +69,16 @@ final class KaspiDeadline
      */
     public function retryWithoutWaiting(Closure $attempt): mixed
     {
+        $lastFailure = null;
+
         while (true) {
-            $this->setLockWaitTimeout(0);
+            // Before every try, the first one included: the time may have gone
+            // on reads or bookkeeping before it.
+            if ($this->expired()) {
+                throw $lastFailure ?? CannotPostKaspiOperation::lockWaitExceeded();
+            }
+
+            $this->holdZeroLockWait();
 
             try {
                 return $attempt();
@@ -97,7 +109,7 @@ final class KaspiDeadline
      */
     public function withoutWaiting(): void
     {
-        $this->setLockWaitTimeout(0);
+        $this->holdZeroLockWait();
     }
 
     /**
@@ -120,6 +132,10 @@ final class KaspiDeadline
      */
     public function restore(): void
     {
+        // First: a connection opened again by the statement below keeps the
+        // server's timeout.
+        app(KaspiSessionLockWait::class)->release($this);
+
         if ($this->originalLockWaitTimeout === null) {
             return;
         }
@@ -155,14 +171,20 @@ final class KaspiDeadline
         return (int) ($exception->errorInfo[1] ?? 0) === 1020;
     }
 
-    private function setLockWaitTimeout(int $seconds): void
+    private function holdZeroLockWait(): void
     {
-        if (! in_array(DB::connection()->getDriverName(), ['mysql', 'mariadb'], true)) {
+        $connection = DB::connection();
+
+        if (! in_array($connection->getDriverName(), ['mysql', 'mariadb'], true)) {
             return;
         }
 
-        $this->originalLockWaitTimeout ??= (int) DB::scalar('select @@session.innodb_lock_wait_timeout');
+        $this->originalLockWaitTimeout ??= (int) $connection->scalar('select @@session.innodb_lock_wait_timeout');
 
-        DB::statement('set session innodb_lock_wait_timeout = '.$seconds);
+        // Marked before the statement: a connection opened again by it, or by
+        // any later statement of this deadline, gets zero too.
+        app(KaspiSessionLockWait::class)->hold($this, $connection->getName());
+
+        $connection->statement('set session innodb_lock_wait_timeout = 0');
     }
 }

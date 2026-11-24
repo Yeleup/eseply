@@ -12,7 +12,9 @@
 | and then does one thing: a Kaspi request through the HTTP kernel, a payment
 | at the desk, a payment form of the panel through Livewire, or an artisan
 | command. Before the statement the test waits for, it leaves a marker file.
-| It prints the result as JSON.
+| On request it kills its own database connection once — right before or
+| right after a given statement — as a dropped connection would, so Laravel
+| reconnects. It prints the result as JSON.
 |
 */
 
@@ -26,6 +28,7 @@ use App\Models\User;
 use Filament\Facades\Filament;
 use Illuminate\Contracts\Console\Kernel as ConsoleKernel;
 use Illuminate\Contracts\Http\Kernel;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -36,7 +39,7 @@ require __DIR__.'/../../vendor/autoload.php';
 
 $app = require __DIR__.'/../../bootstrap/app.php';
 
-/** @var array{type: string, ready_file: string, go_file: string, reached_file: string, wait_for?: string|null, database: string} $spec */
+/** @var array{type: string, ready_file: string, go_file: string, reached_file: string, wait_for?: string|null, kill_before?: string|null, kill_after?: string|null, database: string} $spec */
 $spec = json_decode($argv[1] ?? '{}', true, flags: JSON_THROW_ON_ERROR);
 
 // Booted the way tests boot the application; HTTP requests then go through
@@ -58,7 +61,52 @@ if (filled($spec['wait_for'] ?? null)) {
     });
 }
 
-file_put_contents($spec['ready_file'], (string) DB::scalar('select connection_id()'));
+$connectionId = (int) DB::scalar('select connection_id()');
+$killed = 0;
+
+if (filled($spec['kill_before'] ?? null) || filled($spec['kill_after'] ?? null)) {
+    // Another connection of this process kills the main one between two
+    // statements and waits until the server has dropped it.
+    config(['database.connections.concurrency_killer' => config('database.connections.'.config('database.default'))]);
+    $killer = DB::connection('concurrency_killer');
+    $killer->getPdo();
+
+    $kill = function () use ($killer, $connectionId, &$killed): void {
+        if ($killed > 0) {
+            return;
+        }
+
+        $killed++;
+        $killer->statement('kill connection '.$connectionId);
+
+        $waitUntil = microtime(true) + 5;
+
+        while ((int) $killer->scalar('select count(*) from information_schema.processlist where id = ?', [$connectionId]) > 0
+            && microtime(true) < $waitUntil) {
+            usleep(5000);
+        }
+    };
+
+    if (filled($spec['kill_before'] ?? null)) {
+        DB::connection()->beforeExecuting(function (string $query) use ($spec, $kill): void {
+            if (str_contains(strtolower($query), $spec['kill_before'])) {
+                $kill();
+            }
+        });
+    }
+
+    if (filled($spec['kill_after'] ?? null)) {
+        $mainConnection = DB::connection()->getName();
+
+        DB::listen(function (QueryExecuted $query) use ($spec, $kill, $mainConnection): void {
+            if ($query->connectionName === $mainConnection && str_contains(strtolower($query->sql), $spec['kill_after'])) {
+                $kill();
+            }
+        });
+    }
+}
+
+file_put_contents($spec['ready_file'], (string) $connectionId);
 
 $waitUntil = microtime(true) + 30;
 
@@ -135,5 +183,10 @@ switch ($spec['type']) {
 }
 
 $result['seconds'] = round(microtime(true) - $startedAt, 3);
+
+if (filled($spec['kill_before'] ?? null) || filled($spec['kill_after'] ?? null)) {
+    $result['killed'] = $killed;
+    $result['reconnected'] = (int) DB::scalar('select connection_id()') !== $connectionId;
+}
 
 echo json_encode($result, JSON_UNESCAPED_UNICODE);

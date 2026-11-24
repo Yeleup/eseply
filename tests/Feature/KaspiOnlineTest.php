@@ -5,6 +5,7 @@ use App\BalanceAdjustmentType;
 use App\BillingPeriodStatus;
 use App\ClientType;
 use App\Jobs\PostKaspiOperationJob;
+use App\Kaspi\CannotPostKaspiOperation;
 use App\Kaspi\KaspiActivity;
 use App\Kaspi\KaspiCommand;
 use App\Kaspi\KaspiDeadline;
@@ -413,6 +414,43 @@ test('после запроса Kaspi соединение получает св
 
     expect((int) DB::scalar('select @@session.innodb_lock_wait_timeout'))->toBe(37)
         ->and(Payment::query()->count())->toBe(1);
+});
+
+test('срок проверяется и перед первой попыткой: истёк до записи операции — 5, ничего не создано', function (): void {
+    ['organization' => $organization, 'utilityService' => $utilityService] = kaspiOrganization();
+    kaspiClient($organization, $utilityService);
+    config(['kaspi.lock_wait_seconds' => 0]);
+
+    $tried = false;
+
+    expect(fn () => KaspiDeadline::in(0)->retryWithoutWaiting(function () use (&$tried): void {
+        $tried = true;
+    }))->toThrow(CannotPostKaspiOperation::class)
+        ->and($tried)->toBeFalse();
+
+    expect(kaspiGet($organization, kaspiPayQuery())->getContent())->toBe('{"txn_id":"48213377190","result":5,"comment":"Приём оплат недоступен"}');
+
+    kaspiAssertNothingCreated();
+});
+
+test('срок истёк между записью операции и проводкой: операция сохранена, Kaspi получает 4', function (): void {
+    Queue::fake();
+    ['organization' => $organization, 'utilityService' => $utilityService] = kaspiOrganization();
+    kaspiClient($organization, $utilityService);
+    config(['kaspi.lock_wait_seconds' => 0.3]);
+
+    // The time runs out right after the operation is saved, before the posting tries.
+    KaspiOperation::created(fn () => usleep(400_000));
+
+    expect(kaspiGet($organization, kaspiPayQuery())->getContent())->toBe('{"txn_id":"48213377190","result":4,"comment":"Платёж в обработке"}');
+
+    $operation = KaspiOperation::query()->sole();
+
+    expect($operation->state)->toBe(KaspiOperationState::Pending)
+        ->and($operation->state_reason)->toBe('Не дождались блокировки, проведётся автоматически')
+        ->and(Payment::query()->count())->toBe(0);
+
+    Queue::assertPushed(PostKaspiOperationJob::class);
 });
 
 // --- check -----------------------------------------------------------------------

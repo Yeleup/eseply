@@ -549,6 +549,54 @@ test('check при занятой строке абонента: без запи
         ->and(KaspiOperation::query()->where('command', KaspiCommand::Pay->value)->count())->toBe(0);
 });
 
+test('соединение запроса оборвалось при занятом абоненте: после переподключения ожидания не дольше срока', function (string $holdClient, array $kill, string $expected): void {
+    ['organization' => $organization, 'client' => $client] = concurrencyFixture();
+
+    // Laravel opens a new connection and repeats the statement on it; a new
+    // session starts with the server's lock wait timeout, far past the deadline.
+    expect((int) DB::scalar('select @@global.innodb_lock_wait_timeout'))->toBeGreaterThan(5);
+
+    // `for update` holds even the insert of the operation (its foreign key reads
+    // the subscriber); a shared lock lets the insert through and holds the posting.
+    DB::beginTransaction();
+    DB::select("select id from clients where id = ? {$holdClient}", [$client->id]);
+
+    $results = concurrencyRun(
+        [[...concurrencyPay($organization, '48213379601', '100417', '1000.00', waitFor: $kill['wait_for']), ...$kill]],
+        // Let go well after the deadline: a side that waited in MariaDB ends then.
+        whileBlocked: function (): void {
+            usleep(3_000_000);
+            DB::commit();
+        },
+        environment: ['KASPI_LOCK_WAIT_SECONDS' => '2'],
+    );
+
+    $operation = KaspiOperation::query()->where('txn_id', '48213379601')->first();
+
+    expect($results[0]['killed'])->toBe(1)
+        ->and($results[0]['reconnected'])->toBeTrue()
+        ->and($results[0]['body'])->toBe($expected)
+        ->and($results[0]['seconds'])->toBeLessThan(2.6)
+        ->and(Payment::query()->where('external_payment_id', '48213379601')->exists())->toBeFalse();
+
+    if (str_contains($expected, '"result":4')) {
+        expect($operation?->state)->toBe(KaspiOperationState::Pending);
+    } else {
+        expect($operation)->toBeNull();
+    }
+})->with([
+    'перед записью операции' => [
+        'for update',
+        ['wait_for' => 'insert into `kaspi_operations`', 'kill_before' => 'insert into `kaspi_operations`'],
+        '{"txn_id":"48213379601","result":5,"comment":"Приём оплат недоступен"}',
+    ],
+    'перед началом транзакции проводки' => [
+        'lock in share mode',
+        ['wait_for' => 'from `billing_periods`', 'kill_after' => 'from `billing_periods`'],
+        '{"txn_id":"48213379601","result":4,"comment":"Платёж в обработке"}',
+    ],
+]);
+
 test('подбор «в обработке»: занятый абонент не задерживает оплату другого абонента', function (): void {
     ['client' => $client, 'other' => $other] = concurrencyFixture();
 

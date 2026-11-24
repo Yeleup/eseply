@@ -12,6 +12,10 @@ use Illuminate\Support\Facades\Schema;
  * still never lose the fact that it came. A row here is inserted without
  * touching the journal row — no foreign key, so no lock to wait for — and is
  * folded under the lock of the journal row as soon as it is free.
+ *
+ * The same way goes the answer 0 of a first request whose operation a job
+ * posted before it (`is_retry` false): it updates the last code sent to Kaspi
+ * but is not counted as a repeat.
  */
 return new class extends Migration
 {
@@ -26,6 +30,7 @@ return new class extends Migration
             $table->dateTime('received_at');
             $table->unsignedTinyInteger('result');
             $table->boolean('mismatch');
+            $table->boolean('is_retry')->default(true);
 
             $table->index('kaspi_operation_id', 'kaspi_operation_retries_operation_idx');
         });

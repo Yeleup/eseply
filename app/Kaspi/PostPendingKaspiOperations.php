@@ -46,9 +46,20 @@ final class PostPendingKaspiOperations
      */
     public function forOrganization(int $organizationId, ?int $receivedBeforeSeconds = null, ?int $limit = null, ?KaspiDeadline $budget = null): int
     {
+        return $this->turnOf($organizationId, $receivedBeforeSeconds, $limit, $budget)['posted'];
+    }
+
+    /**
+     * One turn of an organization.
+     *
+     * @return array{posted: int, attempts: int} Posted operations and postings actually tried.
+     */
+    private function turnOf(int $organizationId, ?int $receivedBeforeSeconds, ?int $limit, ?KaspiDeadline $budget): array
+    {
         $batchSize = max(1, (int) config('kaspi.posting.batch_size', 100));
         $receivedBefore = $receivedBeforeSeconds === null ? null : now()->subSeconds($receivedBeforeSeconds);
         $posted = 0;
+        $attempts = 0;
         $tried = [];
 
         while (($limit === null || count($tried) < $limit) && ($budget === null || ! $budget->expired())) {
@@ -76,15 +87,22 @@ final class PostPendingKaspiOperations
                 $tried[] = (int) $operationId;
                 $outcome = $this->postOne((int) $operationId, $budget);
 
+                if ($outcome === 'untried') {
+                    // The time ran out before the posting could start.
+                    break 2;
+                }
+
+                $attempts++;
+
                 if ($outcome === true) {
                     $posted++;
                 } elseif ($outcome === 'month') {
-                    return $posted;
+                    break 2;
                 }
             }
         }
 
-        return $posted;
+        return ['posted' => $posted, 'attempts' => $attempts];
     }
 
     /**
@@ -129,7 +147,14 @@ final class PostPendingKaspiOperations
                 $round->remaining(),
             ));
 
-            $posted += $this->forOrganization($organizationId, $pickupAfter, $perOrganization, $organizationBudget);
+            $turn = $this->turnOf($organizationId, $pickupAfter, $perOrganization, $organizationBudget);
+            $posted += $turn['posted'];
+
+            // The time ran out before its first try — on the month or on reading
+            // its operations: the turn stays with it, the next round starts here.
+            if ($turn['attempts'] === 0 && $organizationBudget->expired()) {
+                break;
+            }
 
             // Its turn is used, finished or not: the next round starts after it.
             $this->rememberPickedUpOrganization($organizationId);
@@ -160,7 +185,7 @@ final class PostPendingKaspiOperations
     }
 
     /**
-     * @return true|'month'|'row' Posted; held by the whole month; held by its own row or an error.
+     * @return true|'month'|'row'|'untried' Posted; held by the whole month; held by its own row or an error; not tried, the time ran out first.
      */
     private function postOne(int $operationId, ?KaspiDeadline $budget): bool|string
     {
@@ -174,6 +199,10 @@ final class PostPendingKaspiOperations
 
             return true;
         } catch (CannotPostKaspiOperation $exception) {
+            if (! $exception->wasAttempted()) {
+                return 'untried';
+            }
+
             $this->posting->rememberAttempt($operationId, $exception->getMessage(), $deadline);
 
             return $exception->isMonthWide() ? 'month' : 'row';

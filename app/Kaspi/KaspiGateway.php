@@ -110,10 +110,19 @@ final class KaspiGateway
 
         try {
             $operation = $this->posting->handle($operation, $deadline, answeringKaspi: true);
+            $body = (string) $operation->response;
 
-            return (string) $operation->response;
+            // A job may have posted the operation before this request got to
+            // it: the row then keeps the 4 it was saved with. The 0 this answer
+            // sends is written down like a repeat, without counting as one, and
+            // folded in below.
+            if ((int) $operation->last_result !== KaspiResponse::resultOf($body)) {
+                $this->rememberFirstAnswer($operation, KaspiResponse::resultOf($body), $deadline, $receivedAt);
+            }
+
+            return $body;
         } catch (CannotPostKaspiOperation $exception) {
-            $this->posting->rememberAttempt($operation, $exception->getMessage(), $deadline);
+            $this->posting->rememberAttempt($operation, $exception->getMessage(), $deadline, $exception->wasAttempted());
         } catch (Throwable $exception) {
             report($exception);
             $this->posting->rememberAttempt($operation, 'Ошибка проводки, повтор автоматически', $deadline);
@@ -164,6 +173,21 @@ final class KaspiGateway
         KaspiRetryLog::fold((int) $operation->getKey(), $deadline);
 
         return $body;
+    }
+
+    /**
+     * The answer of the first request for an operation posted by someone else.
+     * Bookkeeping only, like a repeat: an insert that waits for nothing.
+     */
+    private function rememberFirstAnswer(KaspiOperation $operation, int $result, KaspiDeadline $deadline, CarbonInterface $receivedAt): void
+    {
+        try {
+            $deadline->withoutWaiting();
+
+            KaspiRetryLog::recordFirstAnswer($operation, $result, $receivedAt);
+        } catch (QueryException $exception) {
+            report($exception);
+        }
     }
 
     private function differs(KaspiOperation $operation, KaspiInput $input): bool

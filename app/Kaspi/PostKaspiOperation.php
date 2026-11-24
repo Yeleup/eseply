@@ -134,12 +134,13 @@ final class PostKaspiOperation
 
     /**
      * Keep why an operation is still in processing and when it was tried, for
-     * the journal and for the turn of the pickup.
+     * the journal and for the turn of the pickup. A posting the deadline did
+     * not let start keeps its time of the last try: it was not tried.
      *
      * Bookkeeping only: it does not wait for the row, and a failure leaves the
      * previous values.
      */
-    public function rememberAttempt(KaspiOperation|int $operation, string $reason, KaspiDeadline $deadline): void
+    public function rememberAttempt(KaspiOperation|int $operation, string $reason, KaspiDeadline $deadline, bool $attempted = true): void
     {
         $operationId = $operation instanceof KaspiOperation ? (int) $operation->getKey() : $operation;
 
@@ -151,7 +152,7 @@ final class PostKaspiOperation
                 ->where('state', KaspiOperationState::Pending->value)
                 ->update([
                     'state_reason' => $reason,
-                    'posting_attempted_at' => now(),
+                    ...($attempted ? ['posting_attempted_at' => now()] : []),
                     'updated_at' => now(),
                 ]);
         } catch (QueryException $exception) {

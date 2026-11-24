@@ -7,6 +7,7 @@ use App\ClientType;
 use App\Filament\Pages\PaymentDesk;
 use App\Filament\Pages\Reports\ViewReport;
 use App\Jobs\PostKaspiOperationJob;
+use App\Jobs\PostPendingKaspiOperationsJob;
 use App\Kaspi\CannotPostKaspiOperation;
 use App\Kaspi\KaspiActivity;
 use App\Kaspi\KaspiCommand;
@@ -40,6 +41,7 @@ use Illuminate\Cache\ArrayStore;
 use Illuminate\Console\Scheduling\Event;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Database\QueryException;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -459,6 +461,8 @@ test('срок истёк между записью операции и пров
 
     expect($operation->state)->toBe(KaspiOperationState::Pending)
         ->and($operation->state_reason)->toBe('Не дождались блокировки, проведётся автоматически')
+        // Not tried: the pickup still takes it among the never tried ones.
+        ->and($operation->posting_attempted_at)->toBeNull()
         ->and(Payment::query()->count())->toBe(0);
 
     Queue::assertPushed(PostKaspiOperationJob::class);
@@ -786,6 +790,42 @@ test('журнал: повтор получил 4 во время проводк
         ->and($operation->last_result)->toBe(0)
         ->and(DB::table('kaspi_operation_retries')->count())->toBe(0);
 });
+
+test('журнал: задание провело операцию раньше первого запроса — ответ 0, последний код 0, повторов нет', function (string $when): void {
+    ['organization' => $organization, 'utilityService' => $utilityService] = kaspiOrganization();
+    kaspiClient($organization, $utilityService);
+
+    // The job after closing posts the saved operation before the request tries:
+    // right after the save, or between the request's first read and its lock.
+    $postedByJob = false;
+    $runJob = function () use ($organization, &$postedByJob): void {
+        if (! $postedByJob) {
+            $postedByJob = true;
+            (new PostPendingKaspiOperationsJob($organization->id))->handle(app(PostPendingKaspiOperations::class));
+        }
+    };
+
+    if ($when === 'после записи операции') {
+        KaspiOperation::created(fn () => $runJob());
+    } else {
+        DB::listen(function (QueryExecuted $query) use ($runJob): void {
+            if (str_starts_with($query->sql, 'select * from `kaspi_operations` where `kaspi_operations`.`id` = ?')) {
+                $runJob();
+            }
+        });
+    }
+
+    $response = kaspiGet($organization, kaspiPayQuery());
+    $operation = KaspiOperation::query()->sole();
+
+    expect($postedByJob)->toBeTrue()
+        ->and($response->getContent())->toBe(kaspiPostedSample(Payment::query()->sole()))
+        ->and($operation->state)->toBe(KaspiOperationState::Posted)
+        ->and($operation->last_result)->toBe(0)
+        ->and($operation->retries_count)->toBe(0)
+        ->and($operation->last_retry_at)->toBeNull()
+        ->and(DB::table('kaspi_operation_retries')->count())->toBe(0);
+})->with(['после записи операции', 'между чтением и блокировкой']);
 
 test('журнал: операция проведена заданием, повтор во время проводки получил 4 — последний код 4, следующий повтор даёт 0', function (): void {
     ['organization' => $organization, 'utilityService' => $utilityService] = kaspiOrganization();
@@ -1510,6 +1550,60 @@ test('подбор обходит организации по кругу: про
     expect($pendingOf(2))->toBe(0)
         ->and($pendingOf(3))->toBe(0)
         ->and(Cache::get(PostPendingKaspiOperations::LAST_ORGANIZATION_KEY))->toBeIn([$organizations[1]->id, $organizations[3]->id]);
+});
+
+test('подбор: срок кончился на подготовительном чтении второй организации — следующий проход начинает с неё', function (): void {
+    $received = now()->subMinutes(5);
+    $organizations = [];
+
+    foreach (range(1, 2) as $number) {
+        ['organization' => $organization, 'utilityService' => $utilityService] = kaspiOrganization();
+        $client = kaspiClient($organization, $utilityService, ['iin' => '90010130004'.$number, 'phone' => '+7701000004'.$number]);
+        $organizations[$number] = $organization;
+
+        foreach (range(1, 2) as $index) {
+            KaspiOperation::factory()->forClient($client)->pending(100)->create(['txn_id' => "482133784{$number}{$index}", 'received_at' => $received]);
+        }
+    }
+
+    config(['kaspi.posting.pickup_seconds' => 0.5, 'kaspi.posting.pickup_per_organization' => 1]);
+
+    // The first pass: the first organization is quick, and the rest of the time
+    // goes on reading the operations of the second one, before its first try.
+    $slowRead = true;
+    DB::listen(function (QueryExecuted $query) use ($organizations, &$slowRead): void {
+        if ($slowRead
+            && str_starts_with($query->sql, 'select `id` from `kaspi_operations` where `organization_id` = ?')
+            && (int) $query->bindings[0] === $organizations[2]->id) {
+            $slowRead = false;
+            usleep(600_000);
+        }
+    });
+
+    // The next pass: a posting of the first organization takes the whole time.
+    $slowFirst = false;
+    Payment::created(function (Payment $payment) use ($organizations, &$slowFirst): void {
+        if ($slowFirst && $payment->organization_id === $organizations[1]->id) {
+            usleep(600_000);
+        }
+    });
+
+    $pendingOf = fn (int $number): int => KaspiOperation::query()
+        ->where('organization_id', $organizations[$number]->id)
+        ->where('state', KaspiOperationState::Pending->value)
+        ->count();
+
+    $this->artisan('kaspi:post-pending')->assertSuccessful();
+
+    expect($slowRead)->toBeFalse()
+        ->and($pendingOf(1))->toBe(1)
+        ->and($pendingOf(2))->toBe(2)
+        ->and(KaspiOperation::query()->where('organization_id', $organizations[2]->id)->whereNotNull('posting_attempted_at')->count())->toBe(0);
+
+    $slowFirst = true;
+    $this->artisan('kaspi:post-pending')->assertSuccessful();
+
+    expect($pendingOf(2))->toBe(1);
 });
 
 test('ссылки сайта: через доверенный HTTPS-прокси — https, прямой HTTP-вход — http, даже при APP_URL на https', function (): void {

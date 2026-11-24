@@ -75,7 +75,7 @@ final class KaspiDeadline
             // Before every try, the first one included: the time may have gone
             // on reads or bookkeeping before it.
             if ($this->expired()) {
-                throw $lastFailure ?? CannotPostKaspiOperation::lockWaitExceeded();
+                throw $lastFailure ?? CannotPostKaspiOperation::deadlinePassedBeforeAttempt();
             }
 
             $this->holdZeroLockWait();

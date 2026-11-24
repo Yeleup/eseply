@@ -18,6 +18,7 @@ class CannotPostKaspiOperation extends RuntimeException
         string $message,
         private readonly bool $isMonthWide,
         private readonly bool $isRetryable = false,
+        private readonly bool $wasAttempted = true,
     ) {
         parent::__construct($message);
     }
@@ -42,6 +43,15 @@ class CannotPostKaspiOperation extends RuntimeException
         return new self('Не дождались блокировки, проведётся автоматически', isMonthWide: false, isRetryable: true);
     }
 
+    /**
+     * The deadline passed before the first try of this posting: nothing was
+     * tried, so the operation keeps its place in the turn of tries.
+     */
+    public static function deadlinePassedBeforeAttempt(): self
+    {
+        return new self('Не дождались блокировки, проведётся автоматически', isMonthWide: false, isRetryable: true, wasAttempted: false);
+    }
+
     public function isMonthWide(): bool
     {
         return $this->isMonthWide;
@@ -50,5 +60,10 @@ class CannotPostKaspiOperation extends RuntimeException
     public function isRetryable(): bool
     {
         return $this->isRetryable;
+    }
+
+    public function wasAttempted(): bool
+    {
+        return $this->wasAttempted;
     }
 }

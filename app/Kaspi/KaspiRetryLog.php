@@ -23,6 +23,11 @@ use Illuminate\Support\Facades\Log;
  * portion of them with a plain read and deletes exactly those rows by their
  * primary key. No range of the repeat log is locked, so a repeat that comes
  * during a fold is written at once and waits for the next fold.
+ *
+ * The first request of an operation a job posted before it answers 0 that the
+ * row does not know yet; it goes through the same log as an answer that is
+ * not a repeat: it takes part in the last code, not in the count or the time
+ * of repeats.
  */
 final class KaspiRetryLog
 {
@@ -33,12 +38,15 @@ final class KaspiRetryLog
 
     public static function record(KaspiOperation $operation, bool $mismatch, int $result, CarbonInterface $receivedAt): void
     {
-        DB::table('kaspi_operation_retries')->insert([
-            'kaspi_operation_id' => $operation->getKey(),
-            'received_at' => $receivedAt,
-            'result' => $result,
-            'mismatch' => $mismatch,
-        ]);
+        self::insert($operation, $result, $receivedAt, $mismatch, isRetry: true);
+    }
+
+    /**
+     * The answer the first request sent, when the row does not hold it yet.
+     */
+    public static function recordFirstAnswer(KaspiOperation $operation, int $result, CarbonInterface $receivedAt): void
+    {
+        self::insert($operation, $result, $receivedAt, mismatch: false, isRetry: false);
     }
 
     /**
@@ -77,11 +85,17 @@ final class KaspiRetryLog
                     $lastResult = self::followingResult($lastResult, (int) $retry->result);
                 }
 
-                $newestRetryAt = CarbonImmutable::parse($retries->max('received_at'));
+                $repeats = $retries->filter(fn (object $retry): bool => (bool) $retry->is_retry);
+                $lastRetryAt = $operation->last_retry_at;
+
+                if ($repeats->isNotEmpty()) {
+                    $newestRetryAt = CarbonImmutable::parse($repeats->max('received_at'));
+                    $lastRetryAt = $lastRetryAt?->greaterThan($newestRetryAt) ? $lastRetryAt : $newestRetryAt;
+                }
 
                 $operation->forceFill([
-                    'retries_count' => $operation->retries_count + $retries->count(),
-                    'last_retry_at' => $operation->last_retry_at?->greaterThan($newestRetryAt) ? $operation->last_retry_at : $newestRetryAt,
+                    'retries_count' => $operation->retries_count + $repeats->count(),
+                    'last_retry_at' => $lastRetryAt,
                     'last_result' => $lastResult,
                     'retry_mismatch' => $operation->retry_mismatch || $retries->contains(fn (object $retry): bool => (bool) $retry->mismatch),
                 ])->save();
@@ -96,6 +110,17 @@ final class KaspiRetryLog
                 'error' => $exception->getMessage(),
             ]);
         }
+    }
+
+    private static function insert(KaspiOperation $operation, int $result, CarbonInterface $receivedAt, bool $mismatch, bool $isRetry): void
+    {
+        DB::table('kaspi_operation_retries')->insert([
+            'kaspi_operation_id' => $operation->getKey(),
+            'received_at' => $receivedAt,
+            'result' => $result,
+            'mismatch' => $mismatch,
+            'is_retry' => $isRetry,
+        ]);
     }
 
     /**

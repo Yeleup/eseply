@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Clients\RelationManagers;
 
+use App\Actions\RecordManualPayment;
 use App\Filament\Support\BillingPeriodOptions;
 use App\Filament\Support\CurrentBillingPeriod;
 use App\Filament\Support\OrganizationMemberAccess;
@@ -111,15 +112,13 @@ class PaymentsRelationManager extends RelationManager
                     ->label('Добавить оплату')
                     ->disabled(fn (): bool => CurrentBillingPeriod::missing($this->ownerRecord->organization))
                     ->tooltip(fn (): ?string => CurrentBillingPeriod::missingTooltip($this->ownerRecord->organization))
-                    ->mutateDataUsing(function (array $data): array {
-                        $data['organization_id'] = $this->ownerRecord->organization_id;
-                        // A payment entered by hand is always cash: Kaspi comes only through the integration.
-                        $data['method'] = PaymentMethod::Cash->value;
-                        unset($data['external_provider'], $data['external_payment_id']);
-                        $data['received_by_user_id'] = auth()->id();
-
-                        return $data;
-                    }),
+                    // Always cash, with the subscriber row locked first (RecordManualPayment).
+                    ->using(fn (array $data): Payment => app(RecordManualPayment::class)->handle(
+                        $this->ownerRecord->organization,
+                        (int) $this->ownerRecord->getKey(),
+                        $data,
+                        auth()->id(),
+                    )),
             ])
             ->recordActions([
                 EditAction::make()

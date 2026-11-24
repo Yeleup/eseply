@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 #[Fillable([
     'organization_id',
@@ -38,6 +39,8 @@ class Client extends Model
     use HasFactory;
 
     public const FIRST_AUTOMATIC_ACCOUNT_NUMBER = 100001;
+
+    public const string KASPI_OPERATIONS_DELETE_MESSAGE = 'Абонента нельзя удалить: по нему есть операции Kaspi онлайн, они хранятся бессрочно. Сделайте абонента неактивным.';
 
     /**
      * @var array<string, mixed>
@@ -98,6 +101,20 @@ class Client extends Model
     public function receipts(): HasMany
     {
         return $this->hasMany(Receipt::class);
+    }
+
+    public function kaspiOperations(): HasMany
+    {
+        return $this->hasMany(KaspiOperation::class);
+    }
+
+    /**
+     * Kaspi operations are kept forever and point at the subscriber, so a
+     * subscriber with any of them, posted or still in processing, stays.
+     */
+    public function hasKaspiOperations(): bool
+    {
+        return $this->kaspiOperations()->exists();
     }
 
     /**
@@ -162,6 +179,14 @@ class Client extends Model
                 ->value('id');
 
             self::advanceNextAccountNumber($client);
+        });
+
+        static::deleting(function (Client $client): void {
+            if ($client->hasKaspiOperations()) {
+                throw ValidationException::withMessages([
+                    'client' => self::KASPI_OPERATIONS_DELETE_MESSAGE,
+                ]);
+            }
         });
     }
 

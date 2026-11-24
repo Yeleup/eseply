@@ -2,7 +2,6 @@
 
 namespace App\Filament\Resources\BillingPeriods\Pages;
 
-use App\BillingPeriodStatus;
 use App\Filament\Resources\BillingPeriods\BillingPeriodResource;
 use App\Filament\Support\OrganizationMemberAccess;
 use App\Models\BillingPeriod;
@@ -49,12 +48,8 @@ class ListBillingPeriods extends ListRecords
             return false;
         }
 
-        $latestStatus = BillingPeriod::query()
-            ->forOrganization($tenant)
-            ->orderByDesc('starts_on')
-            ->value('status');
-
-        return $latestStatus === null || $latestStatus === BillingPeriodStatus::Closed;
+        return ! BillingPeriod::query()->forOrganization($tenant)->exists()
+            || BillingPeriod::latestIsClosedFor($tenant);
     }
 
     private function openNextBillingPeriod(): null

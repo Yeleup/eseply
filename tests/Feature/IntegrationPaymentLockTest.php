@@ -31,7 +31,7 @@ function integrationLockFixture(): array
     $organization = Organization::factory()->create();
     UtilityService::factory()->for($organization)->create();
     $billingPeriod = billingPeriodFor($organization, '202611');
-    $client = Client::factory()->for($organization)->create(['account_number' => '100245', 'status' => 'active']);
+    $client = Client::factory()->for($organization)->create(['account_number' => '100417', 'status' => 'active']);
 
     $operator = User::factory()->create();
     $operator->organizations()->attach($organization, ['role' => OrganizationMemberRole::Operator->value]);
@@ -58,14 +58,14 @@ function integrationKaspiPayment(Client $client, BillingPeriod $billingPeriod, s
     ]);
 }
 
-function integrationManualPayment(Client $client, BillingPeriod $billingPeriod, float $amount = 2000): Payment
+function integrationManualPayment(Client $client, BillingPeriod $billingPeriod, float $amount = 1600): Payment
 {
     return Payment::query()->create([
         'organization_id' => $client->organization_id,
         'client_id' => $client->id,
         'billing_period_id' => $billingPeriod->id,
         'amount' => $amount,
-        'paid_at' => '2026-11-10',
+        'paid_at' => '2026-11-06',
     ]);
 }
 

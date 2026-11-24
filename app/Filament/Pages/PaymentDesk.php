@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages;
 
+use App\Actions\RecordManualPayment;
 use App\Filament\Support\CurrentBillingPeriod;
 use App\Filament\Support\OrganizationMemberAccess;
 use App\Filament\Support\PaymentTableParts;
@@ -10,7 +11,6 @@ use App\Models\Client;
 use App\Models\Organization;
 use App\Models\Payment;
 use App\Models\User;
-use App\PaymentMethod;
 use App\Reports\TurnoverBalanceValues;
 use BackedEnum;
 use Filament\Actions\Action;
@@ -395,19 +395,13 @@ class PaymentDesk extends Page implements HasTable
         abort_unless($client instanceof Client, 404);
 
         try {
-            $billingPeriod = BillingPeriod::requireCurrentEditableFor($organization);
-
-            $payment = Payment::query()->create([
-                'organization_id' => $organization->getKey(),
-                'client_id' => $client->getKey(),
-                'billing_period_id' => $billingPeriod->getKey(),
-                // A payment entered by hand is always cash: Kaspi comes only through the integration.
-                'method' => PaymentMethod::Cash->value,
-                'received_by_user_id' => $user->getKey(),
-                'amount' => $data['amount'],
-                'paid_at' => $data['paid_at'] ?? today(),
-                'note' => $data['note'] ?? null,
-            ]);
+            // Always cash, with the subscriber row locked first (RecordManualPayment).
+            $payment = app(RecordManualPayment::class)->handle(
+                $organization,
+                (int) $client->getKey(),
+                $data,
+                (int) $user->getKey(),
+            );
         } catch (ValidationException|QueryException $exception) {
             Notification::make()
                 ->danger()

@@ -68,6 +68,8 @@ class CloseBillingMonthJob implements ShouldQueue
     {
         $this->releaseProcessingBillingPeriod();
 
+        CloseBillingMonth::queuePendingKaspiPosting($this->organization);
+
         $reason = $exception instanceof NextBillingPeriodNotOpened
             ? $exception->getMessage()
             : 'Закрытие прервано технической ошибкой, начисления не созданы. Запустите закрытие месяца заново.';

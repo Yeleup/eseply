@@ -5,10 +5,13 @@ namespace App\Actions;
 use App\BalanceAdjustmentType;
 use App\BillingPeriodStatus;
 use App\ClientType;
+use App\Jobs\PostPendingKaspiOperationsJob;
+use App\Kaspi\KaspiOperationState;
 use App\Models\Accrual;
 use App\Models\BalanceAdjustment;
 use App\Models\BillingPeriod;
 use App\Models\Client;
+use App\Models\KaspiOperation;
 use App\Models\Meter;
 use App\Models\Organization;
 use App\Models\Payment;
@@ -100,6 +103,30 @@ class CloseBillingMonth
             );
 
             throw $exception;
+        } finally {
+            // Whatever the branch, the month is no longer closing: Kaspi payments
+            // that waited for it are posted now, not when Kaspi repeats them.
+            self::queuePendingKaspiPosting($organization);
+        }
+    }
+
+    /**
+     * Queue the posting of the organization's Kaspi payments in processing, if it has any.
+     */
+    public static function queuePendingKaspiPosting(Organization $organization): void
+    {
+        try {
+            $hasPending = KaspiOperation::query()
+                ->where('organization_id', $organization->getKey())
+                ->where('state', KaspiOperationState::Pending->value)
+                ->exists();
+
+            if ($hasPending) {
+                PostPendingKaspiOperationsJob::dispatch((int) $organization->getKey());
+            }
+        } catch (Throwable $exception) {
+            // The scheduler picks them up within a minute; the closing result stands.
+            report($exception);
         }
     }
 

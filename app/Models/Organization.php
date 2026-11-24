@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Str;
 
 #[Fillable([
     'name',
@@ -121,6 +122,19 @@ class Organization extends Model implements HasCurrentTenantLabel, HasName
         return $this->hasOne(ReceiptTemplate::class);
     }
 
+    public function kaspiOperations(): HasMany
+    {
+        return $this->hasMany(KaspiOperation::class);
+    }
+
+    /**
+     * Permanent address Kaspi sends `check` and `pay` to.
+     */
+    public function kaspiAddress(): string
+    {
+        return route('kaspi.endpoint', ['uid' => $this->kaspi_uid]);
+    }
+
     public function getFilamentName(): string
     {
         return $this->name;
@@ -133,6 +147,19 @@ class Organization extends Model implements HasCurrentTenantLabel, HasName
 
     protected static function booted(): void
     {
+        static::creating(function (Organization $organization): void {
+            if (blank($organization->kaspi_uid)) {
+                $organization->kaspi_uid = (string) Str::uuid();
+            }
+        });
+
+        // The Kaspi address is agreed with Kaspi in advance, so it never changes.
+        static::updating(function (Organization $organization): void {
+            if ($organization->isDirty('kaspi_uid')) {
+                $organization->kaspi_uid = $organization->getOriginal('kaspi_uid');
+            }
+        });
+
         static::deleted(function (Organization $organization): void {
             MeterReadingPhotoStorage::deleteOrganizationDirectory($organization->getKey());
             ReceiptTemplateImageStorage::deleteOrganizationDirectory($organization->getKey());
@@ -148,6 +175,7 @@ class Organization extends Model implements HasCurrentTenantLabel, HasName
     {
         return [
             'next_client_account_number' => 'integer',
+            'kaspi_enabled' => 'boolean',
         ];
     }
 }

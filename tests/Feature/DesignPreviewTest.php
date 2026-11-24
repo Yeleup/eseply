@@ -172,3 +172,31 @@ test('the billing periods preview shows the automatic opening of the next month'
         ->assertSee('открыт автоматически после закрытия 04.2026')
         ->assertSee('Не удалось открыть следующий расчётный месяц 06.2026');
 });
+
+test('the kaspi online preview shows the profile section and the journal in every state', function () {
+    $response = $this->get(route('design-preview'))->assertSuccessful();
+
+    foreach ([
+        'Kaspi онлайн в профиле',
+        'Принимать оплаты Kaspi онлайн',
+        'Адрес для Kaspi',
+        '^[0-9]{6,10}$',
+        'JSON, UTF-8',
+        'Последний запрос от Kaspi: сегодня в 10:15. Ошибок за сутки нет.',
+        'Запросов от Kaspi ещё не было.',
+        'Ошибок за сутки: 3 — откройте журнал «Kaspi онлайн».',
+        'Включить приём можно, только когда у организации есть расчётный месяц',
+        'Журнал Kaspi',
+        'Оплат сегодня',
+        'В обработке',
+        'Ошибок за сутки',
+        'ответ: 4 · идёт закрытие расчётного месяца',
+        'расхождение в повторе: проведено по первому запросу',
+        'Операций Kaspi ещё не было',
+        'Загрузка журнала',
+        'Выгрузить для сверки',
+        'Абонент не удалён',
+    ] as $marker) {
+        $response->assertSee($marker);
+    }
+});

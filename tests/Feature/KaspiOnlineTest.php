@@ -1375,9 +1375,8 @@ test('очистка журнала запросов сохраняет посл
     KaspiActivity::record($organization, 0, CarbonImmutable::parse('2026-10-01 10:00:05'), KaspiDeadline::in(1));
     KaspiActivity::record($organization, 0, CarbonImmutable::parse('2026-10-01 10:00:00'), KaspiDeadline::in(1));
 
-    $this->artisan('kaspi:prune-request-log')->assertSuccessful();
-
-    expect(DB::table('kaspi_request_log')->count())->toBe(1)
+    expect(KaspiActivity::prune())->toBe(1)
+        ->and(DB::table('kaspi_request_log')->count())->toBe(1)
         ->and(KaspiActivity::lastRequestAt($organization)?->format('Y-m-d H:i:s'))->toBe('2026-10-01 10:00:05');
 });
 

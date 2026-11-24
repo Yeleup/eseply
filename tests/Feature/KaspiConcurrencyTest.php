@@ -4,6 +4,7 @@ use App\BillingPeriodStatus;
 use App\ClientType;
 use App\Kaspi\KaspiCommand;
 use App\Kaspi\KaspiOperationState;
+use App\Kaspi\KaspiRetryLog;
 use App\Models\BillingPeriod;
 use App\Models\Client;
 use App\Models\KaspiOperation;
@@ -526,6 +527,39 @@ test('повтор с другой суммой при строке, занят�
     expect($operation->refresh()->retries_count)->toBe(1)
         ->and($operation->retry_mismatch)->toBeTrue()
         ->and($operation->last_retry_at)->not->toBeNull()
+        ->and(DB::table('kaspi_operation_retries')->count())->toBe(0);
+});
+
+test('перенос повторов не мешает записать новый повтор: повтор с другой суммой во время переноса не теряется', function (): void {
+    ['organization' => $organization] = concurrencyFixture();
+
+    $this->call('GET', '/kaspi/'.$organization->kaspi_uid.'?command=pay&txn_id=48213379701&txn_date=20261124101521&account=100417&sum=1000.00', server: [
+        'REMOTE_ADDR' => CONCURRENCY_PROXY,
+        'HTTP_X_FORWARDED_FOR' => CONCURRENCY_KASPI_IP,
+    ]);
+    $operation = KaspiOperation::query()->where('txn_id', '48213379701')->sole();
+    KaspiRetryLog::record($operation, mismatch: false, result: 0, receivedAt: now());
+
+    // A fold that has not committed yet: it holds what it locked until then.
+    DB::beginTransaction();
+    KaspiRetryLog::fold($operation->id);
+
+    $results = concurrencyRun(
+        [concurrencyPay($organization, '48213379701', '100417', '9999.00', waitFor: 'insert into `kaspi_operation_retries`')],
+        whileBlocked: fn () => null,
+    );
+
+    DB::commit();
+
+    expect($results[0]['body'])->toBe((string) $operation->response)
+        ->and($results[0]['seconds'])->toBeLessThan(1.5)
+        ->and(DB::table('kaspi_operation_retries')->count())->toBe(1);
+
+    KaspiRetryLog::fold($operation->id);
+
+    expect($operation->refresh()->retries_count)->toBe(2)
+        ->and($operation->retry_mismatch)->toBeTrue()
+        ->and($operation->last_result)->toBe(0)
         ->and(DB::table('kaspi_operation_retries')->count())->toBe(0);
 });
 

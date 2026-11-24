@@ -10,6 +10,7 @@ use App\Kaspi\KaspiActivity;
 use App\Kaspi\KaspiCommand;
 use App\Kaspi\KaspiDeadline;
 use App\Kaspi\KaspiOperationState;
+use App\Kaspi\KaspiRetryLog;
 use App\Kaspi\PostKaspiOperation;
 use App\Kaspi\PostPendingKaspiOperations;
 use App\Models\Accrual;
@@ -710,6 +711,77 @@ test('pay: повтор с другими данными до и после пр
     kaspiGet($organization, kaspiPayQuery('48213350311', sum: '2750.00'));
 
     expect($pending->refresh()->retry_mismatch)->toBeTrue();
+});
+
+test('журнал: повтор получил 4 во время проводки, а первый запрос — 0: последний код в журнале 0', function (): void {
+    ['organization' => $organization, 'utilityService' => $utilityService] = kaspiOrganization();
+    kaspiClient($organization, $utilityService);
+
+    // While the first request posts, a repeat reads the operation in processing,
+    // answers 4 and writes itself down; the first request answers 0 afterwards.
+    Payment::created(function (Payment $payment): void {
+        KaspiRetryLog::record(KaspiOperation::query()->where('txn_id', $payment->external_payment_id)->sole(), false, 4, now());
+    });
+
+    $response = kaspiGet($organization, kaspiPayQuery());
+    $operation = KaspiOperation::query()->sole();
+
+    expect($response->json('result'))->toBe(0)
+        ->and($operation->retries_count)->toBe(1)
+        ->and($operation->last_result)->toBe(0)
+        ->and(DB::table('kaspi_operation_retries')->count())->toBe(0);
+});
+
+test('журнал: операция проведена заданием, повтор во время проводки получил 4 — последний код 4, следующий повтор даёт 0', function (): void {
+    ['organization' => $organization, 'utilityService' => $utilityService] = kaspiOrganization();
+    $client = kaspiClient($organization, $utilityService);
+    $operation = KaspiOperation::factory()->forClient($client)->pending(4250)->create(['txn_id' => '48213377190', 'txn_date' => '2026-11-24 10:15:21']);
+
+    KaspiRetryLog::record($operation, false, 4, now());
+    (new PostKaspiOperationJob($operation->id))->handle(app(PostKaspiOperation::class));
+
+    // The job answers nobody: Kaspi has heard only 4 so far.
+    expect($operation->refresh()->state)->toBe(KaspiOperationState::Posted)
+        ->and($operation->retries_count)->toBe(1)
+        ->and($operation->last_result)->toBe(4);
+
+    expect(kaspiGet($organization, kaspiPayQuery())->json('result'))->toBe(0)
+        ->and($operation->refresh()->retries_count)->toBe(2)
+        ->and($operation->last_result)->toBe(0);
+});
+
+test('журнал: в одной порции повторов 0 и записанный позже 4 дают последний код 0', function (): void {
+    ['organization' => $organization, 'utilityService' => $utilityService] = kaspiOrganization();
+    $client = kaspiClient($organization, $utilityService);
+    $operation = KaspiOperation::factory()->forClient($client)->pending(4250)->create(['txn_id' => '48213377190', 'txn_date' => '2026-11-24 10:15:21']);
+
+    // Posted by the job: the stored code is still 4.
+    app(PostKaspiOperation::class)->handle($operation, KaspiDeadline::in(1));
+
+    // The repeat that answered 4 read the operation before the commit, but wrote
+    // itself down after the one that answered 0.
+    KaspiRetryLog::record($operation, false, 0, now());
+    KaspiRetryLog::record($operation, false, 4, now());
+    KaspiRetryLog::fold($operation->id);
+
+    expect($operation->refresh()->retries_count)->toBe(2)
+        ->and($operation->last_result)->toBe(0);
+});
+
+test('журнал: время последнего повтора не уменьшается, если раньше полученный повтор перенесён позже', function (): void {
+    ['organization' => $organization, 'utilityService' => $utilityService] = kaspiOrganization();
+    $client = kaspiClient($organization, $utilityService);
+    $operation = KaspiOperation::factory()->forClient($client)->pending(4250)->create([
+        'txn_id' => '48213377190',
+        'retries_count' => 3,
+        'last_retry_at' => now(),
+    ]);
+
+    KaspiRetryLog::record($operation, false, 4, now()->subSeconds(10));
+    KaspiRetryLog::fold($operation->id);
+
+    expect($operation->refresh()->retries_count)->toBe(4)
+        ->and($operation->last_retry_at->equalTo(now()))->toBeTrue();
 });
 
 test('pay: повтор известного txn_id отвечает по операции, даже если абонент стал неактивным и приём выключен', function (): void {

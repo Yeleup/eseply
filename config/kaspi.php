@@ -68,4 +68,22 @@ return [
         'pickup_seconds' => (float) env('KASPI_PICKUP_SECONDS', 40),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Request log
+    |--------------------------------------------------------------------------
+    |
+    | Every request from Kaspi is kept `keep_days` days, the latest one of an
+    | organization always. Older rows are deleted every hour in portions of
+    | `prune_batch_size` rows, at most `prune_max_batches` portions a run; the
+    | rest waits for the next run.
+    |
+    */
+
+    'request_log' => [
+        'keep_days' => 30,
+        'prune_batch_size' => 1000,
+        'prune_max_batches' => 200,
+    ],
+
 ];

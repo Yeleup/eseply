@@ -2,7 +2,6 @@
 
 namespace App\Console\Commands;
 
-use App\Kaspi\KaspiActivity;
 use App\Kaspi\PostPendingKaspiOperations;
 use Illuminate\Console\Command;
 
@@ -22,7 +21,6 @@ class PostPendingKaspiOperationsCommand extends Command
     {
         $posted = $postPending->pickUp();
         $postPending->foldRetries();
-        KaspiActivity::prune();
 
         $this->info("Проведено оплат Kaspi: {$posted}");
 

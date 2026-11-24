@@ -32,6 +32,8 @@ use App\Support\Money;
 use Carbon\CarbonImmutable;
 use Illuminate\Cache\ArrayLock;
 use Illuminate\Cache\ArrayStore;
+use Illuminate\Console\Scheduling\Event;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\QueryException;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -1263,9 +1265,72 @@ test('журнал запросов хранит 30 дней, но послед�
     KaspiActivity::record($quiet, 0, CarbonImmutable::parse('2026-08-01 10:00:00'), KaspiDeadline::in(1));
     KaspiActivity::record($quiet, 5, CarbonImmutable::parse('2026-08-02 10:00:00'), KaspiDeadline::in(1));
 
-    expect(KaspiActivity::prune())->toBe(2)
+    $this->artisan('kaspi:prune-request-log')->assertSuccessful();
+
+    expect(DB::table('kaspi_request_log')->count())->toBe(2)
         ->and(KaspiActivity::lastRequestAt($organization)?->format('Y-m-d'))->toBe('2026-11-20')
         ->and(KaspiActivity::lastRequestAt($quiet)?->format('Y-m-d'))->toBe('2026-08-02');
+});
+
+test('очистка журнала запросов идёт порциями, останавливается на пределе порций и продолжает в следующем запуске', function (): void {
+    ['organization' => $first] = kaspiOrganization();
+    ['organization' => $second] = kaspiOrganization();
+    config(['kaspi.request_log.prune_batch_size' => 2, 'kaspi.request_log.prune_max_batches' => 2]);
+
+    foreach (range(1, 5) as $day) {
+        KaspiActivity::record($first, 0, CarbonImmutable::parse("2026-09-0{$day} 10:00:00"), KaspiDeadline::in(1));
+    }
+
+    KaspiActivity::record($first, 0, CarbonImmutable::parse('2026-11-20 10:00:00'), KaspiDeadline::in(1));
+
+    foreach (range(1, 3) as $day) {
+        KaspiActivity::record($second, 5, CarbonImmutable::parse("2026-08-0{$day} 10:00:00"), KaspiDeadline::in(1));
+    }
+
+    $rowsOf = fn (Organization $organization): int => DB::table('kaspi_request_log')->where('organization_id', $organization->id)->count();
+
+    // Two portions of two rows: the oldest rows of the first organization.
+    expect(KaspiActivity::prune())->toBe(4)
+        ->and($rowsOf($first))->toBe(2)
+        ->and(DB::table('kaspi_request_log')->where('organization_id', $first->id)->min('received_at'))->toBe('2026-09-05 10:00:00')
+        ->and($rowsOf($second))->toBe(3);
+
+    // The next run goes on: the rest of the first, then the second but its latest row.
+    expect(KaspiActivity::prune())->toBe(3)
+        ->and($rowsOf($first))->toBe(1)
+        ->and($rowsOf($second))->toBe(1)
+        ->and(KaspiActivity::lastRequestAt($second)?->format('Y-m-d'))->toBe('2026-08-03')
+        ->and(KaspiActivity::prune())->toBe(0);
+});
+
+test('очистка журнала запросов сохраняет последний запрос по времени получения, даже если он записан раньше другого', function (): void {
+    ['organization' => $organization] = kaspiOrganization();
+
+    // A came later but waited for a posting; B came earlier and was written after it.
+    KaspiActivity::record($organization, 0, CarbonImmutable::parse('2026-10-01 10:00:05'), KaspiDeadline::in(1));
+    KaspiActivity::record($organization, 0, CarbonImmutable::parse('2026-10-01 10:00:00'), KaspiDeadline::in(1));
+
+    $this->artisan('kaspi:prune-request-log')->assertSuccessful();
+
+    expect(DB::table('kaspi_request_log')->count())->toBe(1)
+        ->and(KaspiActivity::lastRequestAt($organization)?->format('Y-m-d H:i:s'))->toBe('2026-10-01 10:00:05');
+});
+
+test('минутный подбор журнал запросов не чистит, у очистки своё расписание — раз в час, без наложения', function (): void {
+    ['organization' => $organization] = kaspiOrganization();
+    KaspiActivity::record($organization, 0, CarbonImmutable::parse('2026-09-01 10:00:00'), KaspiDeadline::in(1));
+    KaspiActivity::record($organization, 0, CarbonImmutable::parse('2026-09-02 10:00:00'), KaspiDeadline::in(1));
+
+    $this->artisan('kaspi:post-pending')->assertSuccessful();
+
+    expect(DB::table('kaspi_request_log')->count())->toBe(2);
+
+    $pruning = collect(app(Schedule::class)->events())
+        ->filter(fn (Event $event): bool => str_contains((string) $event->command, 'kaspi:prune-request-log'));
+
+    expect($pruning)->toHaveCount(1)
+        ->and($pruning->first()->expression)->toBe('0 * * * *')
+        ->and($pruning->first()->withoutOverlapping)->toBeTrue();
 });
 
 test('организацию с операциями Kaspi удалить нельзя, даже если в журнале только check без абонента', function (): void {

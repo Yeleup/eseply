@@ -65,26 +65,59 @@ final class KaspiActivity
 
     /**
      * Keep 30 days of the request log, and always the latest request of each
-     * organization: the profile still knows when Kaspi last called.
+     * organization — the latest by the time it was received, not by the
+     * order it was written — so the profile still knows when Kaspi last called.
+     *
+     * In portions, apart from the minute pickup, so a backlog never holds the
+     * log or the pickup up: organizations with old rows are found by the index
+     * (organization, time); a portion of ids is read with a plain read and
+     * deleted by primary key; a run deletes at most so many portions, the rest
+     * waits for the next run.
+     *
+     * @return int Number of deleted rows.
      */
-    public static function prune(int $keepDays = 30): int
+    public static function prune(): int
     {
-        $before = now()->subDays($keepDays);
+        $before = now()->subDays((int) config('kaspi.request_log.keep_days', 30));
+        $batchSize = max(1, (int) config('kaspi.request_log.prune_batch_size', 1000));
+        $batchesLeft = max(1, (int) config('kaspi.request_log.prune_max_batches', 200));
         $deleted = 0;
 
         $organizationIds = DB::table('kaspi_request_log')
-            ->where('received_at', '<', $before)
-            ->distinct()
+            ->select('organization_id')
+            ->groupBy('organization_id')
+            ->havingRaw('min(received_at) < ?', [$before])
+            ->orderBy('organization_id')
             ->pluck('organization_id');
 
         foreach ($organizationIds as $organizationId) {
-            $latestId = DB::table('kaspi_request_log')->where('organization_id', $organizationId)->max('id');
-
-            $deleted += DB::table('kaspi_request_log')
+            $latestId = DB::table('kaspi_request_log')
                 ->where('organization_id', $organizationId)
-                ->where('received_at', '<', $before)
-                ->where('id', '<', $latestId)
-                ->delete();
+                ->orderByDesc('received_at')
+                ->orderByDesc('id')
+                ->value('id');
+
+            do {
+                $ids = DB::table('kaspi_request_log')
+                    ->where('organization_id', $organizationId)
+                    ->where('received_at', '<', $before)
+                    ->where('id', '!=', $latestId)
+                    ->orderBy('received_at')
+                    ->orderBy('id')
+                    ->limit($batchSize)
+                    ->pluck('id');
+
+                if ($ids->isEmpty()) {
+                    break;
+                }
+
+                $batchesLeft--;
+                $deleted += DB::table('kaspi_request_log')->whereIn('id', $ids)->delete();
+            } while ($ids->count() === $batchSize && $batchesLeft > 0);
+
+            if ($batchesLeft === 0) {
+                break;
+            }
         }
 
         return $deleted;

@@ -13,6 +13,9 @@ use Illuminate\Support\Facades\Schema;
  *
  * Without foreign keys, so writing a row never waits for a lock of another
  * table; rows are kept for 30 days, the latest row of an organization always.
+ * Every query starts with the organization: the last request and the old rows
+ * to prune by (organization, time), the errors of the last 24 hours by
+ * (organization, code, time).
  */
 return new class extends Migration
 {
@@ -28,7 +31,7 @@ return new class extends Migration
             $table->unsignedTinyInteger('result');
 
             $table->index(['organization_id', 'received_at'], 'kaspi_request_log_org_received_idx');
-            $table->index('received_at', 'kaspi_request_log_received_idx');
+            $table->index(['organization_id', 'result', 'received_at'], 'kaspi_request_log_org_result_received_idx');
         });
     }
 

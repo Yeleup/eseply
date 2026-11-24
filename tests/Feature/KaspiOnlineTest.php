@@ -9,6 +9,7 @@ use App\Kaspi\KaspiCommand;
 use App\Kaspi\KaspiDeadline;
 use App\Kaspi\KaspiOperationState;
 use App\Kaspi\PostKaspiOperation;
+use App\Models\Accrual;
 use App\Models\BalanceAdjustment;
 use App\Models\BillingPeriod;
 use App\Models\Client;
@@ -405,6 +406,37 @@ test('check: долг — обычный, при закрытии месяца, 
 
     expect(kaspiGet($organization, kaspiCheckQuery('48213377404'))->json('sum'))->toBe(2500.0);
     expect(kaspiGet($organization, kaspiCheckQuery('48213377405'))->getContent())->toContain('"sum":2500.00,');
+});
+
+test('check: обычный долг — сальдо закрытого месяца, начисление по квитанции и оплата текущего', function (): void {
+    $organization = Organization::factory()->create();
+    $organization->forceFill(['kaspi_enabled' => true])->save();
+    $utilityService = UtilityService::factory()->for($organization)->create();
+    $client = kaspiClient($organization, $utilityService, ['billing_type' => 'meter']);
+
+    Accrual::factory()->for($organization)->for($client)->for($utilityService)->create([
+        'period' => '202610',
+        'account_number' => $client->account_number,
+        'client_name' => $client->name,
+        'billing_type' => 'meter',
+        'amount' => 1200,
+        'opening_balance' => 0,
+        'closing_balance' => 1200,
+    ]);
+
+    $billingPeriod = billingPeriodFor($organization, '202611');
+    kaspiMeterDebt($organization, $utilityService, $billingPeriod, $client, 30);
+    Payment::query()->create([
+        'organization_id' => $organization->id,
+        'client_id' => $client->id,
+        'billing_period_id' => $billingPeriod->id,
+        'amount' => 700,
+        'paid_at' => '2026-11-05',
+    ]);
+
+    // 1200 сальдо октября + 3000 по квитанции ноября − 700 оплачено.
+    expect(kaspiGet($organization, kaspiCheckQuery('48213377601'))->getContent())
+        ->toBe('{"txn_id":"48213377601","result":0,"sum":3500.00,"comment":"","fields":{"field1":{"@name":"Абонент","#text":"Иванов И. И."},"field2":{"@name":"Долг на 24.11.2026","#text":"3500.00"}}}');
 });
 
 test('check: повтор txn_id отдаёт первый ответ, даже если долг изменился', function (): void {

@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\BillingPeriods\Pages;
 
+use App\BillingPeriodStatus;
 use App\Filament\Resources\BillingPeriods\BillingPeriodResource;
 use App\Filament\Support\OrganizationMemberAccess;
 use App\Models\BillingPeriod;
@@ -30,8 +31,30 @@ class ListBillingPeriods extends ListRecords
             Action::make('openNextBillingPeriod')
                 ->label('Новый расчётный месяц')
                 ->icon(Heroicon::OutlinedPlusCircle)
+                ->visible(fn (): bool => $this->needsManualOpening())
                 ->action(fn (): null => $this->openNextBillingPeriod()),
         ];
+    }
+
+    /**
+     * After a successful closing the next month opens on its own, so the button
+     * is only for an organization without a single month, or for the rare case
+     * when the latest month is closed and no month follows it.
+     */
+    private function needsManualOpening(): bool
+    {
+        $tenant = Filament::getTenant();
+
+        if (! $tenant instanceof Organization) {
+            return false;
+        }
+
+        $latestStatus = BillingPeriod::query()
+            ->forOrganization($tenant)
+            ->orderByDesc('starts_on')
+            ->value('status');
+
+        return $latestStatus === null || $latestStatus === BillingPeriodStatus::Closed;
     }
 
     private function openNextBillingPeriod(): null

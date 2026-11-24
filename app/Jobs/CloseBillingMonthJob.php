@@ -7,6 +7,7 @@ use App\BillingPeriodStatus;
 use App\Models\BillingPeriod;
 use App\Models\Organization;
 use App\Models\User;
+use App\Support\NextBillingPeriodNotOpened;
 use Filament\Notifications\Notification;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -67,10 +68,14 @@ class CloseBillingMonthJob implements ShouldQueue
     {
         $this->releaseProcessingBillingPeriod();
 
+        $reason = $exception instanceof NextBillingPeriodNotOpened
+            ? $exception->getMessage()
+            : 'Закрытие прервано технической ошибкой, начисления не созданы. Запустите закрытие месяца заново.';
+
         $this->notifyOperators(
             Notification::make()
                 ->title('Не удалось закрыть месяц')
-                ->body("Расчётный месяц: {$this->billingPeriod->label}. Закрытие прервано технической ошибкой, начисления не созданы. Запустите закрытие месяца заново.")
+                ->body("Расчётный месяц: {$this->billingPeriod->label}. {$reason}")
                 ->danger(),
         );
     }

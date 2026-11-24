@@ -51,7 +51,8 @@ beforeEach(function () {
 test('missing readings are carried forward including visits and multiple meters of one client', function () {
     $this->meter->readings()->create(['billing_period_id' => $this->period->id, 'current_reading' => 140]);
     app(CloseBillingMonth::class)->handle($this->organization, $this->period);
-    $this->period = BillingPeriod::openNextFor($this->organization);
+    // Successful closing opens the next month on its own.
+    $this->period = BillingPeriod::currentEditableFor($this->organization);
     $visit = $this->meter->readings()->create([
         'billing_period_id' => $this->period->id, 'current_reading' => null, 'note' => 'Нет доступа',
     ]);

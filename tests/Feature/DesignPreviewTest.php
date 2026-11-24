@@ -163,3 +163,12 @@ test('the report builder preview shows every source, columns, grouping, filters 
         ->and(array_map(fn (string $heading): string => trim(str_replace(' ↑', '', $heading)), $detailHeadings[1]))
         ->toBe($selectedColumns[1]);
 });
+
+test('the billing periods preview shows the automatic opening of the next month', function () {
+    $this->get(route('design-preview'))
+        ->assertSuccessful()
+        ->assertSee('следующий месяц открывается сам')
+        ->assertSee('Организация без месяцев')
+        ->assertSee('открыт автоматически после закрытия 04.2026')
+        ->assertSee('Не удалось открыть следующий расчётный месяц 06.2026');
+});

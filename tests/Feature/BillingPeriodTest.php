@@ -174,24 +174,33 @@ test('new billing period action opens next month after latest period is closed',
         ->and($billingPeriod->opened_by_user_id)->toBe($user->id);
 });
 
-test('new billing period action does not open next month while latest period is not closed', function () {
+test('new billing period action is offered only when there is no month to continue from', function () {
     $organization = Organization::factory()->create();
-    actingAsBillingPeriodTenant($organization);
-
-    BillingPeriod::factory()
-        ->for($organization)
-        ->period('202605')
-        ->create();
+    $user = actingAsBillingPeriodTenant($organization);
 
     Livewire::test(ListBillingPeriods::class)
         ->assertOk()
+        ->assertActionVisible('openNextBillingPeriod')
         ->callAction('openNextBillingPeriod')
         ->assertNotified();
 
-    expect(BillingPeriod::query()
-        ->forOrganization($organization)
-        ->forCode('202606')
-        ->exists())->toBeFalse();
+    $firstBillingPeriod = BillingPeriod::query()->forOrganization($organization)->sole();
+
+    expect($firstBillingPeriod->status)->toBe(BillingPeriodStatus::Open)
+        ->and($firstBillingPeriod->opened_by_user_id)->toBe($user->id);
+
+    // With an open month the next one opens by itself after closing, so the
+    // button is gone, and the open month is never doubled.
+    Livewire::test(ListBillingPeriods::class)
+        ->assertOk()
+        ->assertActionHidden('openNextBillingPeriod');
+
+    $firstBillingPeriod->forceFill(['status' => BillingPeriodStatus::Processing])->save();
+
+    Livewire::test(ListBillingPeriods::class)
+        ->assertActionHidden('openNextBillingPeriod');
+
+    expect(BillingPeriod::query()->forOrganization($organization)->count())->toBe(1);
 });
 
 test('failed billing period can be closed after data is fixed', function () {

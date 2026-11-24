@@ -2817,12 +2817,15 @@
                         <p class="text-sm text-zinc-500 dark:text-zinc-400">BillingPeriodResource</p>
                         <h2 class="text-base font-semibold">Расчётные месяцы</h2>
                         <p class="mt-2 max-w-2xl text-sm text-zinc-500 dark:text-zinc-400">
-                            Новый месяц открывается автоматически следующим по очереди после закрытия текущего.
+                            После успешного закрытия следующий месяц открывается сам, в той же транзакции, — «Кто открыл» у него пустой. Кнопки «Новый расчётный месяц» здесь нет: она появляется только у организации без единого месяца.
                         </p>
                     </div>
-                    <button class="rounded-md bg-amber-600 px-3 py-2 text-sm font-medium text-white hover:bg-amber-700 dark:bg-amber-400 dark:text-zinc-950 dark:hover:bg-amber-300">
-                        Новый расчётный месяц
-                    </button>
+                    <div class="w-full rounded-md border border-dashed border-zinc-300 p-3 text-sm sm:w-72 dark:border-zinc-700">
+                        <p class="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Организация без месяцев</p>
+                        <button class="mt-2 w-full rounded-md bg-amber-600 px-3 py-2 text-sm font-medium text-white hover:bg-amber-700 dark:bg-amber-400 dark:text-zinc-950 dark:hover:bg-amber-300">
+                            Новый расчётный месяц
+                        </button>
+                    </div>
                 </div>
 
                 <div class="grid grid-cols-1 gap-4 p-4 xl:grid-cols-[1fr_22rem]">
@@ -2842,6 +2845,7 @@
                                     <td class="px-4 py-3 font-medium">05.2026</td>
                                     <td class="px-4 py-3">
                                         <span class="rounded-full bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200">Открыт</span>
+                                        <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">открыт автоматически после закрытия 04.2026</p>
                                     </td>
                                     <td class="px-4 py-3 text-zinc-500 dark:text-zinc-400">0</td>
                                     <td class="px-4 py-3 text-zinc-500 dark:text-zinc-400">0</td>
@@ -2930,6 +2934,9 @@
                         <p class="text-sm font-semibold text-rose-900 dark:text-rose-100">Не удалось закрыть месяц</p>
                         <p class="mt-1 text-xs text-rose-800 dark:text-rose-200">
                             Расчётный месяц: 05.2026. Закрытие прервано технической ошибкой, начисления не созданы. Запустите закрытие месяца заново.
+                        </p>
+                        <p class="mt-2 text-xs text-rose-800 dark:text-rose-200">
+                            Расчётный месяц: 05.2026. Не удалось открыть следующий расчётный месяц 06.2026, поэтому закрытие отменено и начисления не созданы. Запустите закрытие месяца заново.
                         </p>
                     </div>
                 </div>

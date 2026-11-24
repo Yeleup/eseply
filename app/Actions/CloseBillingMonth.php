@@ -17,9 +17,11 @@ use App\Models\User;
 use App\Models\UtilityService;
 use App\Support\BillingClosureIssue;
 use App\Support\BillingPeriodOperationLock;
+use App\Support\NextBillingPeriodNotOpened;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
 use RuntimeException;
 use Throwable;
@@ -92,7 +94,9 @@ class CloseBillingMonth
         } catch (Throwable $exception) {
             $billingPeriod->markFailed(
                 $this->emptySummary(),
-                'Закрытие расчётного месяца прервано технической ошибкой.',
+                $exception instanceof NextBillingPeriodNotOpened
+                    ? $exception->getMessage()
+                    : 'Закрытие расчётного месяца прервано технической ошибкой.',
             );
 
             throw $exception;
@@ -122,6 +126,15 @@ class CloseBillingMonth
             ->orderBy('id')
             ->pluck('id')
             ->all();
+
+        /**
+         * An inactive client with a payment or an adjustment in the month still
+         * moves money: the accrual carries the balance on with no charge for the
+         * service, otherwise the payment would drop out of the balance.
+         *
+         * @var array<int, int> $movementOnlyClientIds
+         */
+        $movementOnlyClientIds = array_flip($this->inactiveClientIdsWithMovement($organization, $billingPeriod));
 
         $summary = $this->emptySummary();
         $summary['active'] = count($activeClientIds);
@@ -155,20 +168,29 @@ class CloseBillingMonth
             return $summary;
         }
 
-        /** Second pass: write the accruals of the whole organization atomically. */
+        $closingClientIds = array_merge($activeClientIds, array_keys($movementOnlyClientIds));
+        sort($closingClientIds);
+
+        /**
+         * Second pass: write the accruals of the whole organization atomically.
+         * The next month opens in the same transaction, so a month is never
+         * closed without the next one open, and a failure to open it rolls the
+         * closing back.
+         */
         $summary['created'] = DB::transaction(function () use (
             $organization,
             $billingPeriod,
             $utilityService,
             $periodStart,
             $tariffs,
-            $activeClientIds,
+            $closingClientIds,
+            $movementOnlyClientIds,
             $summary,
             $closedBy,
         ): int {
             $created = 0;
 
-            foreach (array_chunk($activeClientIds, self::CHUNK_SIZE) as $clientIdChunk) {
+            foreach (array_chunk($closingClientIds, self::CHUNK_SIZE) as $clientIdChunk) {
                 $created += $this->createAccrualChunk(
                     $organization,
                     $billingPeriod,
@@ -176,10 +198,13 @@ class CloseBillingMonth
                     $periodStart,
                     $tariffs,
                     $clientIdChunk,
+                    $movementOnlyClientIds,
                 );
             }
 
             $billingPeriod->markClosed([...$summary, 'created' => $created], $closedBy);
+
+            $this->openNextBillingPeriod($organization, $billingPeriod);
 
             return $created;
         }, attempts: 5);
@@ -188,8 +213,54 @@ class CloseBillingMonth
     }
 
     /**
+     * The next month opens on its own after a successful closing, without an
+     * operator, so payments always have a month to go to.
+     */
+    private function openNextBillingPeriod(Organization $organization, BillingPeriod $closedBillingPeriod): void
+    {
+        try {
+            BillingPeriod::openNextFor($organization);
+        } catch (Throwable $exception) {
+            $reason = $exception instanceof ValidationException
+                ? (string) $exception->validator->errors()->first()
+                : '';
+
+            throw new NextBillingPeriodNotOpened($closedBillingPeriod, $reason, $exception);
+        }
+    }
+
+    /**
+     * Inactive clients of the organization with a payment or a balance
+     * adjustment in the billing period.
+     *
+     * @return list<int>
+     */
+    private function inactiveClientIdsWithMovement(Organization $organization, BillingPeriod $billingPeriod): array
+    {
+        $paidClientIds = Payment::query()
+            ->where('organization_id', $organization->id)
+            ->where('billing_period_id', $billingPeriod->id)
+            ->select('client_id');
+
+        $adjustedClientIds = BalanceAdjustment::query()
+            ->where('organization_id', $organization->id)
+            ->where('billing_period_id', $billingPeriod->id)
+            ->select('client_id');
+
+        return $organization->clients()
+            ->where('status', '!=', 'active')
+            ->where(fn ($query) => $query
+                ->whereIn('id', $paidClientIds)
+                ->orWhereIn('id', $adjustedClientIds))
+            ->orderBy('id')
+            ->pluck('id')
+            ->all();
+    }
+
+    /**
      * @param  array<string, Tariff>  $tariffs
      * @param  list<int>  $clientIdChunk
+     * @param  array<int, int>  $movementOnlyClientIds  Inactive clients that get no charge for the service.
      */
     private function createAccrualChunk(
         Organization $organization,
@@ -198,6 +269,7 @@ class CloseBillingMonth
         CarbonImmutable $periodStart,
         array $tariffs,
         array $clientIdChunk,
+        array $movementOnlyClientIds = [],
     ): int {
         $clients = $this->clientChunk($clientIdChunk);
         $closedClientIds = $this->closedClientIds($billingPeriod, $clientIdChunk);
@@ -215,7 +287,9 @@ class CloseBillingMonth
                 continue;
             }
 
-            $calculation = $this->calculation($client, $utilityService, $periodStart, $tariffs, $metersByClient);
+            $calculation = isset($movementOnlyClientIds[$client->id])
+                ? ['volume' => null, 'tariff_price' => null, 'amount' => 0.0]
+                : $this->calculation($client, $utilityService, $periodStart, $tariffs, $metersByClient);
 
             if ($calculation instanceof BillingClosureIssue) {
                 throw new RuntimeException("Данные абонента {$client->account_number} изменились во время закрытия месяца.");

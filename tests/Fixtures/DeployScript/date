@@ -1,0 +1,14 @@
+#!/bin/sh
+#
+# Stand-in for date in tests of docker/deploy/deploy.sh: with STUB_GATE=lock-info the date of the line
+# that names the holder of the lock waits for the gate (see the docker stand-in): the script then holds
+# the lock and has not written that line yet.
+if [ "${STUB_GATE:-}" = lock-info ] && [ "${1:-}" = '+%Y-%m-%d %H:%M:%S %z' ]; then
+    : > "$STUB_STATE/gate-reached"
+
+    while [ ! -f "$STUB_STATE/gate-open" ]; do
+        /bin/sleep 0.1
+    done
+fi
+
+exec /bin/date "$@"

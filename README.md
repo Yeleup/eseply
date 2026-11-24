@@ -133,4 +133,10 @@ For deploy on a server:
 make deploy
 ```
 
+`make deploy` keeps the current steps (`git pull`, `docker compose up -d --build`, `migrate`, `queue:restart`); the app is briefly down while its container is recreated, and there is no rollback. With `APP_ENV=production` the targets that change the stack (`make deploy`, `make build`, `make up`, `make down`, `make down-volumes`, `make restart`) run one at a time: `docker/deploy/deploy.sh` takes one `flock` lock on `.deploy/lock` for them, `make deploy` before `git pull`, and holds it to the last step; a second command refuses at once and names the command that holds the lock and since when. The lock belongs to the processes of the command, so Ctrl+C, a closed terminal or a reboot never leave it behind. After `git pull`, `make deploy` runs its steps (`make deploy-steps`) in a new make, which reads the pulled Makefile. `make restart` holds one lock for both of its steps. Locally (`APP_ENV` other than `production`) the targets run without the lock.
+
+`make deploy-status` is read only and never takes the lock, so it works during a deploy: the commit, how far it is behind the branch that `git pull` brings (fetched into `refs/deploy-status/upstream`, not into the remote-tracking branch, so that it never gets in the way of a running `git pull`), local changes, the lock and `docker compose ps -a`.
+
+The server needs `flock` (util-linux). Server access, the first deploy with the lock and moving to another server: `docs/deployment.md`.
+
 Upgrading a server set up before `DOCKER_PROJECT_NAME` became required: if its `.env` has no `DOCKER_PROJECT_NAME`, its containers and volumes belong to the old default project `laravel-app`. Add `DOCKER_PROJECT_NAME=laravel-app` to `.env` before `make deploy` (`make init` does this automatically while those containers exist); any other name starts a new, empty project.

@@ -1,0 +1,30 @@
+#!/bin/sh
+#
+# Stand-in for make in tests of docker/deploy/deploy.sh: does what the Makefile does for the targets
+# that the script runs (deploy-steps after git pull, down and up of make restart) and writes the call
+# to $STUB_STATE/calls with the state of the lock at that moment. $STUB_SCRIPT is the script under test.
+set -eu
+
+if [ ! -f .deploy/lock ] || "$STUB_REAL_FLOCK" -n .deploy/lock true 2> /dev/null; then
+    lock=free
+else
+    lock=held
+fi
+
+printf 'make %s (lock %s, DEPLOY_LOCK_HELD=%s)\n' "$*" "$lock" "${DEPLOY_LOCK_HELD:-}" >> "$STUB_STATE/calls"
+
+for target in "$@"; do
+    case "$target" in
+        --no-print-directory) ;;
+        deploy-steps)
+            DEPLOY_COMMAND='make deploy-steps' sh "$STUB_SCRIPT" held
+            docker compose up -d --build --remove-orphans
+            ;;
+        down) DEPLOY_COMMAND='make down' sh "$STUB_SCRIPT" lock -- docker compose down ;;
+        up) DEPLOY_COMMAND='make up' sh "$STUB_SCRIPT" lock -- docker compose up -d --remove-orphans ;;
+        *)
+            echo "stub: unexpected make $target" >&2
+            exit 1
+            ;;
+    esac
+done

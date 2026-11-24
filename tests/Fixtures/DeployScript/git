@@ -1,0 +1,89 @@
+#!/bin/sh
+#
+# Stand-in for git in tests of docker/deploy/deploy.sh. `git pull` is written to $STUB_STATE/calls
+# with the state of the lock at that moment; every call goes to $STUB_STATE/invocations with
+# GIT_OPTIONAL_LOCKS, and the calls of make deploy-status answer from the settings.
+#
+# Settings:
+#   STUB_GIT_PULL_EXIT     exit code of git pull
+#   STUB_GATE              pull: git pull waits for the gate (see the docker stand-in)
+#   STUB_GIT_COMMIT        what git log prints for the commit of the checkout
+#   STUB_GIT_BRANCH        the checked-out branch; empty: a detached HEAD
+#   STUB_GIT_REMOTE        branch.<branch>.remote
+#   STUB_GIT_MERGE         branch.<branch>.merge
+#   STUB_GIT_FETCH_EXIT    exit code of git fetch, with STUB_GIT_FETCH_ERROR on stderr
+#   STUB_GIT_FETCH_SLEEP   seconds git fetch takes
+#   STUB_GIT_BEHIND, STUB_GIT_AHEAD             commits behind and ahead of the fetched branch
+#   STUB_GIT_BEHIND_LAST, STUB_GIT_AHEAD_LAST   the same for the remote-tracking branch
+#   STUB_GIT_CHANGES       what git status --porcelain prints
+set -eu
+
+printf 'git %s [GIT_OPTIONAL_LOCKS=%s]\n' "$*" "${GIT_OPTIONAL_LOCKS:-}" >> "$STUB_STATE/invocations"
+
+while [ "${1:-}" = -c ]; do
+    shift 2
+done
+
+case "${1:-}" in
+    pull)
+        if [ ! -f .deploy/lock ] || "$STUB_REAL_FLOCK" -n .deploy/lock true 2> /dev/null; then
+            lock=free
+        else
+            lock=held
+        fi
+
+        printf 'git pull (lock %s, DEPLOY_LOCK_HELD=%s)\n' "$lock" "${DEPLOY_LOCK_HELD:-}" >> "$STUB_STATE/calls"
+
+        if [ "${STUB_GATE:-}" = pull ]; then
+            : > "$STUB_STATE/gate-reached"
+
+            while [ ! -f "$STUB_STATE/gate-open" ]; do
+                /bin/sleep 0.1
+            done
+        fi
+
+        exit "${STUB_GIT_PULL_EXIT:-0}"
+        ;;
+    log) printf '%s\n' "${STUB_GIT_COMMIT:-}" ;;
+    symbolic-ref)
+        [ -n "${STUB_GIT_BRANCH:-}" ] || exit 1
+        printf '%s\n' "$STUB_GIT_BRANCH"
+        ;;
+    config)
+        case "$2" in
+            branch.*.remote) value="${STUB_GIT_REMOTE:-}" ;;
+            branch.*.merge) value="${STUB_GIT_MERGE:-}" ;;
+            *) value='' ;;
+        esac
+
+        [ -n "$value" ] || exit 1
+        printf '%s\n' "$value"
+        ;;
+    fetch)
+        if [ -n "${STUB_GIT_FETCH_SLEEP:-}" ]; then
+            exec /bin/sleep "$STUB_GIT_FETCH_SLEEP"
+        fi
+
+        if [ "${STUB_GIT_FETCH_EXIT:-0}" != 0 ]; then
+            printf '%b\n' "${STUB_GIT_FETCH_ERROR:-}" >&2
+            exit "$STUB_GIT_FETCH_EXIT"
+        fi
+        ;;
+    rev-list)
+        case "$3" in
+            'HEAD..refs/deploy-status/upstream') echo "${STUB_GIT_BEHIND:-0}" ;;
+            'refs/deploy-status/upstream..HEAD') echo "${STUB_GIT_AHEAD:-0}" ;;
+            'HEAD..@{upstream}') echo "${STUB_GIT_BEHIND_LAST:-0}" ;;
+            '@{upstream}..HEAD') echo "${STUB_GIT_AHEAD_LAST:-0}" ;;
+            *)
+                echo "stub: unexpected git rev-list $*" >&2
+                exit 1
+                ;;
+        esac
+        ;;
+    status) printf '%b' "${STUB_GIT_CHANGES:-}" ;;
+    *)
+        echo "stub: unexpected git $*" >&2
+        exit 1
+        ;;
+esac

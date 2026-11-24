@@ -1,0 +1,28 @@
+#!/bin/sh
+#
+# Stand-in for docker in tests of docker/deploy/deploy.sh (tests/Unit/DeployScriptTest.php): writes
+# every call to $STUB_STATE/calls with the state of the lock of the production stack at that moment.
+#
+# Settings:
+#   STUB_GATE         docker: the call creates gate-reached in $STUB_STATE and waits until gate-open
+#                     appears there, so a test can act while the command runs
+#   STUB_DOCKER_EXIT  exit code
+set -eu
+
+if [ ! -f .deploy/lock ] || "$STUB_REAL_FLOCK" -n .deploy/lock true 2> /dev/null; then
+    lock=free
+else
+    lock=held
+fi
+
+printf 'docker %s (lock %s, DEPLOY_LOCK_HELD=%s)\n' "$*" "$lock" "${DEPLOY_LOCK_HELD:-}" >> "$STUB_STATE/calls"
+
+if [ "${STUB_GATE:-}" = docker ]; then
+    : > "$STUB_STATE/gate-reached"
+
+    while [ ! -f "$STUB_STATE/gate-open" ]; do
+        /bin/sleep 0.1
+    done
+fi
+
+exit "${STUB_DOCKER_EXIT:-0}"

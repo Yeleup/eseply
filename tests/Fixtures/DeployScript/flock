@@ -1,0 +1,6 @@
+#!/bin/sh
+#
+# Stand-in for flock in tests of docker/deploy/deploy.sh: writes every call of the script to
+# $STUB_STATE/flock and runs the real flock ($STUB_REAL_FLOCK), so a test sees who took the lock.
+printf 'flock %s\n' "$*" >> "$STUB_STATE/flock"
+exec "$STUB_REAL_FLOCK" "$@"

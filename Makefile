@@ -47,6 +47,10 @@ RUN_APP_BASE := $(LOAD_ENV) $(RUN_APP_COMPOSE)
 RUN_APP := $(RUN_APP_BASE) $(RUN_ISOLATION)
 NO_DB_HINT := $(if $(DOCKER_INFRA_PROJECT),start the main checkout stack (make up there) or this worktree's own database (make db-up),start it with make up or make db-up)
 WORKTREE_SH := bash docker/worktree/worktree.sh
+# Production targets that change the stack run one at a time: docker/deploy/deploy.sh takes one lock
+# for them and refuses the others at once (docs/deployment.md). Locally they run without it.
+DEPLOY_SH := sh docker/deploy/deploy.sh
+PROD_LOCK = $(if $(IS_PRODUCTION),DEPLOY_COMMAND='make $@' $(DEPLOY_SH) lock --)
 # Compose project name that older versions of this setup used when DOCKER_PROJECT_NAME was empty.
 LEGACY_PROJECT_NAME := laravel-app
 STRIP_DEFINER := sed -E 's/DEFINER=`[^`]*`@`[^`]*`//g'
@@ -60,7 +64,7 @@ dump_file ?= docker/db/dump.sql.gz
 storage_dump_file ?= docker/db/storage.tar.gz
 storage_dir ?= storage/app
 
-.PHONY: help init require-env require-not-production guard-owner require-db ensure-db ensure-vendor ensure-node-modules build up db-up down down-volumes restart logs ps shell artisan composer npm key-show key-generate dump import dump-media import-media test boost-mcp worktree-setup worktree-archive worktree-prune deploy
+.PHONY: help init require-env require-not-production guard-owner require-db ensure-db ensure-vendor ensure-node-modules build up db-up down down-volumes restart logs ps shell artisan composer npm key-show key-generate dump import dump-media import-media test boost-mcp worktree-setup worktree-archive worktree-prune deploy deploy-steps deploy-status
 
 help:
 	@printf '%s\n' \
@@ -87,7 +91,8 @@ help:
 		'make test                # run this checkout'"'"'s tests in a one-off container (test_args=, test_database=)' \
 		'make worktree-archive    # git worktree: remove its containers, volumes, databases and database user' \
 		'make worktree-prune      # list leftovers of deleted git worktrees (CONFIRM=yes removes them)' \
-		'make deploy              # production: pull, build, migrate, and restart queue workers'
+		'make deploy              # production: pull, build, migrate, and restart queue workers, one command at a time' \
+		'make deploy-status       # read only: commit, how far behind upstream, the deploy lock, containers'
 
 require-env:
 	@if [ -z "$(DOCKER_PROJECT_NAME)" ]; then \
@@ -190,21 +195,27 @@ ensure-node-modules: require-env
 	fi
 
 build: guard-owner $(ENV_ENSURE_VENDOR) $(ENV_ENSURE_NODE_MODULES)
-	$(LOAD_ENV) $(ENV_COMPOSE) up -d --build --remove-orphans
+	$(LOAD_ENV) $(PROD_LOCK) $(ENV_COMPOSE) up -d --build --remove-orphans
 
 up: guard-owner $(ENV_ENSURE_VENDOR) $(ENV_ENSURE_NODE_MODULES)
-	$(LOAD_ENV) $(ENV_COMPOSE) up -d --remove-orphans
+	$(LOAD_ENV) $(PROD_LOCK) $(ENV_COMPOSE) up -d --remove-orphans
 
 db-up: guard-owner
 	$(LOAD_ENV) $(LOCAL_COMPOSE) up -d --wait db redis
 
 down: guard-owner
-	$(LOAD_ENV) $(ENV_COMPOSE) down --remove-orphans
+	$(LOAD_ENV) $(PROD_LOCK) $(ENV_COMPOSE) down --remove-orphans
 
 down-volumes: guard-owner
-	$(LOAD_ENV) $(ENV_COMPOSE) down -v --remove-orphans
+	$(LOAD_ENV) $(PROD_LOCK) $(ENV_COMPOSE) down -v --remove-orphans
 
+# Production: one lock for both steps, so that no other command runs between down and up.
+ifeq ($(IS_PRODUCTION),)
 restart: down up
+else
+restart: guard-owner
+	$(PROD_LOCK) $(MAKE) --no-print-directory down up
+endif
 
 logs: require-env
 	$(LOAD_ENV) $(ENV_COMPOSE) logs -f app queue scheduler db redis
@@ -305,9 +316,21 @@ worktree-archive:
 worktree-prune:
 	@$(WORKTREE_SH) prune $(if $(filter yes,$(CONFIRM)),--apply,)
 
+# deploy.sh takes the lock before git pull and holds it to the last step. make has read this file
+# before the pull: deploy.sh runs the steps in a new make, which reads the pulled one (deploy-steps).
 deploy: guard-owner
 	@test -z "$(IS_WORKTREE)" || (echo 'Refusing to deploy from a git worktree.' >&2; exit 1)
-	git pull
+	@DEPLOY_COMMAND='make deploy' $(DEPLOY_SH) deploy
+
+# The steps of make deploy after git pull. Only make deploy runs them, under its lock.
+deploy-steps: guard-owner
+	@DEPLOY_COMMAND='make deploy-steps' $(DEPLOY_SH) held
 	$(LOAD_ENV) $(PROD_COMPOSE) up -d --build --remove-orphans
 	$(LOAD_ENV) $(PROD_COMPOSE) exec -T app php artisan migrate --force --no-interaction
 	$(LOAD_ENV) $(PROD_COMPOSE) exec -T app php artisan queue:restart
+
+# Read only, never takes the lock: works while a deploy runs.
+deploy-status: require-env
+	@$(DEPLOY_SH) status
+	@echo 'containers:'
+	@$(LOAD_ENV) $(PROD_COMPOSE) ps -a

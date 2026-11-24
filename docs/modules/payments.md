@@ -75,6 +75,8 @@ Kaspi-перевода в системе нет: способ «Kaspi» — то
 
 `closing_balance = opening_balance + amount - paid_amount + adjustment_amount`
 
+Итоги — `paid_amount`, `adjustment_amount`, `opening_balance` и `closing_balance` — хранятся в полях `DECIMAL(18,2)` (до 9 999 999 999 999 999,99 ₸ по модулю) и считаются точно, в тиынах целыми числами, без округлений дробной арифметики (`App\Support\Money`); сумма одной оплаты и начисление `amount` остаются в прежнем диапазоне.
+
 ## Административная панель
 
 Оплаты управляются внутри `ClientResource` как связанная таблица оплат конкретного абонента.

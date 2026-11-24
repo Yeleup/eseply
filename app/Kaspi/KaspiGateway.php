@@ -6,18 +6,19 @@ use App\Jobs\PostKaspiOperationJob;
 use App\Models\Client;
 use App\Models\KaspiOperation;
 use App\Models\Organization;
+use Carbon\CarbonInterface;
 use Illuminate\Database\QueryException;
 use Illuminate\Database\UniqueConstraintViolationException;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
- * `check` and `pay` of one organization, after the IP, the uid and the input
- * have been checked.
+ * `check` and `pay` of one organization, after the sender, the uid and the
+ * input have been checked.
  *
  * An answer other than 5 goes out only after its operation is saved: a
- * repeated `txn_id` must always find the first answer.
+ * repeated `txn_id` must always find the first answer. No statement waits
+ * for a lock; a try that meets one is repeated within the deadline.
  */
 final class KaspiGateway
 {
@@ -26,22 +27,22 @@ final class KaspiGateway
     /**
      * Find the subscriber and the debt; a repeated `txn_id` gets the first answer.
      */
-    public function check(Organization $organization, KaspiInput $input, KaspiDeadline $deadline): string
+    public function check(Organization $organization, KaspiInput $input, KaspiDeadline $deadline, CarbonInterface $receivedAt): string
     {
         $known = $this->knownOperation($organization, $input);
 
         if ($known instanceof KaspiOperation) {
-            return $this->repeat($known, $input, $deadline);
+            return $this->repeat($known, $input, $deadline, $receivedAt);
         }
 
         if (! $organization->kaspi_enabled) {
-            return $this->recordCheck($organization, $input, KaspiOperationState::Error, KaspiResponse::error($input->txnId), reason: 'Приём оплат выключен', deadline: $deadline);
+            return $this->recordCheck($organization, $input, KaspiOperationState::Error, KaspiResponse::error($input->txnId), $deadline, $receivedAt, reason: 'Приём оплат выключен');
         }
 
         $client = $this->activeClient($organization, $input->account);
 
         if (! $client instanceof Client) {
-            return $this->recordCheck($organization, $input, KaspiOperationState::NotFound, KaspiResponse::checkNotFound($input->txnId), deadline: $deadline);
+            return $this->recordCheck($organization, $input, KaspiOperationState::NotFound, KaspiResponse::checkNotFound($input->txnId), $deadline, $receivedAt);
         }
 
         $debt = KaspiDebt::for($organization, $client);
@@ -50,23 +51,24 @@ final class KaspiGateway
             $organization,
             $input,
             KaspiOperationState::Found,
-            KaspiResponse::checkFound($input->txnId, KaspiPayerName::for($client), $debt, today()->format('d.m.Y')),
+            KaspiResponse::checkFound($input->txnId, KaspiPayerName::for($client), $debt, $receivedAt->format('d.m.Y')),
+            $deadline,
+            $receivedAt,
             client: $client,
             debt: $debt,
-            deadline: $deadline,
         );
     }
 
     /**
      * Accept a payment and post it right away, or save it as in processing.
      */
-    public function pay(Organization $organization, KaspiInput $input, KaspiDeadline $deadline): string
+    public function pay(Organization $organization, KaspiInput $input, KaspiDeadline $deadline, CarbonInterface $receivedAt): string
     {
         // A repeat is answered from the saved operation first, without any month lock.
         $known = $this->knownOperation($organization, $input);
 
         if ($known instanceof KaspiOperation) {
-            return $this->repeat($known, $input, $deadline);
+            return $this->repeat($known, $input, $deadline, $receivedAt);
         }
 
         if (! $organization->kaspi_enabled) {
@@ -80,9 +82,7 @@ final class KaspiGateway
         }
 
         try {
-            $deadline->limitRowLockWait();
-
-            $operation = KaspiOperation::query()->create([
+            $operation = $deadline->retryWithoutWaiting(fn (): KaspiOperation => KaspiOperation::query()->create([
                 'organization_id' => $organization->getKey(),
                 'command' => KaspiCommand::Pay,
                 'txn_id' => $input->txnId,
@@ -90,19 +90,19 @@ final class KaspiGateway
                 'account' => $input->account,
                 'sum' => $input->sum,
                 'txn_date' => $input->txnDate,
-                'received_at' => now(),
+                'received_at' => $receivedAt,
                 'state' => KaspiOperationState::Pending,
                 'state_reason' => 'Проводится',
                 'last_result' => 4,
-            ]);
+            ]));
         } catch (UniqueConstraintViolationException) {
             // The same txn_id arrived twice at once: the other request saved it first.
             $known = $this->knownOperation($organization, $input);
 
-            return $known instanceof KaspiOperation ? $this->repeat($known, $input, $deadline) : KaspiResponse::error($input->txnId);
+            return $known instanceof KaspiOperation ? $this->repeat($known, $input, $deadline, $receivedAt) : KaspiResponse::error($input->txnId);
         } catch (Throwable $exception) {
-            // Nothing is saved — a lock wait past the deadline included — so
-            // Kaspi must not think the payment is taken.
+            // Nothing is saved — the deadline passed included — so Kaspi must
+            // not think the payment is taken.
             self::reportUnlessLockTimeout($exception);
 
             return KaspiResponse::error($input->txnId);
@@ -112,14 +112,14 @@ final class KaspiGateway
             $operation = $this->posting->handle($operation, $deadline, answeringKaspi: true);
 
             return (string) $operation->response;
-        } catch (KaspiSumOutOfRange) {
-            // The operation is an error now: Kaspi gets 5 and nothing is posted.
-            return KaspiResponse::error($input->txnId);
         } catch (CannotPostKaspiOperation $exception) {
-            $this->posting->rememberReason($operation, $exception->getMessage(), $deadline);
+            $this->posting->rememberAttempt($operation, $exception->getMessage(), $deadline);
         } catch (Throwable $exception) {
             report($exception);
-            $this->posting->rememberReason($operation, 'Ошибка проводки, повтор автоматически', $deadline);
+            $this->posting->rememberAttempt($operation, 'Ошибка проводки, повтор автоматически', $deadline);
+        } finally {
+            // Repeats that came while this request posted are folded now if the row is free.
+            KaspiRetryLog::fold((int) $operation->getKey(), $deadline);
         }
 
         $this->queuePosting($operation);
@@ -130,11 +130,13 @@ final class KaspiGateway
 
     /**
      * The answer to a repeated `txn_id` follows the current state of the
-     * operation, whatever the repeat says; different data in the repeat only
-     * mark the operation. That bookkeeping never holds the answer past the
-     * deadline: a row locked by a posting in progress is not waited for long.
+     * operation, whatever the repeat says. The repeat itself — its time, its
+     * code and whether its data differ — is written to the repeat log at once,
+     * which waits for no lock, and folded into the journal row when the row is
+     * free (KaspiRetryLog). So the answer never waits for a posting in
+     * progress, and no repeat or mismatch is lost.
      */
-    private function repeat(KaspiOperation $operation, KaspiInput $input, KaspiDeadline $deadline): string
+    private function repeat(KaspiOperation $operation, KaspiInput $input, KaspiDeadline $deadline, CarbonInterface $receivedAt): string
     {
         $isSameCommand = $operation->command === $input->command;
 
@@ -145,27 +147,21 @@ final class KaspiGateway
         };
 
         try {
-            $deadline->limitBookkeepingWait();
+            $deadline->withoutWaiting();
 
-            KaspiOperation::query()
-                ->whereKey($operation->getKey())
-                ->update([
-                    'retries_count' => DB::raw('retries_count + 1'),
-                    'last_retry_at' => now(),
-                    'last_result' => KaspiResponse::resultOf($body),
-                    // Once marked, the mark stays, whatever later repeats bring.
-                    'retry_mismatch' => ! $isSameCommand || $this->differs($operation, $input)
-                        ? true
-                        : DB::raw('retry_mismatch'),
-                    'updated_at' => now(),
-                ]);
+            KaspiRetryLog::record(
+                $operation,
+                mismatch: ! $isSameCommand || $this->differs($operation, $input),
+                result: KaspiResponse::resultOf($body),
+                receivedAt: $receivedAt,
+            );
         } catch (QueryException $exception) {
-            // The answer does not depend on this bookkeeping.
-            Log::info('Kaspi: повтор не записан в журнал', [
-                'kaspi_operation_id' => $operation->getKey(),
-                'error' => $exception->getMessage(),
-            ]);
+            // The database refused even an insert that waits for nothing: the
+            // answer is still the operation's, and the failure is reported.
+            report($exception);
         }
+
+        KaspiRetryLog::fold((int) $operation->getKey(), $deadline);
 
         return $body;
     }
@@ -187,8 +183,8 @@ final class KaspiGateway
     /**
      * The answer of a `check` goes out only once it is in the journal: a
      * repeat must get the same answer, never a new calculation. If the row is
-     * not saved in time — a locked subscriber row, a failed database — Kaspi
-     * gets 5.
+     * not saved within the deadline — a held subscriber row, a failed
+     * database — Kaspi gets 5.
      */
     private function recordCheck(
         Organization $organization,
@@ -196,30 +192,29 @@ final class KaspiGateway
         KaspiOperationState $state,
         string $body,
         KaspiDeadline $deadline,
+        CarbonInterface $receivedAt,
         ?Client $client = null,
         ?string $debt = null,
         ?string $reason = null,
     ): string {
         try {
-            $deadline->limitRowLockWait();
-
-            KaspiOperation::query()->create([
+            $deadline->retryWithoutWaiting(fn (): KaspiOperation => KaspiOperation::query()->create([
                 'organization_id' => $organization->getKey(),
                 'command' => KaspiCommand::Check,
                 'txn_id' => $input->txnId,
                 'client_id' => $client?->getKey(),
                 'account' => $input->account,
                 'debt' => $debt,
-                'received_at' => now(),
+                'received_at' => $receivedAt,
                 'state' => $state,
                 'state_reason' => $reason,
                 'last_result' => KaspiResponse::resultOf($body),
                 'response' => $body,
-            ]);
+            ]));
         } catch (UniqueConstraintViolationException) {
             $known = $this->knownOperation($organization, $input);
 
-            return $known instanceof KaspiOperation ? $this->repeat($known, $input, $deadline) : KaspiResponse::error($input->txnId);
+            return $known instanceof KaspiOperation ? $this->repeat($known, $input, $deadline, $receivedAt) : KaspiResponse::error($input->txnId);
         } catch (Throwable $exception) {
             self::reportUnlessLockTimeout($exception);
 

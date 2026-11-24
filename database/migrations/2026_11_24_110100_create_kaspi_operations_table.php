@@ -26,7 +26,7 @@ return new class extends Migration
             $table->string('account', 10);
             $table->decimal('sum', 14, 2)->nullable();
             $table->dateTime('txn_date')->nullable();
-            $table->decimal('debt', 14, 2)->nullable();
+            $table->decimal('debt', 18, 2)->nullable();
             $table->timestamp('received_at');
             $table->string('state', 16);
             $table->string('state_reason')->nullable();
@@ -34,6 +34,7 @@ return new class extends Migration
             $table->text('response')->nullable();
             $table->foreignId('payment_id')->nullable()->unique()->constrained()->nullOnDelete();
             $table->timestamp('posted_at')->nullable();
+            $table->timestamp('posting_attempted_at')->nullable();
             $table->unsignedInteger('retries_count')->default(0);
             $table->timestamp('last_retry_at')->nullable();
             $table->boolean('retry_mismatch')->default(false);

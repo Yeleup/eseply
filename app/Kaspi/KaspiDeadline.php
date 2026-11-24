@@ -2,6 +2,7 @@
 
 namespace App\Kaspi;
 
+use Closure;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -10,17 +11,25 @@ use Throwable;
 /**
  * One deadline for every lock wait of a Kaspi request.
  *
- * Kaspi drops the connection after 15 seconds, so the row locks of the
- * database (the session lock wait timeout of MariaDB) and the cache lock of
- * the billing month together never wait past this deadline. It is measured on
- * the monotonic clock, so a change of the system time does not move it.
+ * Kaspi drops the connection after 15 seconds, so nothing in one request waits
+ * for a lock past this deadline, measured on the monotonic clock.
  *
- * MariaDB counts the lock wait timeout in whole seconds, so every wait gets the
- * whole seconds that are left, rounded down: less than a second left means a
- * lock that is taken fails at once instead of waiting past the deadline.
+ * MariaDB's lock wait timeout applies to each single wait, and one posting
+ * waits for many rows in turn — the operation, the subscriber, the month, the
+ * payments and the receipt — some of them inside model events. So no
+ * statement of a Kaspi request waits at all: the session timeout is 0 and a
+ * statement that meets a held lock fails at once. The whole attempt is then
+ * rolled back and tried again after a short pause, as long as the deadline
+ * allows. The deadline bounds the sum of all waits, however many locks there
+ * are.
  */
 final class KaspiDeadline
 {
+    /**
+     * Pause between two attempts, in seconds.
+     */
+    private const float RETRY_PAUSE = 0.05;
+
     private ?int $originalLockWaitTimeout = null;
 
     private function __construct(private readonly int $endsAtNanoseconds) {}
@@ -41,26 +50,66 @@ final class KaspiDeadline
     }
 
     /**
-     * Limit the next row lock waits of this connection to what is left.
+     * Run the attempt with no lock wait in the database; while the deadline
+     * allows, try it again when a lock was held or the month changed.
      *
-     * @throws CannotPostKaspiOperation when nothing is left to wait.
+     * The attempt must be a whole unit — its own transaction or one statement
+     * — so a failed try leaves nothing behind.
+     *
+     * @template T
+     *
+     * @param  Closure(): T  $attempt
+     * @return T
+     *
+     * @throws CannotPostKaspiOperation when the deadline passes first.
      */
-    public function limitRowLockWait(): void
+    public function retryWithoutWaiting(Closure $attempt): mixed
     {
-        if ($this->expired()) {
-            throw CannotPostKaspiOperation::lockWaitExceeded();
-        }
+        while (true) {
+            $this->setLockWaitTimeout(0);
 
-        $this->setLockWaitTimeout((int) floor($this->remaining()));
+            try {
+                return $attempt();
+            } catch (QueryException $exception) {
+                if (! self::isLockTimeout($exception) && ! self::isSnapshotConflict($exception)) {
+                    throw $exception;
+                }
+
+                $lastFailure = CannotPostKaspiOperation::lockWaitExceeded();
+            } catch (CannotPostKaspiOperation $exception) {
+                if (! $exception->isRetryable()) {
+                    throw $exception;
+                }
+
+                $lastFailure = $exception;
+            }
+
+            if ($this->remaining() <= self::RETRY_PAUSE) {
+                throw $lastFailure;
+            }
+
+            $this->pause(self::RETRY_PAUSE);
+        }
     }
 
     /**
-     * For bookkeeping that must not hold the answer up: wait at most a second,
-     * and not at all once the deadline has passed.
+     * For bookkeeping that must not hold the answer up: one try, no waiting.
      */
-    public function limitBookkeepingWait(): void
+    public function withoutWaiting(): void
     {
-        $this->setLockWaitTimeout(min(1, (int) floor($this->remaining())));
+        $this->setLockWaitTimeout(0);
+    }
+
+    /**
+     * Sleep the given seconds, never past the deadline.
+     */
+    public function pause(float $seconds): void
+    {
+        $sleep = min($seconds, $this->remaining());
+
+        if ($sleep > 0) {
+            usleep((int) round($sleep * 1_000_000));
+        }
     }
 
     /**
@@ -90,8 +139,7 @@ final class KaspiDeadline
     }
 
     /**
-     * Whether a query failed because it waited for a row lock too long or
-     * lost a deadlock: either way the lock was not obtained in time.
+     * Whether a query failed because it met a held row lock or lost a deadlock.
      */
     public static function isLockTimeout(QueryException $exception): bool
     {
@@ -115,6 +163,6 @@ final class KaspiDeadline
 
         $this->originalLockWaitTimeout ??= (int) DB::scalar('select @@session.innodb_lock_wait_timeout');
 
-        DB::statement('set session innodb_lock_wait_timeout = '.max(0, $seconds));
+        DB::statement('set session innodb_lock_wait_timeout = '.$seconds);
     }
 }

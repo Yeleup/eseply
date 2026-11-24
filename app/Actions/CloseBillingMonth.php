@@ -15,11 +15,13 @@ use App\Models\KaspiOperation;
 use App\Models\Meter;
 use App\Models\Organization;
 use App\Models\Payment;
+use App\Models\Receipt;
 use App\Models\Tariff;
 use App\Models\User;
 use App\Models\UtilityService;
 use App\Support\BillingClosureIssue;
 use App\Support\BillingPeriodOperationLock;
+use App\Support\Money;
 use App\Support\NextBillingPeriodNotOpened;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
@@ -322,13 +324,13 @@ class CloseBillingMonth
                 throw new RuntimeException("Данные абонента {$client->account_number} изменились во время закрытия месяца.");
             }
 
-            $openingBalance = round(
-                (float) ($openingBalances[$client->id] ?? 0)
-                    + (float) ($openingAdjustmentAmounts[$client->id] ?? 0),
-                2,
+            // Exact sums: the totals are wider than a float carries to the tiyn.
+            $openingBalance = Money::sum(
+                $openingBalances[$client->id] ?? null,
+                $openingAdjustmentAmounts[$client->id] ?? null,
             );
-            $paidAmount = (float) ($paidAmounts[$client->id] ?? 0);
-            $adjustmentAmount = (float) ($adjustmentAmounts[$client->id] ?? 0);
+            $paidAmount = Money::sum($paidAmounts[$client->id] ?? null);
+            $adjustmentAmount = Money::sum($adjustmentAmounts[$client->id] ?? null);
 
             $rows[] = [
                 'organization_id' => $organization->id,
@@ -345,7 +347,7 @@ class CloseBillingMonth
                 'paid_amount' => $paidAmount,
                 'adjustment_amount' => $adjustmentAmount,
                 'opening_balance' => $openingBalance,
-                'closing_balance' => round($openingBalance + $calculation['amount'] - $paidAmount + $adjustmentAmount, 2),
+                'closing_balance' => Receipt::closingBalance($openingBalance, $calculation['amount'], $paidAmount, $adjustmentAmount),
                 'closed_at' => $closedAt,
                 'created_at' => $closedAt,
                 'updated_at' => $closedAt,

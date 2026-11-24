@@ -2,7 +2,6 @@
 
 namespace App\Providers;
 
-use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -20,13 +19,6 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        /**
-         * A site behind HTTPS keeps its links, Livewire requests and assets on
-         * https whatever the proxy headers say: X-Forwarded-Proto is believed
-         * only from trusted proxies (config/trustedproxy.php).
-         */
-        if (str_starts_with((string) config('app.url'), 'https://')) {
-            URL::forceScheme('https');
-        }
+        //
     }
 }

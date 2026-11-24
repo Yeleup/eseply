@@ -9,6 +9,7 @@ use App\Kaspi\KaspiGateway;
 use App\Kaspi\KaspiInput;
 use App\Kaspi\KaspiResponse;
 use App\Models\Organization;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Log;
@@ -25,6 +26,9 @@ class KaspiController extends Controller
 {
     public function __invoke(Request $request, string $uid, KaspiGateway $gateway): Response
     {
+        // The moment the request came in, before any work: the journal and the
+        // statistics count by it.
+        $receivedAt = now()->toImmutable();
         $input = KaspiInput::fromRequest($request);
         $deadline = KaspiDeadline::in((float) config('kaspi.lock_wait_seconds'));
         $organization = null;
@@ -34,7 +38,7 @@ class KaspiController extends Controller
                 ? Organization::query()->where('kaspi_uid', $uid)->first()
                 : null;
 
-            $body = $this->answer($organization, $input, $deadline, $gateway);
+            $body = $this->answer($organization, $input, $deadline, $gateway, $receivedAt);
         } catch (Throwable $exception) {
             // The database included: any failure is result 5, never a page of an error.
             report($exception);
@@ -44,7 +48,7 @@ class KaspiController extends Controller
 
         try {
             if ($organization instanceof Organization) {
-                KaspiActivity::record($organization, KaspiResponse::resultOf($body), $deadline);
+                KaspiActivity::record($organization, KaspiResponse::resultOf($body), $receivedAt, $deadline);
             }
         } finally {
             $this->restore($deadline);
@@ -53,7 +57,7 @@ class KaspiController extends Controller
         return KaspiResponse::http($body);
     }
 
-    private function answer(?Organization $organization, KaspiInput $input, KaspiDeadline $deadline, KaspiGateway $gateway): string
+    private function answer(?Organization $organization, KaspiInput $input, KaspiDeadline $deadline, KaspiGateway $gateway, CarbonImmutable $receivedAt): string
     {
         if (! $organization instanceof Organization) {
             return KaspiResponse::error($input->responseTxnId);
@@ -70,8 +74,8 @@ class KaspiController extends Controller
         }
 
         return $input->command === KaspiCommand::Check
-            ? $gateway->check($organization, $input, $deadline)
-            : $gateway->pay($organization, $input, $deadline);
+            ? $gateway->check($organization, $input, $deadline, $receivedAt)
+            : $gateway->pay($organization, $input, $deadline, $receivedAt);
     }
 
     private function restore(KaspiDeadline $deadline): void

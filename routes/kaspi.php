@@ -14,8 +14,9 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-// Every method reaches the route, so the middleware answers each of them
-// itself: GET is served, the rest get 405 with `Cache-Control: no-store`.
+// Only GET gets this far: RejectKaspiMethods answers every other method with
+// 405 and `Cache-Control: no-store` before routing; EnsureKaspiRequest keeps
+// the same answer in case the route is ever reached another way.
 Route::any('/kaspi/{uid}', KaspiController::class)
     ->middleware(EnsureKaspiRequest::class)
     ->name('kaspi.endpoint');

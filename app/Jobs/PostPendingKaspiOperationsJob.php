@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Kaspi\KaspiDeadline;
 use App\Kaspi\PostPendingKaspiOperations;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -28,6 +29,7 @@ class PostPendingKaspiOperationsJob implements ShouldQueue
 
     public function handle(PostPendingKaspiOperations $postPending): void
     {
-        $postPending->forOrganization($this->organizationId);
+        // Within the job's timeout; what is left goes to the scheduler's rounds.
+        $postPending->forOrganization($this->organizationId, budget: KaspiDeadline::in($this->timeout - 60));
     }
 }

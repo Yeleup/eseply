@@ -7,7 +7,9 @@ use App\Models\Accrual;
 use App\Models\BillingPeriod;
 use App\Models\Client;
 use App\Models\Organization;
+use App\Models\Receipt;
 use App\Reports\TurnoverBalanceValues;
+use App\Support\Money;
 
 /**
  * The debt Kaspi shows the payer: the full balance by the same engine as the
@@ -26,14 +28,17 @@ final class KaspiDebt
                 ->orderByDesc('starts_on')
                 ->first();
 
-        $balance = $billingPeriod instanceof BillingPeriod
-            ? self::openPeriodBalance($organization, $billingPeriod, $client)
-            : self::lastClosedBalance($client);
+        $balanceCents = $billingPeriod instanceof BillingPeriod
+            ? self::openPeriodBalanceCents($organization, $billingPeriod, $client)
+            : Money::cents(self::lastClosedBalance($client));
 
-        return number_format(max($balance, 0.0), 2, '.', '');
+        return Money::format(max($balanceCents, 0));
     }
 
-    private static function openPeriodBalance(Organization $organization, BillingPeriod $billingPeriod, Client $client): float
+    /**
+     * The closing balance as the turnover sheet counts it, added exactly.
+     */
+    private static function openPeriodBalanceCents(Organization $organization, BillingPeriod $billingPeriod, Client $client): int
     {
         $row = Client::query()
             ->whereKey($client->getKey())
@@ -42,23 +47,31 @@ final class KaspiDebt
             ->first();
 
         if (! $row instanceof Client) {
-            return 0.0;
+            return 0;
         }
 
-        $metrics = TurnoverBalanceValues::metricsOf($row);
-
-        return (float) $metrics['closing_debit'] - (float) $metrics['closing_credit'];
+        return Money::cents(Receipt::closingBalance(
+            Money::sum(
+                $row->getAttribute(TurnoverBalanceValues::OPENING_BALANCE),
+                $row->getAttribute(TurnoverBalanceValues::OPENING_ADJUSTMENT),
+            ),
+            $row->getAttribute(TurnoverBalanceValues::ACCRUED_AMOUNT),
+            $row->getAttribute(TurnoverBalanceValues::PAID_AMOUNT),
+            $row->getAttribute(TurnoverBalanceValues::ADJUSTMENT_AMOUNT),
+        ));
     }
 
     /**
      * Only when no month is open or closing: the balance the last accrual left.
      */
-    private static function lastClosedBalance(Client $client): float
+    private static function lastClosedBalance(Client $client): ?string
     {
-        return (float) (Accrual::query()
+        $closingBalance = Accrual::query()
             ->where('accruals.client_id', $client->getKey())
             ->join('billing_periods', 'billing_periods.id', '=', 'accruals.billing_period_id')
             ->orderByDesc('billing_periods.starts_on')
-            ->value('accruals.closing_balance') ?? 0);
+            ->value('accruals.closing_balance');
+
+        return $closingBalance === null ? null : (string) $closingBalance;
     }
 }

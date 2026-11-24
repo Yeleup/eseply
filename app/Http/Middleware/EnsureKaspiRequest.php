@@ -25,6 +25,7 @@ class EnsureKaspiRequest
      */
     public function handle(Request $request, Closure $next): SymfonyResponse
     {
+        // Other methods never get here: RejectKaspiMethods answers them before routing.
         if (! $request->isMethod('GET')) {
             return new Response('', 405, [
                 'Allow' => 'GET',

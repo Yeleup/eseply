@@ -105,9 +105,7 @@ function kaspiJournalPosted(Client $client, BillingPeriod $billingPeriod, string
  */
 function kaspiJournalRequestAt(Organization $organization, string $moment, int $result): void
 {
-    test()->travelTo(CarbonImmutable::parse($moment));
-    KaspiActivity::record($organization, $result, KaspiDeadline::in(1));
-    test()->travelTo(CarbonImmutable::parse('2026-11-24 15:00:00'));
+    KaspiActivity::record($organization, $result, CarbonImmutable::parse($moment), KaspiDeadline::in(1));
 }
 
 /**
@@ -329,7 +327,7 @@ test('профиль показывает оператору раздел Kaspi:
         ->assertOk()
         ->assertSee('Kaspi онлайн')
         ->assertSee('Принимать оплаты Kaspi онлайн')
-        ->assertSee(url('/kaspi/'.$organization->kaspi_uid))
+        ->assertSee(rtrim((string) config('app.url'), '/').'/kaspi/'.$organization->kaspi_uid)
         ->assertSee('^[0-9]{6,10}$')
         ->assertSee('JSON, UTF-8')
         ->assertSee('194.187.247.152')
@@ -422,7 +420,7 @@ test('uid создаётся у новой организации и не мен
     $organization->forceFill(['kaspi_uid' => (string) Str::uuid()])->save();
 
     expect($organization->refresh()->kaspi_uid)->toBe($uid)
-        ->and($organization->kaspiAddress())->toBe(url('/kaspi/'.$uid));
+        ->and($organization->kaspiAddress())->toBe(rtrim((string) config('app.url'), '/').'/kaspi/'.$uid);
 });
 
 test('организация, созданная через регистрацию, сразу получает свой uid', function (): void {

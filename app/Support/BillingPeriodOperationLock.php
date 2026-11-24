@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Kaspi\KaspiDeadline;
 use App\Models\BillingPeriod;
 use App\Models\Organization;
 use Illuminate\Cache\Lock;
@@ -12,7 +13,7 @@ class BillingPeriodOperationLock
 {
     public const int LIFETIME = 3600;
 
-    private const int WAIT_STEP_MICROSECONDS = 100_000;
+    private const float WAIT_STEP_SECONDS = 0.05;
 
     public static function acquire(Organization $organization, string|BillingPeriod $period): Lock
     {
@@ -26,25 +27,23 @@ class BillingPeriodOperationLock
     }
 
     /**
-     * Wait for the lock no longer than the given number of seconds.
+     * Wait for the lock no longer than the deadline allows.
      *
      * A Kaspi payment is posted under the same lock as the start of closing, so
      * a payment either lands before the month starts closing or sees it closing.
+     * The wait is measured on the deadline's monotonic clock and never sleeps
+     * past it.
      */
-    public static function waitFor(Organization|int $organization, BillingPeriod $period, float $seconds): ?Lock
+    public static function waitFor(Organization|int $organization, BillingPeriod $period, KaspiDeadline $deadline): ?Lock
     {
         $lock = Cache::lock(self::key($organization, $period), self::LIFETIME);
 
-        // Measured on the real clock, not on Carbon: a frozen test clock must
-        // not turn the wait into an endless loop.
-        $waitUntil = microtime(true) + max($seconds, 0.0);
-
         while (! $lock->get()) {
-            if (microtime(true) >= $waitUntil) {
+            if ($deadline->expired()) {
                 return null;
             }
 
-            usleep(self::WAIT_STEP_MICROSECONDS);
+            $deadline->pause(self::WAIT_STEP_SECONDS);
         }
 
         return $lock;

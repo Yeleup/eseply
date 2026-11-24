@@ -128,11 +128,12 @@ class Organization extends Model implements HasCurrentTenantLabel, HasName
     }
 
     /**
-     * Permanent address Kaspi sends `check` and `pay` to.
+     * Permanent address Kaspi sends `check` and `pay` to: the canonical address
+     * of the platform (APP_URL), whatever address the operator opened it by.
      */
     public function kaspiAddress(): string
     {
-        return route('kaspi.endpoint', ['uid' => $this->kaspi_uid]);
+        return rtrim((string) config('app.url'), '/').route('kaspi.endpoint', ['uid' => $this->kaspi_uid], absolute: false);
     }
 
     public function getFilamentName(): string

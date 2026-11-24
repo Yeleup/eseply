@@ -7,26 +7,36 @@
 |
 | KaspiConcurrencyTest starts this script as separate PHP processes, so each
 | has its own database connection, as concurrent requests in production do.
-| The script boots the application, says it is ready, waits for the common
-| start signal and then does one thing: a Kaspi request through the HTTP
-| kernel, a payment at the desk, or an artisan command. It prints the result
-| as JSON.
+| The script boots the application, checks it talks to the very database the
+| test verified, reports its connection id, waits for the common start signal
+| and then does one thing: a Kaspi request through the HTTP kernel, a payment
+| at the desk, a payment form of the panel through Livewire, or an artisan
+| command. Before the statement the test waits for, it leaves a marker file.
+| It prints the result as JSON.
 |
 */
 
 use App\Actions\RecordManualPayment;
+use App\Filament\Resources\Clients\Pages\EditClient;
+use App\Filament\Resources\Clients\RelationManagers\PaymentsRelationManager;
+use App\Filament\Resources\Payments\Pages\CreatePayment;
+use App\Models\Client;
 use App\Models\Organization;
+use App\Models\User;
+use Filament\Facades\Filament;
 use Illuminate\Contracts\Console\Kernel as ConsoleKernel;
 use Illuminate\Contracts\Http\Kernel;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use Livewire\Livewire;
 
 require __DIR__.'/../../vendor/autoload.php';
 
 $app = require __DIR__.'/../../bootstrap/app.php';
 
-/** @var array{type: string, ready_file: string, go_file: string} $spec */
+/** @var array{type: string, ready_file: string, go_file: string, reached_file: string, wait_for?: string|null, database: string} $spec */
 $spec = json_decode($argv[1] ?? '{}', true, flags: JSON_THROW_ON_ERROR);
 
 // Booted the way tests boot the application; HTTP requests then go through
@@ -34,7 +44,21 @@ $spec = json_decode($argv[1] ?? '{}', true, flags: JSON_THROW_ON_ERROR);
 $app->make(ConsoleKernel::class)->bootstrap();
 $kernel = $app->make(Kernel::class);
 
-touch($spec['ready_file']);
+// The test verified this database before it wiped it; nothing else is touched.
+if (! app()->environment('testing') || DB::scalar('select database()') !== $spec['database']) {
+    fwrite(STDERR, 'Wrong database or environment.');
+    exit(3);
+}
+
+if (filled($spec['wait_for'] ?? null)) {
+    DB::connection()->beforeExecuting(function (string $query) use ($spec): void {
+        if (str_contains(strtolower($query), $spec['wait_for'])) {
+            touch($spec['reached_file']);
+        }
+    });
+}
+
+file_put_contents($spec['ready_file'], (string) DB::scalar('select connection_id()'));
 
 $waitUntil = microtime(true) + 30;
 
@@ -48,6 +72,13 @@ while (! file_exists($spec['go_file'])) {
 }
 
 $startedAt = microtime(true);
+
+$actAsOperator = function (array $spec): void {
+    Livewire::actingAs(User::query()->findOrFail($spec['user_id']));
+    Filament::setCurrentPanel('admin');
+    Filament::setTenant(Organization::query()->findOrFail($spec['organization_id']));
+    Filament::bootCurrentPanel();
+};
 
 switch ($spec['type']) {
     case 'http':
@@ -69,6 +100,23 @@ switch ($spec['type']) {
         } catch (ValidationException $exception) {
             $result = ['error' => $exception->validator->errors()->first()];
         }
+        break;
+
+    case 'form_payments':
+        $actAsOperator($spec);
+        $page = Livewire::test(CreatePayment::class)
+            ->fillForm(['client_id' => $spec['client_id'], 'amount' => $spec['amount'], 'paid_at' => $spec['paid_at']])
+            ->call('create');
+        $result = ['errors' => $page->errors()->all()];
+        break;
+
+    case 'form_card':
+        $actAsOperator($spec);
+        $page = Livewire::test(PaymentsRelationManager::class, [
+            'ownerRecord' => Client::query()->findOrFail($spec['client_id']),
+            'pageClass' => EditClient::class,
+        ])->callTableAction('create', data: ['amount' => $spec['amount'], 'paid_at' => $spec['paid_at']]);
+        $result = ['errors' => $page->errors()->all()];
         break;
 
     case 'artisan':

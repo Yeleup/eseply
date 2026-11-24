@@ -77,6 +77,7 @@ class KaspiOperation extends Model
             'txn_date' => 'datetime',
             'received_at' => 'datetime',
             'posted_at' => 'datetime',
+            'posting_attempted_at' => 'datetime',
             'last_retry_at' => 'datetime',
             'last_result' => 'integer',
             'retries_count' => 'integer',

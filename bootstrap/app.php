@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\RejectKaspiMethods;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -26,6 +27,9 @@ return Application::configure(basePath: dirname(__DIR__))
          * X-Forwarded-For, and the IP is what the Kaspi address relies on.
          */
         $isKaspiRequest = fn (Request $request): bool => $request->is('kaspi/*');
+
+        // Before routing: methods the router does not know never reach the route.
+        $middleware->prepend(RejectKaspiMethods::class);
 
         // Kaspi parameters are checked exactly as they arrive.
         $middleware->trimStrings(except: [$isKaspiRequest]);

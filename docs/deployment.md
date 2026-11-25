@@ -34,9 +34,10 @@ Production — один сервер `esepteu` и на нём один Docker Co
   `LOG_STACK` в `.env`). Этот путь `server-kit logs` берёт из настройки сервера в server-kit
   (`app_log=eseply/storage/logs/laravel*.log`, см. `docs/new-server.md`).
 - **Соседи по серверу.** Сервер общий: рядом работает one-market (свой compose-проект, приложение на
-  порту 8500), там же лежат копии sala и satu-plus. Копия sala остановлена не целиком: её контейнеры
-  `db` и `redis` запущены (порт её базы 8801 — тот, что открыт в ufw); satu-plus остановлена. Цели
-  Makefile esepteu меняют только свой compose-проект — на сервере он называется `eseply`
+  порту 8500 на всех адресах сервера, IPv4 и IPv6), там же лежат копии sala и satu-plus. Копия sala
+  остановлена не целиком: её контейнеры `db` и `redis` запущены (порт её базы 8801 — тот, что открыт
+  в ufw); satu-plus остановлена. Цели Makefile esepteu меняют только свой compose-проект — на сервере
+  он называется `eseply`
   (`DOCKER_PROJECT_NAME` в `.env` сервера, контейнеры `eseply-app-1`, `eseply-queue-1` и т. д.), его
   приложение — на порту 8600 (`APP_PORT` в `.env` сервера). Перезапуск Docker и перезагрузка сервера
   задевают и one-market.
@@ -50,9 +51,11 @@ Production — один сервер `esepteu` и на нём один Docker Co
   веб-сервера, приложение не открывается ни снаружи, ни из соседних сетей Docker. Порт MariaDB
   (`${FORWARD_DB_PORT:-3350}:3306`) `docker-compose.yml` публикует без адреса, то есть на всех
   адресах сервера. `TRUSTED_PROXIES` в `.env` сервера задан адресом шлюза сети стека — с него
-  веб-сервер приходит в приложение. Порт 8500, который подготовка закрыла в ufw по IPv6
-  (`--allow-close 8500/tcp`), — порт one-market, а не esepteu. Текущее состояние показывает
-  `harden esepteu --check`.
+  веб-сервер приходит в приложение. Порт 8500 — порт one-market, а не esepteu: one-market публикует
+  его на всех адресах сервера, подготовка закрыла его в ufw только по IPv6
+  (`--allow-close 8500/tcp`), а по IPv4 Docker публикует его мимо ufw (подробности —
+  `docs/deployment.md` репозитория one-market, раздел «Доступ к серверу»). Текущее состояние
+  показывает `harden esepteu --check`.
 - **Проверка изоляции для Kaspi** — пункты 3–8 и 12 чек-листа включения
   ([docs/modules/kaspi-online.md](modules/kaspi-online.md), «Чек-лист включения»), 24.11.2026,
   Docker 28.1.1:

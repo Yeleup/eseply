@@ -26,6 +26,8 @@ use App\Models\MeterReading;
 use App\Models\Organization;
 use App\Models\Payment;
 use App\Models\Receipt;
+use App\Models\Region;
+use App\Models\Street;
 use App\Models\Tariff;
 use App\Models\User;
 use App\Models\UtilityService;
@@ -62,7 +64,10 @@ const KASPI_TEST_IP = '194.187.247.152';
 const KASPI_TEST_PROXY = '172.18.0.1';
 
 // Samples of the task, byte for byte.
-const KASPI_SAMPLE_CHECK_FOUND = '{"txn_id":"48213377188","result":0,"sum":4250.00,"comment":"","fields":{"field1":{"@name":"Абонент","#text":"Иванов И. И."},"field2":{"@name":"Долг на 24.11.2026","#text":"4250.00"}}}';
+const KASPI_SAMPLE_CHECK_FOUND = '{"txn_id":"48213377188","result":0,"sum":4250.00,"comment":"","fields":{"field1":{"@name":"Абонент","#text":"Иванов И. И."},"field2":{"@name":"Долг на 24.11.2026","#text":"4250.00"},"field3":{"@name":"Адрес","#text":"ул. Абая, д. 12, кв. 5"}}}';
+
+// The found answer of a subscriber without an address, and of every check before #46.
+const KASPI_SAMPLE_CHECK_FOUND_WITHOUT_ADDRESS = '{"txn_id":"48213377188","result":0,"sum":4250.00,"comment":"","fields":{"field1":{"@name":"Абонент","#text":"Иванов И. И."},"field2":{"@name":"Долг на 24.11.2026","#text":"4250.00"}}}';
 const KASPI_SAMPLE_CHECK_NOT_FOUND = '{"txn_id":"48213301922","result":1,"comment":"Абонент не найден"}';
 const KASPI_SAMPLE_ERROR = '{"txn_id":"48213377195","result":5,"comment":"Приём оплат недоступен"}';
 const KASPI_SAMPLE_PAY_POSTED = '{"txn_id":"48213377190","prv_txn_id":"2016","result":0,"sum":4250.00,"comment":"OK"}';
@@ -106,6 +111,26 @@ function kaspiClient(Organization $organization, UtilityService $utilityService,
         'fixed_amount' => 1000,
         ...$attributes,
     ]);
+}
+
+/**
+ * The address of the samples, «ул. Абая, д. 12, кв. 5», as client attributes.
+ *
+ * @param  array<string, mixed>  $attributes
+ * @return array<string, mixed>
+ */
+function kaspiAddress(Organization $organization, array $attributes = [], string $street = 'ул. Абая'): array
+{
+    $region = Region::factory()->for($organization)->create();
+    $street = Street::factory()->create(['region_id' => $region->id, 'name' => $street]);
+
+    return [
+        'region_id' => $region->id,
+        'street_id' => $street->id,
+        'house' => '12',
+        'apartment' => '5',
+        ...$attributes,
+    ];
 }
 
 function kaspiOpeningBalance(Client $client, BillingPeriod $billingPeriod, float $amount): void
@@ -197,7 +222,7 @@ afterEach(function (): void {
 
 test('ответы check 0, 1 и 5 совпадают с образцами побайтно', function (): void {
     ['organization' => $organization, 'utilityService' => $utilityService, 'billingPeriod' => $billingPeriod] = kaspiOrganization();
-    $client = kaspiClient($organization, $utilityService);
+    $client = kaspiClient($organization, $utilityService, kaspiAddress($organization));
     kaspiOpeningBalance($client, $billingPeriod, 4250);
 
     $found = kaspiGet($organization, kaspiCheckQuery())
@@ -472,7 +497,7 @@ test('срок истёк между записью операции и пров
 
 test('check: найден, не найден, неактивный и абонент другой организации с тем же номером', function (): void {
     ['organization' => $organization, 'utilityService' => $utilityService, 'billingPeriod' => $billingPeriod] = kaspiOrganization();
-    $client = kaspiClient($organization, $utilityService);
+    $client = kaspiClient($organization, $utilityService, kaspiAddress($organization));
     kaspiOpeningBalance($client, $billingPeriod, 4250);
     kaspiClient($organization, $utilityService, ['account_number' => '100523', 'status' => 'inactive', 'iin' => '900101300002', 'phone' => '+77010000003']);
 
@@ -492,6 +517,7 @@ test('check: найден, не найден, неактивный и абоне
         ->and($found->state)->toBe(KaspiOperationState::Found)
         ->and($found->last_result)->toBe(0)
         ->and($found->debt)->toBe('4250.00')
+        ->and($found->response)->toBe(KASPI_SAMPLE_CHECK_FOUND)
         ->and(KaspiOperation::query()->where('txn_id', '48213377303')->value('organization_id'))->toBe($other->id)
         ->and(KaspiOperation::query()->where('txn_id', '48213377301')->value('state'))->toBe(KaspiOperationState::NotFound);
 });
@@ -508,6 +534,95 @@ test('check: юрлицо видит наименование полностью
     'коммерческий объект' => [ClientType::Commercial, 'Магазин «Тест»', 'Магазин «Тест»'],
     'бюджетная организация' => [ClientType::Budget, 'КГУ «Школа № 1»', 'КГУ «Школа № 1»'],
 ]);
+
+test('check: адрес — улица, дом и квартира, как в кассе; пустые части пропускаются, кириллица без экранирования', function (string $street, array $address, string $expected): void {
+    ['organization' => $organization, 'utilityService' => $utilityService, 'billingPeriod' => $billingPeriod] = kaspiOrganization();
+    $client = kaspiClient($organization, $utilityService, kaspiAddress($organization, $address, $street));
+    kaspiOpeningBalance($client, $billingPeriod, 4250);
+
+    $body = kaspiGet($organization, kaspiCheckQuery())->getContent();
+
+    expect($body)->toBe('{"txn_id":"48213377188","result":0,"sum":4250.00,"comment":"","fields":{"field1":{"@name":"Абонент","#text":"Иванов И. И."},"field2":{"@name":"Долг на 24.11.2026","#text":"4250.00"},"field3":{"@name":"Адрес","#text":"'.$expected.'"}}}')
+        ->and($body)->not->toContain('\u')
+        ->and($body)->not->toContain('\/')
+        ->and((new PaymentDesk)->addressOf($client->fresh()))->toBe($expected)
+        ->and(KaspiOperation::query()->sole()->response)->toBe($body);
+})->with([
+    'полный' => ['ул. Абая', [], 'ул. Абая, д. 12, кв. 5'],
+    'без квартиры' => ['ул. Абая', ['apartment' => null], 'ул. Абая, д. 12'],
+    'квартира пустой строкой' => ['ул. Абая', ['apartment' => ''], 'ул. Абая, д. 12'],
+    'без дома и квартиры' => ['ул. Абая', ['house' => null, 'apartment' => null], 'ул. Абая'],
+    'дом с дробью, квартира с буквой' => ['ул. Абая', ['house' => '7/2', 'apartment' => '14А'], 'ул. Абая, д. 7/2, кв. 14А'],
+    'дом и квартира «0»' => ['ул. Абая', ['house' => '0', 'apartment' => '0'], 'ул. Абая, д. 0, кв. 0'],
+    // The cash desk never showed a street named «0», and kept a name of blanks.
+    'улица «0»' => ['0', ['apartment' => null], 'д. 12'],
+    'улица из пробелов' => ['   ', ['apartment' => null], '   , д. 12'],
+]);
+
+test('check: адреса нет — строки «Адрес» нет, остальной ответ прежний', function (?string $street, array $address, string $cashDesk): void {
+    ['organization' => $organization, 'utilityService' => $utilityService, 'billingPeriod' => $billingPeriod] = kaspiOrganization();
+    $client = kaspiClient($organization, $utilityService, $street === null
+        ? $address
+        : kaspiAddress($organization, ['house' => null, 'apartment' => null, ...$address], $street));
+    kaspiOpeningBalance($client, $billingPeriod, 4250);
+
+    $body = kaspiGet($organization, kaspiCheckQuery())->getContent();
+
+    expect($body)->toBe(KASPI_SAMPLE_CHECK_FOUND_WITHOUT_ADDRESS)
+        ->and($body)->not->toContain('Адрес')
+        ->and(KaspiOperation::query()->sole()->response)->toBe($body)
+        // The cash desk keeps its own text for the same subscriber.
+        ->and((new PaymentDesk)->addressOf($client->fresh()))->toBe($cashDesk);
+})->with([
+    'ничего не указано' => [null, [], 'Адрес не указан'],
+    'пустые строки' => [null, ['house' => '', 'apartment' => ''], 'Адрес не указан'],
+    'только улица «0»' => ['0', [], 'Адрес не указан'],
+    // The cash desk shows the blanks; Kaspi gets no line of blanks.
+    'только улица из пробелов' => ['   ', [], '   '],
+]);
+
+test('check: адрес идёт и юрлицу, и ИП; «Абонент» и «Долг» не меняются', function (ClientType $type, string $name, string $expected): void {
+    ['organization' => $organization, 'utilityService' => $utilityService] = kaspiOrganization();
+    kaspiClient($organization, $utilityService, ['client_type' => $type, 'name' => $name, ...kaspiAddress($organization)]);
+
+    $answer = kaspiGet($organization, kaspiCheckQuery());
+
+    expect(array_keys($answer->json('fields')))->toBe(['field1', 'field2', 'field3'])
+        ->and($answer->json('fields.field1'))->toBe(['@name' => 'Абонент', '#text' => $expected])
+        ->and($answer->json('fields.field2'))->toBe(['@name' => 'Долг на 24.11.2026', '#text' => '0.00'])
+        ->and($answer->json('fields.field3'))->toBe(['@name' => 'Адрес', '#text' => 'ул. Абая, д. 12, кв. 5']);
+})->with([
+    'ИП' => [ClientType::SoleProprietor, 'ИП Нурланов Ерлан Серикович', 'Нурланов Е. С.'],
+    'ТОО' => [ClientType::Llp, 'ТОО «Пример Сервис»', 'ТОО «Пример Сервис»'],
+]);
+
+test('check: повтор txn_id отдаёт первый ответ — и сохранённый до выкладки без адреса, и с прежним адресом', function (): void {
+    ['organization' => $organization, 'utilityService' => $utilityService, 'billingPeriod' => $billingPeriod] = kaspiOrganization();
+    $client = kaspiClient($organization, $utilityService, kaspiAddress($organization));
+    kaspiOpeningBalance($client, $billingPeriod, 4250);
+
+    // A check answered before the address was added: its saved answer has two lines.
+    KaspiOperation::factory()->forClient($client)->create([
+        'txn_id' => '48213377188',
+        'debt' => '4250.00',
+        'received_at' => now()->subDay(),
+        'state' => KaspiOperationState::Found,
+        'last_result' => 0,
+        'response' => KASPI_SAMPLE_CHECK_FOUND_WITHOUT_ADDRESS,
+    ]);
+
+    expect(kaspiGet($organization, kaspiCheckQuery())->getContent())->toBe(KASPI_SAMPLE_CHECK_FOUND_WITHOUT_ADDRESS);
+
+    // A new txn_id gets the address; its repeat keeps it after the subscriber moves.
+    $first = kaspiGet($organization, kaspiCheckQuery('48213377189'))->getContent();
+    $client->forceFill(['house' => '40', 'apartment' => '1'])->save();
+
+    expect($first)->toBe(str_replace('48213377188', '48213377189', KASPI_SAMPLE_CHECK_FOUND))
+        ->and(kaspiGet($organization, kaspiCheckQuery('48213377189'))->getContent())->toBe($first)
+        ->and(kaspiGet($organization, kaspiCheckQuery('48213377191'))->json('fields.field3.#text'))->toBe('ул. Абая, д. 40, кв. 1')
+        ->and(KaspiOperation::query()->where('txn_id', '48213377188')->value('response'))->toBe(KASPI_SAMPLE_CHECK_FOUND_WITHOUT_ADDRESS)
+        ->and(KaspiOperation::query()->where('txn_id', '48213377189')->value('response'))->toBe($first);
+});
 
 test('check: выключенный приём даёт 5 и пишет в журнал ошибку', function (): void {
     ['organization' => $organization, 'utilityService' => $utilityService] = kaspiOrganization(enabled: false);

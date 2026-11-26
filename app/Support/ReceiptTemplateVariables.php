@@ -125,14 +125,9 @@ final class ReceiptTemplateVariables
             return '-';
         }
 
-        $parts = array_filter([
-            $client->region?->name,
-            $client->street?->name,
-            filled($client->house) ? 'д. '.$client->house : null,
-            filled($client->apartment) ? 'кв. '.$client->apartment : null,
-        ], fn (?string $part): bool => filled($part));
+        $address = ClientAddress::withRegion($client);
 
-        return $parts === [] ? '-' : implode(', ', $parts);
+        return $address !== '' ? $address : '-';
     }
 
     private static function billingTypeLabel(?string $billingType): string

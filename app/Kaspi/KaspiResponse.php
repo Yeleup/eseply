@@ -21,7 +21,12 @@ final class KaspiResponse
 
     public const string PENDING_COMMENT = 'Платёж в обработке';
 
-    public static function checkFound(string $txnId, string $payerName, string $debt, string $debtDate): string
+    /**
+     * «Абонент», «Долг на <date>» and «Адрес». An address that is empty or
+     * only blanks sends no «Адрес» line at all: Kaspi shows the payer every
+     * line it gets.
+     */
+    public static function checkFound(string $txnId, string $payerName, string $debt, string $debtDate, string $address): string
     {
         return '{"txn_id":'.self::string($txnId)
             .',"result":0'
@@ -30,6 +35,7 @@ final class KaspiResponse
             .',"fields":{'
             .'"field1":{"@name":"Абонент","#text":'.self::string($payerName).'},'
             .'"field2":{"@name":'.self::string('Долг на '.$debtDate).',"#text":'.self::string($debt).'}'
+            .(trim($address) !== '' ? ',"field3":{"@name":"Адрес","#text":'.self::string($address).'}' : '')
             .'}}';
     }
 

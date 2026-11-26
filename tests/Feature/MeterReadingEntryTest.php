@@ -169,6 +169,25 @@ function readingEntryMeterWithConsumptionHistory(array $consumptions = [10, 20, 
     return compact('organization', 'utilityService', 'region', 'street', 'meter');
 }
 
+// --- Адрес -----------------------------------------------------------------
+
+test('адрес в списке — улица, дом и квартира без района; без улицы и дома — район, без всего — «-»', function (): void {
+    ['organization' => $organization, 'utilityService' => $utilityService, 'region' => $region, 'street' => $street] = readingEntryOrganization();
+    billingPeriodFor($organization);
+    readingEntryOperator($organization);
+
+    $full = readingEntryMeter($organization, $utilityService, ['region_id' => $region->id, 'street_id' => $street->id, 'house' => '10', 'apartment' => '4'], ['number' => 'MTR-A']);
+    $house = readingEntryMeter($organization, $utilityService, ['region_id' => $region->id, 'street_id' => $street->id, 'house' => '12'], ['number' => 'MTR-B']);
+    $regionOnly = readingEntryMeter($organization, $utilityService, ['region_id' => $region->id], ['number' => 'MTR-C']);
+    $nothing = readingEntryMeter($organization, $utilityService, [], ['number' => 'MTR-D']);
+
+    Livewire::test(MeterReadingEntry::class)
+        ->assertTableColumnStateSet('client_address', 'Абая, д. 10, кв. 4', $full)
+        ->assertTableColumnStateSet('client_address', 'Абая, д. 12', $house)
+        ->assertTableColumnStateSet('client_address', 'Алмалинский', $regionOnly)
+        ->assertTableColumnStateSet('client_address', '-', $nothing);
+});
+
 // --- Доступ -----------------------------------------------------------------
 
 test('контролёр вводит показание по счётчику своей зоны', function (): void {

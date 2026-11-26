@@ -9,9 +9,12 @@ use App\Models\Client;
  * How the payer sees the subscriber on the Kaspi screen.
  *
  * A person and an individual entrepreneur — surname and initials, «Иванов И. И.»:
- * the accounts go in a row and can be tried one by one, so neither the full name
- * nor the address is given out. An LLP, a commercial or a budget organization —
- * its name in full.
+ * the accounts go in a row and can be tried one by one, so the full name is not
+ * given out. An LLP, a commercial or a budget organization — its name in full.
+ *
+ * The address goes in a line of its own (`ClientAddress::forCashDesk()`): the owner
+ * accepted that the accounts tried one by one show surnames with addresses and
+ * debts (#46).
  */
 final class KaspiPayerName
 {

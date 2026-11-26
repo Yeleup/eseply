@@ -12,6 +12,7 @@ use App\Models\Organization;
 use App\Models\Payment;
 use App\Models\User;
 use App\Reports\TurnoverBalanceValues;
+use App\Support\ClientAddress;
 use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Actions\DeleteAction;
@@ -212,11 +213,7 @@ class PaymentDesk extends Page implements HasTable
 
     public function addressOf(Client $client): string
     {
-        $address = collect([
-            $client->street?->name,
-            filled($client->house) ? 'д. '.$client->house : null,
-            filled($client->apartment) ? 'кв. '.$client->apartment : null,
-        ])->filter()->implode(', ');
+        $address = ClientAddress::forCashDesk($client);
 
         return $address !== '' ? $address : 'Адрес не указан';
     }

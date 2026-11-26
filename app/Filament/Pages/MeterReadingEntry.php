@@ -12,6 +12,7 @@ use App\Models\Meter;
 use App\Models\MeterReading;
 use App\Models\Organization;
 use App\Models\User;
+use App\Support\ClientAddress;
 use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Forms\Components\DatePicker;
@@ -835,16 +836,11 @@ class MeterReadingEntry extends Page implements HasTable
             return '-';
         }
 
-        /** @var Collection<int, string> $parts */
-        $parts = collect([
-            $client->street?->name,
-            filled($client->house) ? 'д. '.$client->house : null,
-            filled($client->apartment) ? 'кв. '.$client->apartment : null,
-        ])->filter(fn (?string $part): bool => filled($part));
+        $address = ClientAddress::of($client);
 
-        return $parts->isEmpty()
-            ? ($client->region?->name ?? '-')
-            : $parts->implode(', ');
+        return $address !== ''
+            ? $address
+            : ($client->region?->name ?? '-');
     }
 
     private function currentBillingPeriod(): ?BillingPeriod

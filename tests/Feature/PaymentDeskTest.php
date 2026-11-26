@@ -11,6 +11,8 @@ use App\Models\MeterReading;
 use App\Models\Organization;
 use App\Models\Payment;
 use App\Models\Receipt;
+use App\Models\Region;
+use App\Models\Street;
 use App\Models\Tariff;
 use App\Models\User;
 use App\Models\UtilityService;
@@ -340,6 +342,31 @@ test('абонент без квитанции в открытом месяце 
 });
 
 // --- Кнопка «Оплатить» ------------------------------------------------------
+
+test('адрес абонента в поиске и в модалке — улица, дом и квартира без района, без адреса — «Адрес не указан»', function (): void {
+    ['organization' => $organization, 'utilityService' => $utilityService] = paymentDeskOrganization();
+    $billingPeriod = billingPeriodFor($organization);
+    paymentDeskOperator($organization);
+
+    $region = Region::factory()->for($organization)->create(['name' => 'Тестовый район']);
+    $street = Street::factory()->create(['region_id' => $region->id, 'name' => 'ул. Тестовая']);
+    $withAddress = paymentDeskDebtFromReading($organization, $utilityService, $billingPeriod, 30, [
+        'name' => 'Адресов Арман',
+        'region_id' => $region->id,
+        'street_id' => $street->id,
+        'house' => '10',
+        'apartment' => '4',
+    ]);
+    paymentDeskClient($organization, $utilityService, ['name' => 'Адресов Бекзат', 'street_id' => $street->id, 'house' => '12']);
+    paymentDeskClient($organization, $utilityService, ['name' => 'Адресов Ержан']);
+
+    Livewire::test(PaymentDesk::class)
+        ->set('search', 'Адресов')
+        ->assertSee(['ул. Тестовая, д. 10, кв. 4', 'ул. Тестовая, д. 12', 'Адрес не указан'])
+        ->assertDontSee('Тестовый район')
+        ->mountAction(paymentDeskPay($withAddress))
+        ->assertMountedActionModalSee('ул. Тестовая, д. 10, кв. 4');
+});
 
 test('кнопка «Оплатить» есть только у абонента с долгом', function (): void {
     ['organization' => $organization, 'utilityService' => $utilityService] = paymentDeskOrganization();

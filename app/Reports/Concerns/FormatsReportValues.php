@@ -5,9 +5,9 @@ namespace App\Reports\Concerns;
 use App\ClientType;
 use App\Models\BillingPeriod;
 use App\Models\Client;
+use App\Support\ClientAddress;
 use Carbon\CarbonImmutable;
 use DateTimeInterface;
-use Illuminate\Support\Collection;
 use OpenSpout\Common\Entity\Cell;
 use OpenSpout\Common\Entity\Cell\StringCell;
 use OpenSpout\Common\Entity\Row;
@@ -25,15 +25,9 @@ trait FormatsReportValues
             return '-';
         }
 
-        /** @var Collection<int, string> $parts */
-        $parts = collect([
-            $client->region?->name,
-            $client->street?->name,
-            filled($client->house) ? 'д. '.$client->house : null,
-            filled($client->apartment) ? 'кв. '.$client->apartment : null,
-        ])->filter(fn (?string $part): bool => filled($part));
+        $address = ClientAddress::withRegion($client);
 
-        return $parts->isEmpty() ? '-' : $parts->implode(', ');
+        return $address !== '' ? $address : '-';
     }
 
     protected function clientTypeLabel(ClientType|string|null $clientType): string

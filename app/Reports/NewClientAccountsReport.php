@@ -13,11 +13,11 @@ use App\Models\User;
 use App\Reports\Concerns\AppliesReportFilters;
 use App\Reports\Contracts\FiltersExcelExport;
 use App\Reports\Contracts\OrganizationReport;
+use App\Support\ClientAddress;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\BaseFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Collection;
 use OpenSpout\Common\Entity\Cell;
 use OpenSpout\Common\Entity\Cell\EmptyCell;
 use OpenSpout\Common\Entity\Cell\NumericCell;
@@ -183,15 +183,9 @@ class NewClientAccountsReport implements FiltersExcelExport, OrganizationReport
 
     private function formatAddress(Client $client): string
     {
-        /** @var Collection<int, string> $parts */
-        $parts = collect([
-            $client->region?->name,
-            $client->street?->name,
-            filled($client->house) ? 'д. '.$client->house : null,
-            filled($client->apartment) ? 'кв. '.$client->apartment : null,
-        ])->filter(fn (?string $part): bool => filled($part));
+        $address = ClientAddress::withRegion($client);
 
-        return $parts->isEmpty() ? '-' : $parts->implode(', ');
+        return $address !== '' ? $address : '-';
     }
 
     private function excelFileName(Organization $organization, ?BillingPeriod $billingPeriod): string

@@ -1,7 +1,10 @@
 <?php
 
+use App\Models\Client;
 use App\Models\Organization;
 use App\Models\Receipt;
+use App\Models\Region;
+use App\Models\Street;
 use App\Support\ReceiptTemplateVariables;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -69,4 +72,35 @@ test('fragments render meters table and organization images', function () {
         ->and($fragments['meters_table'])->toContain('Итого')
         ->and($fragments['logo'])->toBe('')
         ->and($fragments['qr'])->toBe('');
+});
+
+test('client address joins region, street, house and apartment, and is a dash when empty', function () {
+    $organization = Organization::factory()->create();
+    $region = Region::factory()->for($organization)->create(['name' => 'Тестовый район']);
+    $street = Street::factory()->create(['region_id' => $region->id, 'name' => 'ул. Тестовая']);
+    // One period for all receipts: a receipt opens its month, and months open in order.
+    $withAddress = Receipt::factory()->for($organization)->create([
+        'period' => '202605',
+        'client_id' => Client::factory()->for($organization)->create([
+            'region_id' => $region->id,
+            'street_id' => $street->id,
+            'house' => '10',
+            'apartment' => '4',
+        ])->id,
+    ]);
+    $withoutApartment = Receipt::factory()->for($organization)->create([
+        'period' => '202605',
+        'client_id' => Client::factory()->for($organization)->create([
+            'region_id' => $region->id,
+            'street_id' => $street->id,
+            'house' => '12',
+        ])->id,
+    ]);
+    $withoutAddress = Receipt::factory()->for($organization)->create(['period' => '202605']);
+
+    $address = fn (Receipt $receipt): string => ReceiptTemplateVariables::values($receipt->fresh(), 'Для абонента', now())['client_address'];
+
+    expect($address($withAddress))->toBe('Тестовый район, ул. Тестовая, д. 10, кв. 4')
+        ->and($address($withoutApartment))->toBe('Тестовый район, ул. Тестовая, д. 12')
+        ->and($address($withoutAddress))->toBe('-');
 });

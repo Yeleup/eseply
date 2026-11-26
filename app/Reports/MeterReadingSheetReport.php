@@ -12,11 +12,11 @@ use App\Models\Organization;
 use App\Models\User;
 use App\Reports\Contracts\FiltersExcelExport;
 use App\Reports\Contracts\OrganizationReport;
+use App\Support\ClientAddress;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\BaseFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Collection;
 use OpenSpout\Common\Entity\Cell;
 use OpenSpout\Common\Entity\Cell\EmptyCell;
 use OpenSpout\Common\Entity\Cell\NumericCell;
@@ -246,15 +246,9 @@ class MeterReadingSheetReport implements FiltersExcelExport, OrganizationReport
             return '-';
         }
 
-        /** @var Collection<int, string> $parts */
-        $parts = collect([
-            $client->region?->name,
-            $client->street?->name,
-            filled($client->house) ? 'д. '.$client->house : null,
-            filled($client->apartment) ? 'кв. '.$client->apartment : null,
-        ])->filter(fn (?string $part): bool => filled($part));
+        $address = ClientAddress::withRegion($client);
 
-        return $parts->isEmpty() ? '-' : $parts->implode(', ');
+        return $address !== '' ? $address : '-';
     }
 
     private function excelFileName(Organization $organization): string

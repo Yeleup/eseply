@@ -6,6 +6,7 @@ use App\Jobs\PostKaspiOperationJob;
 use App\Models\Client;
 use App\Models\KaspiOperation;
 use App\Models\Organization;
+use App\Support\ClientAddress;
 use Carbon\CarbonInterface;
 use Illuminate\Database\QueryException;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -51,7 +52,7 @@ final class KaspiGateway
             $organization,
             $input,
             KaspiOperationState::Found,
-            KaspiResponse::checkFound($input->txnId, KaspiPayerName::for($client), $debt, $receivedAt->format('d.m.Y')),
+            KaspiResponse::checkFound($input->txnId, KaspiPayerName::for($client), $debt, $receivedAt->format('d.m.Y'), ClientAddress::of($client)),
             $deadline,
             $receivedAt,
             client: $client,

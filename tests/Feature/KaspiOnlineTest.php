@@ -119,10 +119,10 @@ function kaspiClient(Organization $organization, UtilityService $utilityService,
  * @param  array<string, mixed>  $attributes
  * @return array<string, mixed>
  */
-function kaspiAddress(Organization $organization, array $attributes = []): array
+function kaspiAddress(Organization $organization, array $attributes = [], string $street = 'ул. Абая'): array
 {
     $region = Region::factory()->for($organization)->create();
-    $street = Street::factory()->create(['region_id' => $region->id, 'name' => 'ул. Абая']);
+    $street = Street::factory()->create(['region_id' => $region->id, 'name' => $street]);
 
     return [
         'region_id' => $region->id,
@@ -535,9 +535,9 @@ test('check: юрлицо видит наименование полностью
     'бюджетная организация' => [ClientType::Budget, 'КГУ «Школа № 1»', 'КГУ «Школа № 1»'],
 ]);
 
-test('check: адрес — улица, дом и квартира, как в кассе; пустые части пропускаются, кириллица без экранирования', function (array $address, string $expected): void {
+test('check: адрес — улица, дом и квартира, как в кассе; пустые части пропускаются, кириллица без экранирования', function (string $street, array $address, string $expected): void {
     ['organization' => $organization, 'utilityService' => $utilityService, 'billingPeriod' => $billingPeriod] = kaspiOrganization();
-    $client = kaspiClient($organization, $utilityService, kaspiAddress($organization, $address));
+    $client = kaspiClient($organization, $utilityService, kaspiAddress($organization, $address, $street));
     kaspiOpeningBalance($client, $billingPeriod, 4250);
 
     $body = kaspiGet($organization, kaspiCheckQuery())->getContent();
@@ -548,16 +548,22 @@ test('check: адрес — улица, дом и квартира, как в к
         ->and((new PaymentDesk)->addressOf($client->fresh()))->toBe($expected)
         ->and(KaspiOperation::query()->sole()->response)->toBe($body);
 })->with([
-    'полный' => [[], 'ул. Абая, д. 12, кв. 5'],
-    'без квартиры' => [['apartment' => null], 'ул. Абая, д. 12'],
-    'квартира пустой строкой' => [['apartment' => ''], 'ул. Абая, д. 12'],
-    'без дома и квартиры' => [['house' => null, 'apartment' => null], 'ул. Абая'],
-    'дом с дробью, квартира с буквой' => [['house' => '7/2', 'apartment' => '14А'], 'ул. Абая, д. 7/2, кв. 14А'],
+    'полный' => ['ул. Абая', [], 'ул. Абая, д. 12, кв. 5'],
+    'без квартиры' => ['ул. Абая', ['apartment' => null], 'ул. Абая, д. 12'],
+    'квартира пустой строкой' => ['ул. Абая', ['apartment' => ''], 'ул. Абая, д. 12'],
+    'без дома и квартиры' => ['ул. Абая', ['house' => null, 'apartment' => null], 'ул. Абая'],
+    'дом с дробью, квартира с буквой' => ['ул. Абая', ['house' => '7/2', 'apartment' => '14А'], 'ул. Абая, д. 7/2, кв. 14А'],
+    'дом и квартира «0»' => ['ул. Абая', ['house' => '0', 'apartment' => '0'], 'ул. Абая, д. 0, кв. 0'],
+    // The cash desk never showed a street named «0», and kept a name of blanks.
+    'улица «0»' => ['0', ['apartment' => null], 'д. 12'],
+    'улица из пробелов' => ['   ', ['apartment' => null], '   , д. 12'],
 ]);
 
-test('check: адреса нет — строки «Адрес» нет, остальной ответ прежний', function (array $address): void {
+test('check: адреса нет — строки «Адрес» нет, остальной ответ прежний', function (?string $street, array $address, string $cashDesk): void {
     ['organization' => $organization, 'utilityService' => $utilityService, 'billingPeriod' => $billingPeriod] = kaspiOrganization();
-    $client = kaspiClient($organization, $utilityService, $address);
+    $client = kaspiClient($organization, $utilityService, $street === null
+        ? $address
+        : kaspiAddress($organization, ['house' => null, 'apartment' => null, ...$address], $street));
     kaspiOpeningBalance($client, $billingPeriod, 4250);
 
     $body = kaspiGet($organization, kaspiCheckQuery())->getContent();
@@ -566,10 +572,13 @@ test('check: адреса нет — строки «Адрес» нет, ост�
         ->and($body)->not->toContain('Адрес')
         ->and(KaspiOperation::query()->sole()->response)->toBe($body)
         // The cash desk keeps its own text for the same subscriber.
-        ->and((new PaymentDesk)->addressOf($client->fresh()))->toBe('Адрес не указан');
+        ->and((new PaymentDesk)->addressOf($client->fresh()))->toBe($cashDesk);
 })->with([
-    'ничего не указано' => [[]],
-    'пустые строки' => [['house' => '', 'apartment' => '']],
+    'ничего не указано' => [null, [], 'Адрес не указан'],
+    'пустые строки' => [null, ['house' => '', 'apartment' => ''], 'Адрес не указан'],
+    'только улица «0»' => ['0', [], 'Адрес не указан'],
+    // The cash desk shows the blanks; Kaspi gets no line of blanks.
+    'только улица из пробелов' => ['   ', [], '   '],
 ]);
 
 test('check: адрес идёт и юрлицу, и ИП; «Абонент» и «Долг» не меняются', function (ClientType $type, string $name, string $expected): void {

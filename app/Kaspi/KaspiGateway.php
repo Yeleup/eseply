@@ -52,7 +52,7 @@ final class KaspiGateway
             $organization,
             $input,
             KaspiOperationState::Found,
-            KaspiResponse::checkFound($input->txnId, KaspiPayerName::for($client), $debt, $receivedAt->format('d.m.Y'), ClientAddress::of($client)),
+            KaspiResponse::checkFound($input->txnId, KaspiPayerName::for($client), $debt, $receivedAt->format('d.m.Y'), ClientAddress::forCashDesk($client)),
             $deadline,
             $receivedAt,
             client: $client,

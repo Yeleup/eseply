@@ -213,7 +213,7 @@ class PaymentDesk extends Page implements HasTable
 
     public function addressOf(Client $client): string
     {
-        $address = ClientAddress::of($client);
+        $address = ClientAddress::forCashDesk($client);
 
         return $address !== '' ? $address : 'Адрес не указан';
     }
